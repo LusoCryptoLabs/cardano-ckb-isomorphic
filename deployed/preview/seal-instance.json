@@ -1,0 +1,13 @@
+{
+  "seal_policy": "8855af1be1fd48ee096b72e91bee858db51b9ab75e866540c8647674",
+  "seal_name_hex": "5345414c",
+  "binding_lock_addr": "addr_test1wqwthgsg3cjfsr255gamvh0z683r8gekejk9ka0mqxkdyuqtyp3vw",
+  "owner_vkh": "4cf25d6a752890b5c88b048a9974f09f7b27cf3027ef2d1e66ccf5ca",
+  "S0_hex": "626f756e642d61737365743a64656d6f3a7631",
+  "commitment": "cad8d630cf4ff1e9bd4b1658e236a87ea58c282affc882e70cab974cc37993e6",
+  "seal_mint_tx": "83dd51d2f3ae6c6529a2f6feda2d85d1a27efa5bfafc6a34c6c595d203f25e15",
+  "transfer_tx": "a98b6636b3f08670cf0fe64a6176b64094d5929165ec62eb2944ac66b0f74da7",
+  "S1_hex": "626f756e642d61737365743a64656d6f3a7632206f776e65723d626f62",
+  "new_commitment": "fd4d8f09a10011f06eac312a4f7fadcba8b1015a33db4fed814fd3080bc7bd3e",
+  "unbind_tx": "6c729ea61fd36152e107643caa0ecf569e9905600d656db12e5aafcff3f156e9"
+}

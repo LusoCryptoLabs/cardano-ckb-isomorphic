@@ -1,0 +1,13 @@
+# build artifacts
+target/
+build/
+node_modules/
+*.bin
+__pycache__/
+.aiken/
+# secrets — never commit
+*.skey
+*.seed
+*.key
+.env
+deployed/**/keys/
