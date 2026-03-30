@@ -1,19 +1,19 @@
 # Chiral
 
-### Symmetric isomorphic binding — a committee-free, anchor-agnostic protocol where each chain verifies the other with a succinct on-chain light client
+### Symmetric isomorphic binding: a committee-free, anchor-agnostic protocol where each chain verifies the other with a succinct on-chain light client
 
 *Light paper · 2026-06*
 
 > **On the name.** *Chirality* is the property of a structure whose mirror image cannot be
-> superimposed on it — two forms, oppositely handed, irreducibly distinct yet built from the same
+> superimposed on it: two forms, oppositely handed, irreducibly distinct yet built from the same
 > parts. Chiral's two legs are exactly that: one binding construction, mirrored into two
 > oppositely-oriented oracles (Mithril-in-CKB-VM and Groth16-in-Plutus), neither reducible to the
 > other.
 
 > In the lineage of *RGB++* (Cipher / Nervos). RGB++ bound a CKB cell to a **Bitcoin**
 > UTxO and let CKB follow Bitcoin via an SPV light client. This paper generalizes that
-> construction: the anchor is no longer forced to be a chain that can only be *watched* — it
-> can be a chain that **also verifies back** — and verification in **both** directions is
+> construction: the anchor is no longer forced to be a chain that can only be *watched*, it
+> can be a chain that **also verifies back**, and verification in **both** directions is
 > done by a *succinct, in-script* light client rather than a committee, a multisig, or a
 > custodian. Instantiated between **Cardano** and **CKB**, the result is a fully
 > bidirectional isomorphic-binding protocol with no bonded authority anywhere in the safety
@@ -30,8 +30,8 @@ state, and CKB verifies Bitcoin through an on-chain SPV light client. Because Bi
 run a verifier of CKB, RGB++ binding is intrinsically **asymmetric in capability**: CKB can
 verify Bitcoin, never the reverse.
 
-We observe that the binding itself is symmetric — *only the oracle each side runs is
-direction-specific* — and that two recent capabilities make the symmetric instantiation
+We observe that the binding itself is symmetric, *only the oracle each side runs is
+direction-specific*, and that two recent capabilities make the symmetric instantiation
 practical: **Mithril**, Cardano's stake-based BLS threshold certificate of settled history,
 which a CKB-VM script can verify for a few percent of a block; and **BLS12-381 builtins on
 Cardano**, which let a Plutus script verify a constant-size **Groth16** proof, and therefore
@@ -56,7 +56,7 @@ client-heavy: there is no shared, programmable, globally-validated state.
 chain whose cells carry arbitrary data and whose RISC-V scripts ("CKB-VM") perform arbitrary
 verification. RGB++ binds a CKB cell *isomorphically* to a Bitcoin UTxO:
 
-- the **Bitcoin UTxO holds ownership** — spending it authorizes a state transition;
+- the **Bitcoin UTxO holds ownership**: spending it authorizes a state transition;
 - the **CKB cell holds the rich state and the transition script**;
 - each transition is **committed into the Bitcoin transaction**, and a **Bitcoin SPV light
   client maintained on CKB** lets CKB scripts verify, in-script, that the commitment was
@@ -71,21 +71,21 @@ representations without wrapping or custody.
 
 RGB++ binding is **one-directional in capability**, and this is forced by Bitcoin, not chosen:
 
-> CKB can verify Bitcoin (SPV is cheap on CKB-VM), but **Bitcoin cannot verify CKB** — it has
+> CKB can verify Bitcoin (SPV is cheap on CKB-VM), but **Bitcoin cannot verify CKB**: it has
 > no facility to check Eaglesong PoW, an MMR proof, or a SNARK in-script.
 
 So the anchor is permanently the *watched* chain and CKB is permanently the *watcher*. Leap
-between Bitcoin and CKB is still bidirectional — moving the anchor back to Bitcoin is just an
-ordinary Bitcoin spend that CKB observes, and **never requires Bitcoin to verify CKB** — but
+between Bitcoin and CKB is still bidirectional (moving the anchor back to Bitcoin is just an
+ordinary Bitcoin spend that CKB observes, and **never requires Bitcoin to verify CKB**) but
 the *trust topology* is fixed: one chain dictates, one chain follows.
 
 We ask: what if the anchor is a chain that can *also* verify back? Then the *same* binding
 runs in both directions, each side cryptographically checking the other, and neither side is
 privileged.
 
-### 1.2 Relationship to RGB and RGB++ — and why a new name
+### 1.2 Relationship to RGB and RGB++, and why a new name
 
-RGB and RGB++ are, at their core, **Bitcoin** constructions — Bitcoin is the anchor in each.
+RGB and RGB++ are, at their core, **Bitcoin** constructions: Bitcoin is the anchor in each.
 Chiral keeps the *binding idea* but uses **no Bitcoin at all**:
 
 | | **RGB** | **RGB++** (Cipher / Nervos) | **Chiral** |
@@ -103,7 +103,7 @@ So the honest framing, in one paragraph:
 > binding. What Chiral contributes is **(i)** removing Bitcoin and substituting a *programmable*
 > partner (Cardano) so the anchor can verify *back*, **(ii)** the resulting **symmetric,
 > bidirectional** trust topology, and **(iii)** the in-script verification machinery the reverse
-> leg requires — a **Groth16 SNARK of CKB's Eaglesong PoW consensus** checked inside Plutus, which
+> leg requires: a **Groth16 SNARK of CKB's Eaglesong PoW consensus** checked inside Plutus, which
 > Bitcoin structurally cannot host. The binding is unchanged; the anchor and the directionality are
 > new.
 
@@ -111,12 +111,12 @@ Why this warrants a distinct name rather than "RGB++":
 
 - RGB and RGB++ are **defined by Bitcoin's anchoring role**; Chiral has no Bitcoin and is
   bidirectional, so calling it "RGB++" would be inaccurate (and would misappropriate Cipher's
-  term). Calling it RGB would be doubly wrong — RGB keeps state *off-chain*, which RGB++ already
+  term). Calling it RGB would be doubly wrong: RGB keeps state *off-chain*, which RGB++ already
   left behind and Chiral does not use.
 - Conversely, in CKB circles "RGB++" is sometimes used **loosely** for "isomorphic binding on
   CKB" in general; under that loose usage one could say Chiral is *RGB++-style*. We prefer to be
   precise: **Chiral is in the RGB++ lineage, credited to Cipher, and is its symmetric
-  generalization off Bitcoin** — not RGB++ itself, and not a new cryptographic primitive.
+  generalization off Bitcoin**, not RGB++ itself, and not a new cryptographic primitive.
 
 **Honest scope of the "trustless / no-committee" claim.** Both legs are committee-free *by
 construction* and have run their full lifecycle on testnet. But the CKB→Cardano leg's soundness
@@ -137,7 +137,7 @@ Strip isomorphic binding to its essence:
 > moved in the authorized way and committed to the new state.
 
 Nothing there names a particular chain, nor even a particular *direction*. The only
-direction-specific component is the **oracle** — the in-script procedure by which the follower
+direction-specific component is the **oracle**: the in-script procedure by which the follower
 convinces itself the anchor's seal really moved. RGB++ instantiates it as *Bitcoin SPV in
 CKB-VM*. Swap the oracle and you re-point the binding at any pair of chains, in either
 direction.
@@ -178,32 +178,32 @@ COMMITMENT: H( serialise(next BOUND state) ‖ next seal outpoint )      [H = Bl
 ```
 
 The seal makes the bijection explicit and survivable: **exactly one seal ↔ one bound cell**.
-Anchor-chain consensus guarantees the seal is spent at most once — that supplies double-spend
+Anchor-chain consensus guarantees the seal is spent at most once: that supplies double-spend
 safety, inherited rather than re-implemented.
 
 ### 3.2 A transition (the "leap")
 
 To move the asset from state `S` to `S'`:
 
-**Step A — on the anchor.** The current owner spends the seal in transaction `T`, which (i)
+**Step A, on the anchor.** The current owner spends the seal in transaction `T`, which (i)
 recreates the seal for the next owner (transfer) *or* destroys it (leap-out), and (ii) embeds
 `commitment = H(S' ‖ OP')`, where `OP'` is the next seal's outpoint. A thin *binding lock* on
-the anchor enforces only seal-uniqueness, commitment-emission, and owner authorization — **it
+the anchor enforces only seal-uniqueness, commitment-emission, and owner authorization: **it
 never inspects the follower's state.**
 
-**Step B — on the follower.** The relayer presents the body of `T`, an **oracle proof** that
+**Step B, on the follower.** The relayer presents the body of `T`, an **oracle proof** that
 `T` is real and final on the anchor, and the new state `S'`. The transition script accepts
 **iff** all of:
 
 1. **`T` is certified** by the oracle (real + final on the anchor);
-2. **seal consumed** — `T`'s inputs contain the current seal `OP`;
+2. **seal consumed**: `T`'s inputs contain the current seal `OP`;
 3. **seal recreated / destroyed** as the redeemer claims, defining `OP'` (or none);
-4. **commitment matches** — the value committed inside `T` equals `H(S' ‖ OP')`;
-5. **single transition** — exactly one bound cell continues, naming `OP'`.
+4. **commitment matches**: the value committed inside `T` equals `H(S' ‖ OP')`;
+5. **single transition**: exactly one bound cell continues, naming `OP'`.
 
 Because the commitment lives inside `T`'s hashed body, and the oracle certifies that hash, a
 relayer **cannot forge `S'`**: only the `S'` the real owner committed to on the anchor can
-satisfy check (4). The relayer is pure liveness — it can stall, never steal.
+satisfy check (4). The relayer is pure liveness: it can stall, never steal.
 
 ### 3.3 Leap-in / leap-out
 
@@ -212,26 +212,26 @@ satisfy check (4). The relayer is pure liveness — it can stall, never steal.
   no prior cell).
 - **Leap-out (follower → anchor):** the owner spends the seal back to a plain output *without*
   recreating it; the bound cell is then finalized/burned, its script accepting a proof of the
-  seal's consumption-without-recreation. **The anchor never verifies the follower here** — the
+  seal's consumption-without-recreation. **The anchor never verifies the follower here**: the
   owner simply controls the seal; the follower merely observes the unbind. This is what lets
   even a "dumb" anchor participate in leap-out.
 
 ---
 
-## 4. Oracle A — verifying Cardano on CKB (Mithril, in CKB-VM)
+## 4. Oracle A: verifying Cardano on CKB (Mithril, in CKB-VM)
 
 When **Cardano is the anchor**, CKB must convince itself, in-script, that a Cardano
 transaction spending the seal is real and settled. Cardano offers a gift for exactly this:
-**Mithril** — a stake-based **BLS12-381 threshold multi-signature** that certifies snapshots
+**Mithril**, a stake-based **BLS12-381 threshold multi-signature** that certifies snapshots
 of settled chain state, designed so a light client can trust "≥ a stake threshold signed this
 snapshot" *without* replaying Ouroboros Praos.
 
 The CKB-VM oracle `cardano_tx_is_certified(tx_body) → bool` does two things:
 
-1. **Verify the Mithril certificate** — the threshold BLS signature over the certified
+1. **Verify the Mithril certificate**: the threshold BLS signature over the certified
    message, against the stake-key set, which is *advanced epoch to epoch* by a light-client
    checkpoint cell (each cert carries the next epoch's verification key).
-2. **Prove tx-membership** — a two-level Mithril proof showing `tx_hash = H(tx_body)` is in
+2. **Prove tx-membership**: a two-level Mithril proof showing `tx_hash = H(tx_body)` is in
    the certified transaction-set root.
 
 Together they certify *this specific transaction*, and therefore the commitment inside it. A
@@ -243,22 +243,22 @@ A full Mithril verify costs a **few percent of a CKB block**, comfortably within
 checkpoint, has run live on CKB Pudge against real Cardano preview certificates.
 
 **Trust:** Cardano consensus (ownership/double-spend) + Mithril honest-stake-majority (the
-oracle). No committee. A *fully trustless* upgrade — a ZK proof of Ouroboros Praos behind the
-same `cardano_tx_is_certified` interface — is prototyped as a hash-based STARK proof of the
+oracle). No committee. A *fully trustless* upgrade (a ZK proof of Ouroboros Praos behind the
+same `cardano_tx_is_certified` interface) is prototyped as a hash-based STARK proof of the
 Mithril statement (see §8), a drop-in for the BLS check.
 
 ---
 
-## 5. Oracle B — verifying CKB on Cardano (Groth16 of consensus, in Plutus)
+## 5. Oracle B: verifying CKB on Cardano (Groth16 of consensus, in Plutus)
 
 This is the direction RGB++ cannot have, because its anchor is Bitcoin. Here the anchor is
-**CKB**: a CKB seal cell holds ownership, and **Cardano follows** — a bound UTxO at a Plutus
+**CKB**: a CKB seal cell holds ownership, and **Cardano follows**: a bound UTxO at a Plutus
 binding lock transitions only when convinced the CKB seal was spent in a confirmed CKB block
 with the matching commitment.
 
 CKB has no Mithril. Its light-client story is consensus-native: **Eaglesong PoW** + a **header
 MMR** (every header commits to an MMR of all prior headers) + heaviest-chain cumulative work.
-Verifying *that* natively in Plutus is infeasible — the per-script budget is two-to-three
+Verifying *that* natively in Plutus is infeasible: the per-script budget is two-to-three
 orders of magnitude smaller than CKB-VM's, and Eaglesong is not a builtin. So we verify it
 **succinctly**: an off-chain prover produces a constant-size **Groth16** proof that CKB
 consensus holds, and Plutus verifies that single proof using Cardano's **BLS12-381 builtins**
@@ -266,11 +266,11 @@ consensus holds, and Plutus verifies that single proof using Cardano's **BLS12-3
 
 The off-chain circuit proves four relations on a real CKB block:
 
-- **PoW** — `ckbhash(eaglesong(pow_hash ‖ nonce)) ≤ target`, target decoded in-circuit, header
+- **PoW**: `ckbhash(eaglesong(pow_hash ‖ nonce)) ≤ target`, target decoded in-circuit, header
   hash recomputed from scratch;
-- **chain root** — the header is a member of the checkpoint's header-MMR;
-- **inclusion** — the seal-spend tx is bound to the header's transactions root via a CBMT path;
-- **commitment** — the spend committed `H(next Cardano state)`.
+- **chain root**: the header is a member of the checkpoint's header-MMR;
+- **inclusion**: the seal-spend tx is bound to the header's transactions root via a CBMT path;
+- **commitment**: the spend committed `H(next Cardano state)`.
 
 A separate **checkpoint-advance** proof moves a Cardano-side `{chain_root, total_difficulty}`
 UTxO forward trustlessly: it proves a new header has valid PoW *and* a verified difficulty,
@@ -296,13 +296,13 @@ Run both oracles and the protocol is genuinely symmetric:
         CARDANO  ⇄  CKB
 
   Cardano-anchored leg:  ownership on Cardano (seal)   ·  state on CKB (bound cell)
-                         CKB verifies Cardano  ──  Mithril cert + tx-proof, in CKB-VM
+                         CKB verifies Cardano  via  Mithril cert + tx-proof, in CKB-VM
 
   CKB-anchored leg:      ownership on CKB (seal cell)   ·  state on Cardano (bound UTxO)
-                         Cardano verifies CKB  ──  Groth16 of Eaglesong consensus, in Plutus
+                         Cardano verifies CKB  via  Groth16 of Eaglesong consensus, in Plutus
 ```
 
-Neither chain is privileged. Neither wraps the other's asset into a custodial IOU — value is
+Neither chain is privileged. Neither wraps the other's asset into a custodial IOU: value is
 *anchored*, not *wrapped*, so there is no peg, no redemption queue, no custody pool. Neither
 trusts a named set of operators: the only trusted things are the two chains' own consensus and
 the soundness of two cryptographic objects (a stake-threshold signature and a SNARK), both
@@ -310,7 +310,7 @@ checked *on-chain*. A relayer in either direction is pure liveness.
 
 This is what RGB++ could not be, for a precise reason: RGB++'s anchor (Bitcoin) can be
 *watched* but cannot *watch back*. Give the follower a succinct in-script verifier of the
-other chain — Mithril (Cardano→CKB) and Groth16-of-Eaglesong (CKB→Cardano) — and the binding
+other chain, Mithril (Cardano→CKB) and Groth16-of-Eaglesong (CKB→Cardano), and the binding
 becomes two-way.
 
 ---
@@ -327,7 +327,7 @@ becomes two-way.
 | Replay | seal consumed once; cell advances to the new outpoint; certified state is monotone (epoch root / heaviest chain) |
 
 **The trust surface is one oracle per direction.** Cross-chain soundness reduces to the
-soundness of that oracle — a *cryptographic/economic* assumption (honest stake majority, or
+soundness of that oracle: a *cryptographic/economic* assumption (honest stake majority, or
 SNARK soundness), not "trust these N operators." Beyond that reduction, four points an
 implementer must weigh honestly:
 
@@ -342,8 +342,8 @@ implementer must weigh honestly:
   forge proofs for the CKB→Cardano oracle. It is a one-time risk, mitigated by a
   multi-party ceremony and removable entirely by a transparent (PLONK/universal-SRS) verifier.
   The Mithril leg has no setup.
-- **Finality, not the tip.** Both oracles act only on *settled* history — Mithril-certified
-  snapshots / sufficiently-deep CKB headers — so tip reorgs are invisible by construction, at
+- **Finality, not the tip.** Both oracles act only on *settled* history (Mithril-certified
+  snapshots / sufficiently-deep CKB headers), so tip reorgs are invisible by construction, at
   the cost of a settlement-style latency: the follower trails the anchor by the certification
   or confirmation delay, by design.
 
@@ -359,18 +359,21 @@ connects, and overclaiming helps no one.
 
 - **The binding core is already quantum-resistant.** Seals, commitments, the header MMR, the
   CBMT inclusion proofs, and the replay accumulator are all **hash-based** (Blake2b / SHA-2
-  family), which Grover only weakens quadratically — addressed by hash width, not by a new
+  family), which Grover only weakens quadratically, addressed by hash width, not by a new
   scheme.
-- **Both oracles, today, rest on pre-quantum assumptions** — Mithril's BLS12-381 threshold
-  signature and the Groth16 BLS12-381 pairing — exactly as the endpoint chains' own signatures
+- **Both oracles, today, rest on pre-quantum assumptions** (Mithril's BLS12-381 threshold
+  signature and the Groth16 BLS12-381 pairing), exactly as the endpoint chains' own signatures
   do (Cardano Ed25519, CKB secp256k1). The protocol is therefore *not* post-quantum at the
   signature/pairing layer, and *says so*.
 - **The Cardano→CKB oracle has a clean PQ upgrade path that is already prototyped.** A
-  **STARK** proof of the *same* Mithril statement uses **FRI — hashes only — so it is
+  **STARK** proof of the *same* Mithril statement uses **FRI (hashes only), so it is
   plausibly post-quantum and needs no trusted setup**. All four Mithril relations have been
-  composed into a single STARK on a real certificate; verified as a FRI verifier in CKB-VM, it
-  is a drop-in behind `cardano_tx_is_certified`. Mithril itself is moving toward STARK-based
-  certificates for the same reason.
+  composed into a single STARK on a real certificate and proven; verifying *that* proof in
+  CKB-VM (by wrapping it in Groth16 or by a native FRI verifier) is the remaining,
+  resource-gated step (a FRI verifier has been run in CKB-VM on a smaller computation; the
+  Mithril-STARK wrap awaits a ≥32 GB prover). Once that lands it is a drop-in behind
+  `cardano_tx_is_certified`. Mithril itself is moving toward STARK-based certificates for the
+  same reason.
 - **The CKB→Cardano oracle's PQ upgrade is genuinely harder, and we do not pretend
   otherwise.** Groth16 is pairing-based; a post-quantum replacement would mean verifying a
   hash-based (FRI/STARK) proof *on Cardano*, which today has BLS12-381 builtins but no
@@ -379,24 +382,24 @@ connects, and overclaiming helps no one.
   tracks the underlying pairing assumption.
 
 **Summary:** the data structures are PQ; one oracle has a ready PQ path; the other's PQ path
-is open research; and the endpoint signatures bound the whole — *a protocol cannot be more
+is open research; and the endpoint signatures bound the whole: *a protocol cannot be more
 post-quantum than its two chains.*
 
 ---
 
 ## 9. On Bitcoin (reconciling with RGB++)
 
-Does this subsume RGB++ — can BTC leap to CKB here too? **Yes, in exactly the RGB++ sense, and
+Does this subsume RGB++ (can BTC leap to CKB here too)? **Yes, in exactly the RGB++ sense, and
 only in that sense.** Bitcoin can serve as an anchor: CKB runs a Bitcoin SPV light client as
-its oracle, and value can leap **BTC ⇄ CKB** bidirectionally — because leap-out to Bitcoin
+its oracle, and value can leap **BTC ⇄ CKB** bidirectionally, because leap-out to Bitcoin
 (§3.3) is just an ordinary Bitcoin spend the follower observes, and **never asks Bitcoin to
 verify CKB**.
 
-What Bitcoin *cannot* do is host **Oracle B** — it cannot verify CKB consensus in-script, so
+What Bitcoin *cannot* do is host **Oracle B**: it cannot verify CKB consensus in-script, so
 the *CKB-anchored, Bitcoin-follows* leg is impossible. Bitcoin is therefore a **one-way
 anchor**: it can anchor (CKB follows), but it can never *follow*. The same property makes
 other PoW UTXO chains (LTC, DOGE) anchor-only. The symmetric, verify-each-other topology of §6
-requires a follower that can check a succinct proof on-chain — which is why we built first on
+requires a follower that can check a succinct proof on-chain, which is why we built first on
 Cardano (Plutus + BLS12-381) rather than Bitcoin.
 
 So BTC↔CKB leap is *inherited* from RGB++ as a degenerate (anchor-only) case; the new thing
@@ -409,9 +412,9 @@ this protocol adds is the *symmetric* case, impossible with Bitcoin, demonstrate
 Because only the oracle is direction-specific, adding a chain `X` reduces to writing the
 relevant oracle(s):
 
-- **`X` as anchor, CKB follows** — needs an `X`-light-client oracle *in CKB-VM*. Cheap for SPV
+- **`X` as anchor, CKB follows**: needs an `X`-light-client oracle *in CKB-VM*. Cheap for SPV
   chains (Bitcoin family); a Mithril/ZK verifier for Cardano.
-- **CKB as anchor, `X` follows** — needs a *CKB-consensus verifier on `X`*. Trivial where `X`
+- **CKB as anchor, `X` follows**: needs a *CKB-consensus verifier on `X`*. Trivial where `X`
   has a native Groth16 builtin, tractable where `X` has BLS12-381 primitives (Cardano), and
   *impossible* where `X` has no in-script verification (Bitcoin → anchor-only).
 
@@ -430,7 +433,7 @@ trusted setup with a **universal-SRS PLONK** verifier. The destination:
 
 > a fully bidirectional, **anchor-agnostic, committee-free** protocol in which **each chain
 > verifies the other by a single succinct proof**, the isomorphic-binding construction
-> unchanged on both sides — same binding, two oracles, both succinct.
+> unchanged on both sides: same binding, two oracles, both succinct.
 
 RGB++ showed that a chain can be a verification layer for another by running its light client
 in-script. This work shows that when *both* chains can do so, the binding becomes symmetric,
