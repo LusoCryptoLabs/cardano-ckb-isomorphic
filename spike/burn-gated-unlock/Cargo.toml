@@ -1,0 +1,33 @@
+[package]
+name = "burn-gated-unlock"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "burn_gated_unlock"
+path = "src/main.rs"
+
+# v2: the GENERALIZED lock — witness-driven (any certified burn tx) + binds the released amount to the
+# ACTUAL Conway burn amount parsed in-VM (gap #2's generalization). The original main.rs (live-deployed,
+# specific-burn) is kept for provenance.
+[[bin]]
+name = "burn_gated_unlock_v2"
+path = "src/bin/burn_gated_unlock_v2.rs"
+
+# the global replay-once nullifier set (SEC C1): a singleton SMT-root cell; inserting a burn key requires a
+# non-membership proof, so each certified burn can be consumed at most once.
+[[bin]]
+name = "burn_nullifier_registry"
+path = "src/bin/burn_nullifier_registry.rs"
+
+[dependencies]
+ckb-std = "0.16"
+blake2 = { version = "0.10", default-features = false }
+blake2b-ref = { version = "0.3", default-features = false }
+ckb-merkle-mountain-range = { version = "0.6", default-features = false }
+
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
+codegen-units = 1

@@ -1,0 +1,7 @@
+[package]
+name = "a3-decoder"
+version = "0.0.0"
+edition = "2021"
+[[bin]]
+name = "a3_decoder"
+path = "src/main.rs"

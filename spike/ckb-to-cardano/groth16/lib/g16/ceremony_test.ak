@@ -1,0 +1,14 @@
+//// A Groth16 proof whose proving key came from a 3-party PHASE-2 CEREMONY (no single party knows the
+//// toxic delta) verifies under the same on-chain verifier. This is the trusted-setup path for the
+//// bridge keys: phase-1 from a universal Powers-of-Tau, circuit-specific phase-2 by independent parties.
+use g16/verifier.{VerifyingKey, Proof, verify}
+
+test ceremony_key_proof_verifies() {
+  let vk =
+    VerifyingKey {
+      alpha_g1: #"a0b79bd9e1a165ac450309dc63aa5ccf81f60520ece2ea327ee888a1388b5567ec9561c1aed2b310e21baf48c38b504d", beta_g2: #"a17d68546c7f1378c58d830d2b736129ea41c7813bdc9cd6924e4f550dc78fc5c007184955df9830802bda60a0ed7a0b0c0ca68044c6812cf5ae7f4d6d470f58015759e9912072476406e0777006def6158bda4aff01a2a81190ef37031d7fd6",
+      gamma_g2: #"99ce47110bdf8f6fa5693fb0669946324730d912f2313fa5e1dd52da0f0cfe348a0405ecda748c7b54812027596dacab17288444ea4ce24612c670db29fbdf6cb80f08effa36e8ee80e0ddca0ac394b187c4d9242eb01ffe6f1ce4c48437c3c7", delta_g2: #"8ee19ddae2d8590bf3480481b41e369f05e915be46b53ca2d24ddcd6c3b55a6fc557b58c6ee9db10fd4c76b58eee588a0169cebf15788d865775ca4307b3d85230309e395280fa9fb3ba7aab16305d41eaa76727446e13fd5e10c8c21076103f", ic: [#"81c5fe1919e7a78b32488f7a53908ddec812a64d1b2d53143d47f1d2fdb52b54a05bd34e8991456db1d10aea5e8fdee0",#"8c95a069b6f4bf67e42cb65844797f456f10470e244192f5b7d92313246d775c3f7bee0bc0d96e29d3572003ac92023d"],
+    }
+  let proof = Proof { a: #"8ab2e8a565326137177e7ce2b1b679963361f28edde1f7f95d2c9567aba279c91b9816073b0bdd65c15321f27be2d78e", b: #"9961650ad3e9eab2839eca0749759a00d858ab1e4739712d3f31d7abe8f7b3fda1a0c476b15f1891735cf19c04f45aa710788b62872b73b08eb55b2b7f430222f20d889256974a3b8466db7849844036ddf6106a70a5475e7c85954db7a9130b", c: #"a9b991f53a1850ec05dd8b8963c8b0846864e8584970969bfcde8eab995976e5cdea3e79a77e4eb531bca560cbf01664" }
+  verify(vk, proof, [35])
+}

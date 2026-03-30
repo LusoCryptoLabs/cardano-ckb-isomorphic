@@ -1,0 +1,17 @@
+Real Mithril mvk (G2, compressed, 96B) fetched from the Cardano preview aggregator
+(aggregator.testing-preview.api.mithril.network), decoded + paired inside CKB-VM with
+pure-Rust bls12_381 v0.8 (same harness/profile as FEASIBILITY.md).
+
+  G2Affine::from_compressed(real mvk) -> Some   (decodes in-script; script returns 5 if not)
+  N=1  (decode + 1 pairing) :  51,432,895 cycles
+  N=11 (decode + 11 pairing): 469,517,345 cycles
+  => per real-point pairing : ~41,808,445 cycles   (matches synthetic 42.7M)
+  => G2 decompress one-time : ~9.6M cycles
+
+mithril-stm v0.10.5 cross-compile to riscv64imac-unknown-none-elf: FAILS
+  (pulls blst [C+asm], rayon, crossbeam, getrandom; "can't find crate for std")
+  => in-script verifier must be a pure-Rust reimpl over bls12_381; relayer transcodes
+     the cert (multi_signature is ~27KB serde_json) into a compact molecule.
+
+Real preview certificate: k=1944, m=16948, phi_f=0.2; signed_message 32B; avk ~202B;
+multi_signature ~27KB; cardano_transactions_signing_config step=15 (tx certification on).

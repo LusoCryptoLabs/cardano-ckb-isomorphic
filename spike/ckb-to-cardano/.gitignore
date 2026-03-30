@@ -1,0 +1,11 @@
+prover/target/
+groth16/build/
+groth16/artifacts/
+**/*.rs.bk
+
+circuit/ckb_consensus/target/
+
+circuit/prover/target/
+
+# never commit testnet keys
+*_key.json

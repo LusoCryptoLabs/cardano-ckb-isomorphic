@@ -1,0 +1,16 @@
+[package]
+name = "burn-gated-unlock-v2-it"
+version = "0.0.0"
+edition = "2021"
+
+# Real-VM integration test for the generalized burn-gated lock (v2): a synthetic Conway burn tx + a
+# consistent two-level Blake2s MMR proof + the amount binding, run in ckb-testtool. No mock logic.
+[dependencies]
+ckb-testtool = "0.13"
+ckb-merkle-mountain-range = "0.6"
+blake2 = "0.10"
+blake2b-ref = "0.3"
+
+[[test]]
+name = "v2"
+path = "tests/v2.rs"
