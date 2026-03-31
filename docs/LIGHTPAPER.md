@@ -4,6 +4,11 @@
 
 *Light paper · 2026-06*
 
+> **Status: research-stage.** Both legs have run their full lifecycle on public testnet
+> (Cardano preview ↔ CKB Pudge). The protocol is **not audited and not production-ready**: the
+> CKB→Cardano leg's soundness currently rests on a Groth16 trusted setup produced by a
+> development ceremony, not a real multi-party one.
+
 > **On the name.** *Chirality* is the property of a structure whose mirror image cannot be
 > superimposed on it: two forms, oppositely handed, irreducibly distinct yet built from the same
 > parts. Chiral's two legs are exactly that: one binding construction, mirrored into two
@@ -42,6 +47,35 @@ Plugging one oracle into each direction yields **Chiral**: a symmetric isomorphi
 protocol in which Cardano verifies CKB and CKB verifies Cardano, each by a single succinct proof
 checked *on-chain*, with the binding construction unchanged on both sides and **no committee in
 either**. Both legs have been built and run end-to-end on Cardano preview ↔ CKB Pudge.
+
+---
+
+## Why this matters
+
+Today, moving an asset between two chains means trusting a **bridge**: a custodian, a bonded
+multisig, or a committee that holds the asset on one side and issues an IOU on the other. Bridges
+are where the money is lost, because the trust sits in a set of operators rather than in the
+chains themselves.
+
+Isomorphic binding removes that intermediary: the asset is **anchored**, never **wrapped**. There
+is no peg to defend, no redemption queue, no custody pool, and no operator set whose honesty you
+must assume. What Chiral adds on top is **symmetry**: the same construction runs in both
+directions, so neither chain is a privileged custodian of the other. Concretely, this makes
+possible:
+
+- **Custody-free cross-chain assets.** A token can live as programmable state on CKB while its
+  ownership is a single-use seal on Cardano (or the reverse), with no wrapped representation and
+  no bridge operator anywhere in the safety path.
+- **Native cross-chain state, not just transfers.** Because the follower holds *programmable*
+  state (a CKB cell or a Plutus UTxO), an asset can carry application logic across the boundary,
+  not merely change hands: royalty rules, vesting schedules, or DEX positions survive the leap.
+- **Symmetric composability.** Either chain can be the ownership layer for the other, so an
+  application can put settlement where it is cheapest or most expressive and still have the
+  counterparty chain verified on-chain.
+
+The trust you are left with is exactly the two chains' own consensus plus the soundness of one
+cryptographic object per direction (a stake-threshold signature and a SNARK), both checked
+*on-chain*. That is a categorically smaller surface than any custodial or committee bridge.
 
 ---
 
@@ -123,7 +157,7 @@ construction* and have run their full lifecycle on testnet. But the CKB→Cardan
 rests on a Groth16 **trusted setup**, which today is a development ceremony (rogue-resistant, but
 not a real multi-party run), and the whole system has not had a third-party audit. So "each chain
 verifies the other, no committee" is true at the **cryptographic / design** level; it is **not
-yet** a deployed, value-bearing guarantee. See `CHIRAL_READINESS.md` and `SECURITY_AUDIT.md`.
+yet** a deployed, value-bearing guarantee.
 
 ---
 
@@ -215,6 +249,37 @@ satisfy check (4). The relayer is pure liveness: it can stall, never steal.
   seal's consumption-without-recreation. **The anchor never verifies the follower here**: the
   owner simply controls the seal; the follower merely observes the unbind. This is what lets
   even a "dumb" anchor participate in leap-out.
+
+---
+
+### 3.4 A worked example
+
+To make the mechanics concrete, follow one asset, owned by **Alice**, across the
+Cardano-anchored leg (ownership on Cardano, state on CKB).
+
+1. **Leap-in (Cardano → CKB).** Alice mints a unique **seal NFT** at the Plutus binding lock on
+   Cardano, committing to a genesis state `S0` (say, "1000 units, royalty = 2%"). A relayer
+   presents that Cardano transaction, plus a **Mithril** proof that it is certified, to the CKB
+   `BoundAsset` script, which mints the **bound cell** carrying `S0` and naming Alice's seal. The
+   asset now lives as programmable state on CKB; ownership stays on Cardano.
+
+2. **Transition (Alice → Bob).** Alice spends the seal on Cardano in a transaction that recreates
+   it for **Bob** and embeds `commitment = H(S' ‖ OP')`, where `S'` is the new state (e.g. after
+   the royalty is paid) and `OP'` is Bob's new seal outpoint. Once that spend is Mithril-certified,
+   the relayer drives the CKB bound cell forward, and the script checks: the certificate (1), that
+   Alice's seal was consumed (2), that the committed value equals `H(S' ‖ OP')` (4), and that
+   exactly one bound cell continues naming `OP'` (5). A relayer cannot substitute a different
+   `S'`: only the state Alice actually committed to on Cardano satisfies check (4).
+
+3. **Leap-out (CKB → Cardano).** Bob spends the seal on Cardano to a plain output *without*
+   recreating it. The CKB bound cell is then finalized and burned, its script accepting a proof of
+   the seal's consumption-without-recreation. The asset is fully back under ordinary Cardano
+   control, and **Cardano never had to verify CKB** for this step.
+
+At no point did anyone hold Alice's or Bob's asset in custody, sign on their behalf, or wrap it
+into an IOU. The relayer was pure liveness throughout: it could have stalled the process, never
+stolen or forged a state. The CKB-anchored leg is the mirror image, with ownership on CKB and a
+Groth16 proof of CKB consensus standing in for the Mithril oracle.
 
 ---
 
@@ -438,21 +503,3 @@ trusted setup with a **universal-SRS PLONK** verifier. The destination:
 RGB++ showed that a chain can be a verification layer for another by running its light client
 in-script. This work shows that when *both* chains can do so, the binding becomes symmetric,
 and the protocol needs no one to trust but the two chains themselves.
-
----
-
-## Appendix · Where the protocol lives
-
-| Component | Path |
-|---|---|
-| Cardano seal NFT + binding lock (Aiken) | `cardano/binding/` |
-| CKB `BoundAsset` type script (genesis/transition/finalize) | `spike/phase1/` |
-| Mithril cert verify + tx-membership oracle (CKB-VM) | `spike/light-client-cell/`, `spike/cross-chain/` |
-| ZK-of-Mithril (STARK, the PQ / trustless drop-in) | `spike/cardano-to-ckb-zk/` |
-| Groth16 verifier in Plutus (CKB→Cardano on-chain half) | `spike/ckb-to-cardano/groth16/` |
-| CKB consensus circuit + prover (off-chain half) | `spike/ckb-to-cardano/circuit/` |
-| Relayer (liveness only) | `relayer/` |
-| Architecture, specs, and measured/live status | `docs/DESIGN.md`, `docs/BINDING_SPEC.md`, `docs/CKB_TO_CARDANO.md`, `docs/CHIRAL_STATUS.md`, `docs/LIVE_STATUS.md` |
-
-*Measured cycle/CPU figures and live transaction artifacts are kept in the status docs above,
-which track the running testnet deployments.*
