@@ -12,9 +12,14 @@
 - ✅ **ALL FOUR COMPOSED** in ONE SP1 STARK on cert 7356eaa1 (`sp1/m2all`): **M2_ALL_PROVED true**,
   cycles=3,931,058, 15 GB RAM + 17 GB swap. M3's CERT_ROOT is bound to the `cardano_transactions_merkle_root`
   part that M1 hashes and M2 signs — so one proof attests the whole reverse-leg statement.
-- ⏳ **Groth16 wrap** (`SP1_WRAP=groth16`, for cheap on-chain CKB-VM verify): wired; the wrap *computation*
-  runs (needs ~33 GB effective; demonstrated with 18 GB swap), but wrap+gnark can't co-reside on this box's
-  ~38 GB disk (18 GB swap + 8 GB gnark artifacts). Needs a ≥32 GB-RAM prover or the SP1 network. See M2_SCOPE.md.
+- ✅ **Groth16 wrap PRODUCED + VERIFIED IN CKB-VM** (`SP1_WRAP=groth16`): on a 64 GB box the wrap runs
+  natively (gnark, BN254, nbConstraints=15.97M, prove ~14 s) → a 356-byte proof (`m2all/groth16-ckbvm/`).
+  That proof **verifies on-chain in CKB-VM**: accepts the real proof (Run result 0, **3,810,585,066
+  cycles ≈ 109 % of a 3.5 G block**), rejects a tampered byte (Run result 1). **Finding:** CKB-VM has no
+  BN254 pairing precompile, so the Groth16 wrap is *not* the cheap on-chain route (~26× the direct ~146 M
+  Mithril verify, and not post-quantum). Keep the direct Mithril verify on-chain; the succinct/PQ on-chain
+  path is the in-house Goldilocks+blake2b FRI verifier (`spike/pq-fri-verify`, ~47 M cycles); SP1 stays an
+  off-chain prover. See `m2all/groth16-ckbvm/RESULTS.md`.
 
 ## Directory map
 | dir | proves | result |
