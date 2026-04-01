@@ -48,11 +48,18 @@ of Cardano stake), CKB-VM verifies the succinct proof. (spike/cardano-to-ckb-zk/
   M1 + M2 + M3 (two-level Blake2s tx-inclusion) + M4 (cert-hash), with CERT_ROOT bound to the
   cardano_transactions_merkle_root part that M1 hashes and M2 signs. M2_ALL_PROVED true,
   cycles = 3,931,058, proven+verified.
-- ⏳ Remaining (resource-gated, no new code): the Groth16 wrap of the STARK (wired, SP1_WRAP=groth16)
-  needs a >=32GB-RAM prover or the SP1 network; then verify the wrapped proof in CKB-VM. Mithril's own
-  future_snark (certs already carry aggregate_verification_key_snark) would collapse M2 to "verify the
-  Mithril SNARK". NB the LIVE reverse leg already verifies the full M1..M4 directly in CKB-VM; SP1 is
-  the optional succinct/PQ optimization.
+- ✅ **Groth16 wrap PRODUCED + VERIFIED IN CKB-VM** (sp1/m2all/groth16-ckbvm/): SP1_WRAP=groth16 on a
+  64GB box produced a 356-byte BN254 Groth16 proof of the composed M1..M4 statement (gnark,
+  nbConstraints=15.97M, prove ~14s), and that proof verifies on-chain in CKB-VM — accepts the real
+  proof (Run result 0, 3,810,585,066 cycles), rejects a tampered public-values byte (Run result 1).
+  FINDING: the verify costs **~3.81G cycles ≈ 109% of a 3.5G block** because CKB-VM has **no BN254
+  pairing precompile**, so the pairing-based wrap is the WRONG on-chain route (~26x the direct ~146M
+  Mithril verify, and not itself post-quantum). Takeaway: keep the direct Mithril verify on-chain
+  (LIVE); the succinct/PQ on-chain path is the in-house Goldilocks+blake2b FRI verifier
+  (spike/pq-fri-verify, ~47M cycles), with SP1 as an OFF-chain prover. See
+  sp1/m2all/groth16-ckbvm/RESULTS.md. (Mithril's own future_snark / aggregate_verification_key_snark
+  would later collapse M2 to "verify the Mithril SNARK".) NB the LIVE reverse leg already verifies the
+  full M1..M4 directly in CKB-VM; SP1 is the optional succinct/PQ optimization.
 
 ## Quantum
 Hash/commitment core is quantum-resistant. Signature/pairing layers (Mithril BLS, Groth16, Cardano

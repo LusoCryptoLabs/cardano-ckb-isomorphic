@@ -433,12 +433,16 @@ connects, and overclaiming helps no one.
 - **The Cardano→CKB oracle has a clean PQ upgrade path that is already prototyped.** A
   **STARK** proof of the *same* Mithril statement uses **FRI (hashes only), so it is
   plausibly post-quantum and needs no trusted setup**. All four Mithril relations have been
-  composed into a single STARK on a real certificate and proven; verifying *that* proof in
-  CKB-VM (by wrapping it in Groth16 or by a native FRI verifier) is the remaining,
-  resource-gated step (a FRI verifier has been run in CKB-VM on a smaller computation; the
-  Mithril-STARK wrap awaits a ≥32 GB prover). Once that lands it is a drop-in behind
-  `cardano_tx_is_certified`. Mithril itself is moving toward STARK-based certificates for the
-  same reason.
+  composed into a single STARK on a real certificate and proven. A Groth16 (BN254) wrap of that
+  STARK has now been generated and **verified end-to-end inside CKB-VM** (it accepts the real
+  proof and rejects tampering) — but at **~3.8 G cycles ≈ a full CKB block**, because CKB-VM has
+  no BN254 pairing precompile, so the pairing-based wrap is *not* the cheap on-chain route (and is
+  not itself post-quantum). The post-quantum drop-in is instead the **native FRI verifier**
+  (Goldilocks + Blake2b, hash-only), already run in CKB-VM at ~47 M cycles on a smaller
+  computation; composing the Mithril-STARK with it is the remaining engineering. Until then the
+  cheap, live on-chain path stays the **direct Mithril verify** (~146 M cycles), with SP1 used only
+  as an off-chain prover. Mithril itself is moving toward STARK-based certificates for the same
+  reason.
 - **The CKB→Cardano oracle's PQ upgrade is genuinely harder, and we do not pretend
   otherwise.** Groth16 is pairing-based; a post-quantum replacement would mean verifying a
   hash-based (FRI/STARK) proof *on Cardano*, which today has BLS12-381 builtins but no
