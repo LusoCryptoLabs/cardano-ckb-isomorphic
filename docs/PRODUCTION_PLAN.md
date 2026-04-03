@@ -32,6 +32,21 @@ value is the canonical way bridges lose money.
   outpoint-membership gadget; measure constraint growth and proving time/RAM. ACCEPTABLE => adopt
   D2-A; else keep per-leap-tx with rationale.
 
+## Spike results (2026-06) — measured, see `spike/ckb-to-cardano/circuit/CIRCUIT_SIZING.md`
+- **S1 (sizing) — RESOLVED.** Real R1CS = **1.29 M (demo, 2-merge MMR)**; **~4.9–6.3 M at production
+  MMR depth (~25–34) → a 2²³ proving domain** (per-merge ≈ 155 K; MMR membership is ~75–80 % of it).
+  The docs' "~2.7 M" understates it. **No public BLS12-381 SRS exists at 2²³**, so a custom 2²³
+  universal Powers-of-Tau is required for *either* Groth16 or PLONK — PLONK's "ride a public ceremony"
+  perk does not apply at this size; its real benefit is reuse across circuit revisions.
+  **Action:** the dominant lever is **circuit reduction** — move MMR membership out of the per-leap
+  proof into the amortized `AdvanceCKBCert` / a recursion step (`spike/pq-recursion`) so the per-leap
+  circuit drops ~4–5× toward 2²⁰–2²¹. Decide this **before** the freeze; it changes the SRS tier and
+  prover cost more than the Groth16-vs-PLONK choice does.
+- **S2 (D2-A) — RESOLVED: adopt.** Per-outpoint membership adds only ~0.4–0.5 M constraints (one
+  full-tx blake2b + molecule parse), which does not change the 2²³ tier — essentially free relative to
+  the MMR cost. Adopt it as the rigorous seal model (more headroom still if the circuit is restructured
+  per S1).
+
 ## Critical path
 ```
 Phase 0  Freeze + finish in-scope engineering        [me]      weeks

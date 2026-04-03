@@ -55,7 +55,8 @@ the other, and only the follower chain verifies the anchor. We built **both** as
 ### CKB → Cardano — CKB consensus verified inside Plutus (Groth16)
 - **Groth16 verifier in Aiken** over Cardano's BLS12-381 builtins — on-chain verify ≈ **22.7% CPU /
   0.27% mem** of a Cardano tx.
-- **Full CKB-consensus circuit** (~2.7M constraints): R1 Eaglesong PoW + Blake2b + compact-target ·
+- **Full CKB-consensus circuit** (measured ~1.3M demo / ~4.9M at production MMR depth → 2²³ setup; see
+  `spike/ckb-to-cardano/circuit/CIRCUIT_SIZING.md`): R1 Eaglesong PoW + Blake2b + compact-target ·
   R2 ChainRootMMR membership · R3 CBMT tx-inclusion · R4 commitment — every gadget
   differential-tested vs native CKB on real Pudge blocks. **AdvanceCKBCert** trustless checkpoint
   (difficulty-verify + variable-carry MMR-append + N-batching). Real 3-party Groth16 ceremony.
