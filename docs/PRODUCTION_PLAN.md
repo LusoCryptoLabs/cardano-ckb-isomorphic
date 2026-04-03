@@ -21,8 +21,13 @@ value is the canonical way bridges lose money.
 ## Gating spikes (must complete BEFORE circuit freeze + ceremony)
 - **S1 — PLONK/KZG verifier in Plutus, budget check.** Implement a minimal PLONK (or Halo2-KZG)
   verifier in Aiken over the BLS12-381 builtins; measure CPU/mem vs a tx budget (Groth16 baseline:
-  22.7% CPU). Source/size a BLS12-381 universal SRS to degree >= 2^22. PASS => adopt PLONK; FAIL =>
-  Groth16 + real ceremony.
+  22.7% CPU). PASS => adopt PLONK; FAIL => Groth16 + real ceremony.
+  - **SRS finding (2026-06):** the largest battle-tested public BLS12-381 SRS is Ethereum's KZG
+    ceremony (~95k contributors) but it only reaches 2^12-2^15 — far below our needs. A BLS12-381
+    Powers-of-Tau to ~2^21 (~2.1M) exists but is less battle-tested and is *just under* the current
+    ~2.7M-constraint circuit. So S1 also owns: (a) measure the real constraint count and try to get it
+    <= 2^21 so the existing BLS12-381 SRS suffices; (b) validate that SRS's provenance/reusability;
+    else (c) scope running a large universal PoT (reusable forever, unlike a per-circuit Groth16 run).
 - **S2 — in-circuit outpoint/molecule membership, cost.** Prototype the CKB-tx molecule parse +
   outpoint-membership gadget; measure constraint growth and proving time/RAM. ACCEPTABLE => adopt
   D2-A; else keep per-leap-tx with rationale.
