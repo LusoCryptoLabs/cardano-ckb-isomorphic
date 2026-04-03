@@ -53,6 +53,10 @@ Refined **full-circuit total** with measured costs (vs the ~9–12 M earlier *ov
 - R2 header-MMR ≈ 25 merges × 49 K ≈ **1.22 M** · R3 tx-CBMT ≈ 15 merges × 49 K ≈ **0.73 M** · R4 ≈ **0.15 M**
 - **≈ 2.7 M constraints per leap** (naive R1CS, no lookups) ⇒ Groth16 proving in **~tens of seconds**,
   modest RAM. Comfortably prover-tractable; lookups would cut it further but aren't needed for feasibility.
+  > **Superseded by measurement (2026-06).** The synthesized R1CS is **1.29 M for the demo (2-merge
+  > MMR)** and **~4.9–6.3 M at production MMR depth (~25–34) → a 2²³ proving domain**; the per-merge
+  > cost is **~155 K**, not 49 K. So the estimate above is ~2× low for production. On-chain verify is
+  > unaffected (constant-size proof, ~22.7 % of a tx). See `CIRCUIT_SIZING.md`.
 
 ## 3. Sub-circuit inventory + constraint estimate (original estimate; superseded by 3b)
 

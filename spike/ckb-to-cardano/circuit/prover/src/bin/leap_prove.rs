@@ -8,7 +8,7 @@ use ark_ec::AffineRepr;
 use ark_ff::{PrimeField, BigInteger};
 use ark_groth16::Groth16;
 use ark_r1cs_std::{uint8::UInt8, boolean::Boolean, alloc::AllocVar, eq::EqGadget, fields::fp::FpVar, fields::FieldVar, ToBitsGadget};
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, SynthesisError};
 use ark_snark::SNARK;
 use ark_std::rand::SeedableRng;
 use blake2b_rs::Blake2bBuilder;
@@ -137,8 +137,26 @@ fn main(){
     let n01=ckb_mmr::merge(&l0,&l1); let n23=ckb_mmr::merge(&l2,&l3); let root=ckb_mmr::merge(&n01,&n23);
     let chain_root=ckb_mmr::mmr_hash(&root);
     // membership path of leaf0 (the proven header): (sibling, cur_is_left, parent)
-    let mpath: Vec<([u8;120],bool,[u8;120])> = vec![ (l1,true,n01), (n23,true,root) ];
+    let mut mpath: Vec<([u8;120],bool,[u8;120])> = vec![ (l1,true,n01), (n23,true,root) ];
+    // S1: pad the MMR membership path to a production depth to measure per-merge constraint cost.
+    // Count is structural (independent of the dummy values); gated on COUNT_ONLY so real proving
+    // (which checks witness satisfaction) can never run with a padded dummy path.
+    if std::env::var("COUNT_ONLY").is_ok() {
+        if let Ok(d) = std::env::var("MMR_DEPTH") {
+            let d: usize = d.parse().unwrap_or(2);
+            while mpath.len() < d { mpath.push(([0u8;120], true, [0u8;120])); }
+        }
+    }
     let circ=LeapCircuit{raw,nonce,leaf,path,wit,new_state,seal,chain_root,leaf0:l0,mpath};
+    {
+        // S1 instrumentation: report the R1CS size (decides universal-SRS reuse vs PLONK budget).
+        let cs = ConstraintSystem::<Fr>::new_ref();
+        circ.clone().generate_constraints(cs.clone()).unwrap();
+        eprintln!("CONSTRAINTS={} witness_vars={} instance_vars={} next_pow2={}",
+            cs.num_constraints(), cs.num_witness_variables(), cs.num_instance_variables(),
+            (cs.num_constraints() as u64).next_power_of_two());
+        if std::env::var("COUNT_ONLY").is_ok() { return; }
+    }
     let mut rng=ark_std::rand::rngs::StdRng::seed_from_u64(7);
     eprintln!("Groth16 setup over the FAITHFUL leap circuit (R1 real PoW+compact-decode, R3 real CBMT, R4)...");
     let (pk,vk)=Groth16::<Bls12_381>::circuit_specific_setup(circ.clone(), &mut rng).unwrap();
