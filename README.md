@@ -59,7 +59,9 @@ the other, and only the follower chain verifies the anchor. We built **both** as
   `spike/ckb-to-cardano/circuit/CIRCUIT_SIZING.md`): R1 Eaglesong PoW + Blake2b + compact-target ·
   R2 ChainRootMMR membership · R3 CBMT tx-inclusion · R4 commitment — every gadget
   differential-tested vs native CKB on real Pudge blocks. **AdvanceCKBCert** trustless checkpoint
-  (difficulty-verify + variable-carry MMR-append + N-batching). Real 3-party Groth16 ceremony.
+  (difficulty-verify + variable-carry MMR-append + N-batching). 3-party Groth16 phase-2 ceremony
+  *mechanism* (verifiable, Schnorr-PoK rogue-resistant) — demonstrated single-machine on a toy circuit;
+  a real multi-party run on the production circuit is external (see `docs/PRODUCTION_PLAN.md`).
 - **LIVE round trip** — CKB lock `0x4923241a` → ZK proof → Cardano verify `f99c3461` → mint 100k
   ckCKB `21ad4a44` → burn `6608c4c8` (supply→0) → CKB unlock `0xde70a26d`. Conservation closed.
 - **Trust gaps closed (validator + on-chain):** mint amount/name binding (`zk_chiral_mint.ak`,
