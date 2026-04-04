@@ -10,8 +10,10 @@ on real testnets with explorer-visible transactions.
   ChainRootMMR membership · R3 CBMT tx-inclusion · R4 seal/commitment binding — every gadget
   differential-tested vs native CKB; trustless AdvanceCKBCert (difficulty-verify + variable-carry
   MMR-append + N-batching). On-chain verify ≈ 22.7% of a Cardano tx (groth16/, Aiken).
-- Trusted setup: a real 3-party Groth16 phase-2 ceremony (verifiable); proof under the ceremony key
-  accepted on-chain.
+- Trusted setup: a 3-party Groth16 phase-2 ceremony *mechanism* (verifiable, Schnorr-PoK
+  rogue-resistant), demonstrated single-machine on a toy circuit; a proof under that demo key is
+  accepted on-chain. A REAL multi-party run on the production circuit (with external Phase-1/PoT) is
+  external and not yet done — see docs/PRODUCTION_PLAN.md.
 - Relayer (spike/ckb-to-cardano/relayer): proves from LIVE Pudge data -> broadcast-ready redeemer.
 - LIVE round trip (spike/ckb-to-cardano/LEAP.md), all explorer-visible:
   CKB lock 0x4923241abfd2.. -> ZK proof -> Cardano verify f99c3461.. -> mint 100k ckCKB 21ad4a44..
