@@ -39,9 +39,12 @@ value is the canonical way bridges lose money.
   universal Powers-of-Tau is required for *either* Groth16 or PLONK — PLONK's "ride a public ceremony"
   perk does not apply at this size; its real benefit is reuse across circuit revisions.
   **Action:** the dominant lever is **circuit reduction** — move MMR membership out of the per-leap
-  proof into the amortized `AdvanceCKBCert` / a recursion step (`spike/pq-recursion`) so the per-leap
-  circuit drops ~4–5× toward 2²⁰–2²¹. Decide this **before** the freeze; it changes the SRS tier and
-  prover cost more than the Groth16-vs-PLONK choice does.
+  proof into the amortized `AdvanceCKBCert` so the per-leap circuit drops back to ~2²¹. Concrete design
+  + measured payoff in `spike/ckb-to-cardano/circuit/RESTRUCTURE.md`: `AdvanceCKBCert` maintains a rolling
+  **window root** over the last `W` validated headers; the per-leap proves `log2(W)`-deep membership in
+  it instead of ~25-deep full-MMR membership. **`W = 64` (depth 6) → ~1.9 M → 2²¹** (measured, conservative
+  bound), down two SRS tiers, trust unchanged. Decide this **before** the freeze; it changes the SRS tier
+  and prover cost more than the Groth16-vs-PLONK choice does.
 - **S2 (D2-A) — RESOLVED: adopt.** Per-outpoint membership adds only ~0.4–0.5 M constraints (one
   full-tx blake2b + molecule parse), which does not change the 2²³ tier — essentially free relative to
   the MMR cost. Adopt it as the rigorous seal model (more headroom still if the circuit is restructured
