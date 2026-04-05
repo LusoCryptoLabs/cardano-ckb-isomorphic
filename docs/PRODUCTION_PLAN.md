@@ -57,7 +57,8 @@ Phase 0  Freeze + finish in-scope engineering        [me]      weeks
    - run S1, S2  -> finalize circuit + setup choice (D-2, D-3)
    - reproducible builds for CKB scripts, Aiken validators, circuit
    - freeze BINDING_SPEC + THREAT_MODEL; reconcile doc inconsistencies (e.g. ceremony wording)
-   - assemble the audit-readiness package
+   - assemble the audit-readiness package  -> DRAFTED: `docs/AUDIT_SCOPE.md` (surface by specialty,
+     trust assumptions, known residuals, already-closed Criticals, out-of-scope, reproduce steps)
 Phase 1  Independent security work                    [external + me prep]   2-4 months
    - ZK circuit soundness review (specialist; completeness != soundness)  -> audit circuit FIRST
    - pairing/BLS + Mithril review
