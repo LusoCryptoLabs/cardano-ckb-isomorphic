@@ -81,7 +81,37 @@ window Merkle would land comfortably inside 2²¹ even at `W = 256`.
    `W_root` back to the full chain-MMR root in an advance step.
 5. **D2-A interaction** — per-outpoint membership (~+0.5 M) still fits 2²¹ here with room to spare.
 
+## CKB/Aiken side — worked-out design (the remaining piece; security-critical)
+The per-leap circuit is done (`leap_windowed.rs`). What maintains `window_root` must be **cheap per
+advance** and **sound**. A naive "rebuild a W-leaf Merkle each advance" is ~(W−1) merges (~10 M for
+W=64) — unacceptable. The correct design:
+
+- **Ring-buffer Merkle (capacity W).** `AdvanceCKBCert`, which already ingests one header at a time,
+  writes the new header hash to slot `height mod W` and **updates only that leaf's root path**: verify the
+  OLD `window_root` from (old_leaf, siblings), then recompute the NEW `window_root` from (new_leaf, same
+  siblings). Cost ≈ `2·log2(W)` merges ≈ ~1 M constraints/advance (W=64) — modest, and amortized per block.
+  The siblings are prover-supplied witnesses; the circuit checks the old root, so they can't be forged.
+- **Height-bound in the per-leap (the soundness crux).** Slot `height mod W` is overwritten every W
+  blocks, so window-membership alone would let an attacker present a *stale* header that once sat in that
+  slot. Fix: the checkpoint commits to `tip_height`, and the per-leap **additionally proves**
+  `tip_height − W < H.height ≤ tip_height` (H.height is already in the parsed `RawHeader`). That binds the
+  slot to the *live* window. Cheap (one range check). **Without this the restructure is unsound — it is the
+  first thing an audit must check.**
+- **Checkpoint datum / validators.** `g16/ckbcert.Checkpoint` gains `window_root` (+ `tip_height` if not
+  already implied by the MMR). `advance_ckbcert.ak` public inputs extend to bind
+  `(old_window_root, new_window_root)` alongside the existing `(old_root, old_diff, new_root, new_diff)`.
+  `cardano_bound.ak` `canonical_root` returns `c.window_root` (the per-leap binds against it), and the leap
+  redeemer/PI carry `tip_height`.
+- **Keep the full chain-MMR too** (cheap to retain): it still anchors heaviest-chain / cumulative work in
+  `AdvanceCKBCert`; the window is purely the *membership* accelerator. So no security is removed — the deep
+  MMR check is *relocated and amortized*, not dropped.
+
+This is implementable and was scoped to ~1 M added per-advance constraints; it is **not yet implemented**
+because it is the soundness-bearing accumulator (ring-buffer indexing + height-bound), and a subtle error
+here is a Critical — it warrants careful implementation and review, not a rushed commit.
+
 ## Recommendation
 Adopt the windowed-membership restructure with `W = 64` (target 2²¹), keep D2-A, and freeze the circuit
-*after* this lands. This is the single highest-leverage production change — it decides the SRS tier and
-the prover footprint — and it should be the first thing built once the design is signed off.
+*after* the advance-side accumulator above lands and is reviewed. The per-leap half is implemented and
+proven (`leap_windowed.rs`); the advance-side ring-buffer + height-bound is the remaining, security-critical
+build. This is the single highest-leverage production change — it decides the SRS tier and prover footprint.
