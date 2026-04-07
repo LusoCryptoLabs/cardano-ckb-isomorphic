@@ -42,9 +42,10 @@ value is the canonical way bridges lose money.
   proof into the amortized `AdvanceCKBCert` so the per-leap circuit drops back to ~2²¹. Concrete design
   + measured payoff in `spike/ckb-to-cardano/circuit/RESTRUCTURE.md`: `AdvanceCKBCert` maintains a rolling
   **window root** over the last `W` validated headers; the per-leap proves `log2(W)`-deep membership in
-  it instead of ~25-deep full-MMR membership. **`W = 64` (depth 6) → ~1.9 M → 2²¹** (measured, conservative
-  bound), down two SRS tiers, trust unchanged. Decide this **before** the freeze; it changes the SRS tier
-  and prover cost more than the Groth16-vs-PLONK choice does.
+  it instead of ~25-deep full-MMR membership. **IMPLEMENTED + proven** (`leap_windowed.rs`): `W = 64`
+  (depth 6) = **1,227,901 → 2²¹** (end-to-end setup+prove+verify passes); `W = 256` = 1.33 M, still 2²¹.
+  Two SRS tiers down from 2²³, trust unchanged. **Remaining:** the CKB/Aiken side — `AdvanceCKBCert`
+  maintains the window root and `cardano_bound` reads `window_root` instead of `chain_root`.
 - **S2 (D2-A) — RESOLVED: adopt.** Per-outpoint membership adds only ~0.4–0.5 M constraints (one
   full-tx blake2b + molecule parse), which does not change the 2²³ tier — essentially free relative to
   the MMR cost. Adopt it as the rigorous seal model (more headroom still if the circuit is restructured
