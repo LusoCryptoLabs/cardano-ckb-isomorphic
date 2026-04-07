@@ -1,8 +1,24 @@
-# Forward-leg circuit restructure — shrink the per-leap proof out of 2²³ (design + measured payoff)
+# Forward-leg circuit restructure — shrink the per-leap proof out of 2²³ (design + IMPLEMENTED)
 
-Follows `CIRCUIT_SIZING.md`. **Status: design proposal for review — NOT yet implemented.** It changes a
-security-relevant part of R2 (how chain membership is proven), so it is specified and measured here for
-sign-off before any code change.
+Follows `CIRCUIT_SIZING.md`. **Status: signed off; per-leap circuit IMPLEMENTED + proven**
+(`prover/src/bin/leap_windowed.rs`). The CKB/Aiken side (AdvanceCKBCert maintaining the window root;
+`cardano_bound` reading `window_root` instead of `chain_root`) is the remaining piece. It changes a
+security-relevant part of R2 (how chain membership is proven) — design + measurements below.
+
+## Implemented & measured (`leap_windowed.rs`, real block 21,341,101)
+R2's ~25-deep 120-byte MMR membership is replaced by a `merkle_gadget::merkle_root` over the proven
+header's block-hash against a depth-`log2(W)` **window root** (32-byte nodes). End-to-end Groth16
+setup+prove+verify passes (`arkworks verify = true`). Measured R1CS:
+
+| circuit | constraints | domain |
+|---|---|---|
+| full chain-MMR (today, depth ~25) | ~4,861,314 | 2²³ |
+| **windowed, W=64 (depth 6)** | **1,227,901** | **2²¹** |
+| windowed, W=256 (depth 8) | 1,329,663 | 2²¹ |
+
+A ~4× cut, **two SRS tiers down (2²³ → 2²¹)** — better than the conservative estimate below (the real
+32-byte window Merkle is ~½ the 120-byte MMR per-node cost). Even a 256-block staleness window fits 2²¹,
+with headroom for D2-A (~+0.5 M). The estimate/derivation that follows is retained for context.
 
 ## Problem
 The per-leap circuit is **~4.9 M constraints (2²³)** at production MMR depth, and **MMR membership is
