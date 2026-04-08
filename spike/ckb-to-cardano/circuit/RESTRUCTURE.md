@@ -106,9 +106,17 @@ W=64) — unacceptable. The correct design:
   `AdvanceCKBCert`; the window is purely the *membership* accelerator. So no security is removed — the deep
   MMR check is *relocated and amortized*, not dropped.
 
-This is implementable and was scoped to ~1 M added per-advance constraints; it is **not yet implemented**
-because it is the soundness-bearing accumulator (ring-buffer indexing + height-bound), and a subtle error
-here is a Critical — it warrants careful implementation and review, not a rushed commit.
+**Update gadget — IMPLEMENTED + proven** (`prover/src/bin/advance_windowed.rs`): the ring-buffer Merkle
+update (verify old root from (old_leaf, siblings) → recompute new root from (new_leaf, same siblings),
+slot bits bound to a public input) is **609,546 constraints for W=64 (2²⁰)**, 812,556 for W=256; Groth16
+setup+prove+verify passes and a **tampered `new_root` is rejected** (negative control). So per-advance cost
+is ~0.6 M (better than the ~1 M estimate), and the soundness mechanism (old-root check ⇒ siblings can't be
+forged) holds. Remaining for this side: (1) the **height-bound + slot-from-height binding** in the per-leap
+(`tip_height − W < H.height ≤ tip_height`, and the membership-path directions must equal `H.height mod W`,
+not free witnesses) — this is the soundness glue and must be implemented carefully; (2) splice the update
+into the full `advance_prove` per-header step; (3) Aiken wiring (`Checkpoint.window_root` + `tip_height`,
+`advance_ckbcert` PIs, `cardano_bound` reads `window_root`); (4) reprove both. Both core gadgets are now
+de-risked (proven, measured); the glue + integration is the careful, review-worthy remainder.
 
 ## Recommendation
 Adopt the windowed-membership restructure with `W = 64` (target 2²¹), keep D2-A, and freeze the circuit
