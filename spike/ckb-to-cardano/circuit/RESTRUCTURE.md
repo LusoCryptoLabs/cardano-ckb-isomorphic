@@ -111,12 +111,21 @@ update (verify old root from (old_leaf, siblings) → recompute new root from (n
 slot bits bound to a public input) is **609,546 constraints for W=64 (2²⁰)**, 812,556 for W=256; Groth16
 setup+prove+verify passes and a **tampered `new_root` is rejected** (negative control). So per-advance cost
 is ~0.6 M (better than the ~1 M estimate), and the soundness mechanism (old-root check ⇒ siblings can't be
-forged) holds. Remaining for this side: (1) the **height-bound + slot-from-height binding** in the per-leap
-(`tip_height − W < H.height ≤ tip_height`, and the membership-path directions must equal `H.height mod W`,
-not free witnesses) — this is the soundness glue and must be implemented carefully; (2) splice the update
-into the full `advance_prove` per-header step; (3) Aiken wiring (`Checkpoint.window_root` + `tip_height`,
-`advance_ckbcert` PIs, `cardano_bound` reads `window_root`); (4) reprove both. Both core gadgets are now
-de-risked (proven, measured); the glue + integration is the careful, review-worthy remainder.
+forged) holds.
+
+**Soundness glue — IMPLEMENTED in the per-leap** (`leap_windowed.rs`): the membership-path directions are
+now derived from `H.height`'s low `log2(W)` bits (slot = `H.height mod W`, not free witnesses), and the
+circuit enforces `tip_height − W < H.height ≤ tip_height` (tip = height + diff, diff a `depth`-bit witness,
+`tip_height` a public input). Cost impact: **+1 constraint** (1,227,901 → 1,227,902, still 2²¹); proves +
+verifies. So a relayer can only prove membership at the slot the header actually occupies, and only while
+that slot is live — closing the stale-slot attack.
+
+Remaining = **integration only** (mechanisms all validated): (1) splice `advance_windowed`'s update into
+the full `advance_prove` per-header step (compute `new_window_root` alongside the MMR-append); (2) Aiken
+wiring (`Checkpoint` gains `window_root` + `tip_height`; `advance_ckbcert` PIs bind `(old,new)` window
+roots; `cardano_bound` reads `window_root` and the leap PI carries `tip_height`); (3) reprove the
+integrated circuits + Aiken tests. The cryptographic core (membership at 2²¹, sound; ring-buffer update at
+2²⁰, tamper-rejected) is done.
 
 ## Recommendation
 Adopt the windowed-membership restructure with `W = 64` (target 2²¹), keep D2-A, and freeze the circuit
