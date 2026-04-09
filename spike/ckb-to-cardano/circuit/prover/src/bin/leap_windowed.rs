@@ -62,7 +62,7 @@ fn window_root_path(leaves:&[[u8;32]], idx:usize)->([u8;32], Vec<([u8;32],bool)>
 
 #[derive(Clone)]
 struct WindowedLeap { raw:[u8;192], nonce:[u8;16], leaf:[u8;32], path:Vec<([u8;32],bool)>, wit:[u8;32],
-    new_state:Vec<u8>, seal:[u8;32], window_root:[u8;32], window_path:Vec<([u8;32],bool)> }
+    new_state:Vec<u8>, seal:[u8;32], window_root:[u8;32], siblings:Vec<[u8;32]>, tip_height:u64 }
 fn bytes_to_fp<F:PrimeField>(b:&[UInt8<F>])->Result<FpVar<F>,SynthesisError>{
     let mut acc=FpVar::<F>::zero(); let mut c=F::one();
     for byte in b { for bit in byte.to_bits_le()? { acc += FpVar::from(bit)*c; c.double_in_place(); } }
@@ -87,11 +87,15 @@ impl ConstraintSynthesizer<Fr> for WindowedLeap {
         for (s,d) in &self.path { path.push((w(s,&cs)?, Boolean::new_witness(cs.clone(),||Ok(*d))?)); }
         let troot=merkle_gadget::tx_root_from_proof(&leaf,&path,&wit)?;
         for i in 0..32 { troot[i].enforce_equal(&raw[64+i])?; }
-        // R2' WINDOWED membership: block_hash = ckbhash(RawHeader || nonce) is a leaf of the window root.
+        // R2' WINDOWED membership with the slot BOUND to the header's own height (mod W).
         let mut hin = raw.clone(); hin.extend(nonce);
         let block_hash = blake2b256(&hin, b"ckb-default-hash")?;
+        // header height = raw[16..24] little-endian -> 64 bits LE
+        let mut height_bits: Vec<Boolean<Fr>> = Vec::new();
+        for i in 16..24 { for b in raw[i].to_bits_le()? { height_bits.push(b); } }
+        // membership path: directions are the low log2(W) bits of height (leaf_is_left = !bit_k); siblings witnessed.
         let mut wpath=Vec::new();
-        for (sib,d) in &self.window_path { wpath.push((w(sib,&cs)?, Boolean::new_witness(cs.clone(),||Ok(*d))?)); }
+        for (k, sib) in self.siblings.iter().enumerate() { wpath.push((w(sib,&cs)?, height_bits[k].clone().not())); }
         let wroot = merkle_gadget::merkle_root(&block_hash, &wpath)?;   // depth = log2(W), not ~25
         // R4 commitment + public inputs (window_root replaces chain_root)
         let ns=w(&self.new_state,&cs)?;
@@ -106,6 +110,18 @@ impl ConstraintSynthesizer<Fr> for WindowedLeap {
         bytes_to_fp(&wroot)?.enforce_equal(&pi_wr)?;                   // membership + bind in one
         bytes_to_fp(&seal)?.enforce_equal(&pi_seal)?;
         bytes_to_fp(&comm)?.enforce_equal(&pi_comm)?;
+        // HEIGHT-BOUND (soundness crux): tip_height - W < height <= tip_height, so the slot the membership
+        // used has not been overwritten since this header was written. Enforce tip = height + diff with
+        // diff in [0, 2^depth) = [0, W) via a depth-bit witness.
+        let depth = self.siblings.len();
+        let height_val = u64::from_le_bytes(self.raw[16..24].try_into().unwrap());
+        let diff_val = self.tip_height - height_val;
+        let mut height_fp = FpVar::<Fr>::zero(); let mut c = Fr::from(1u64);
+        for b in &height_bits { height_fp += FpVar::from(b.clone())*c; c = c + c; }
+        let mut diff_fp = FpVar::<Fr>::zero(); let mut c2 = Fr::from(1u64);
+        for k in 0..depth { let bit=Boolean::new_witness(cs.clone(),||Ok((diff_val>>k)&1==1))?; diff_fp += FpVar::from(bit)*c2; c2 = c2 + c2; }
+        let pi_tip=FpVar::new_input(cs.clone(),||Ok(Fr::from(self.tip_height)))?;
+        (height_fp + diff_fp).enforce_equal(&pi_tip)?;
         Ok(())
     }
 }
@@ -119,10 +135,15 @@ fn main(){
     let mut hin=raw.to_vec(); hin.extend_from_slice(&nonce); let block_hash=ckbhash(&hin);
     let depth: u32 = std::env::var("WINDOW_DEPTH").ok().and_then(|s| s.parse().ok()).unwrap_or(6);
     let wsize = 1usize << depth;                                       // W = 2^depth (default 64)
-    let mut leaves=vec![[0u8;32]; wsize]; leaves[0]=block_hash;
-    for k in 1..wsize { leaves[k]=ckbhash(&(k as u64).to_le_bytes()); } // stand-in recent header hashes
-    let (window_root, window_path)=window_root_path(&leaves, 0);
-    let circ=WindowedLeap{raw,nonce,leaf,path,wit,new_state:new_state.clone(),seal,window_root,window_path};
+    let height: u64 = u64::from_le_bytes(raw[16..24].try_into().unwrap()); // 21,341,101
+    let slot = (height % wsize as u64) as usize;                       // ring-buffer slot = height mod W
+    let tip_height = height;                                           // checkpoint at this header (diff=0)
+    let mut leaves=vec![[0u8;32]; wsize];
+    for k in 0..wsize { leaves[k]=ckbhash(&((k as u64)+1).to_le_bytes()); } // stand-in recent header hashes
+    leaves[slot]=block_hash;                                           // this header sits at its slot
+    let (window_root, wpath_off)=window_root_path(&leaves, slot);
+    let siblings:Vec<[u8;32]>=wpath_off.iter().map(|(s,_)|*s).collect();
+    let circ=WindowedLeap{raw,nonce,leaf,path,wit,new_state:new_state.clone(),seal,window_root,siblings,tip_height};
     {
         let cs=ConstraintSystem::<Fr>::new_ref();
         circ.clone().generate_constraints(cs.clone()).unwrap();
@@ -135,7 +156,7 @@ fn main(){
     let (pk,vk)=Groth16::<Bls12_381>::circuit_specific_setup(circ.clone(), &mut rng).unwrap();
     let proof=Groth16::<Bls12_381>::prove(&pk, circ.clone(), &mut rng).unwrap();
     let mut cc=new_state.clone(); cc.extend_from_slice(&seal); let commitment=b2b(&cc);
-    let inputs=vec![Fr::from_le_bytes_mod_order(&window_root), Fr::from_le_bytes_mod_order(&seal), Fr::from_le_bytes_mod_order(&commitment)];
+    let inputs=vec![Fr::from_le_bytes_mod_order(&window_root), Fr::from_le_bytes_mod_order(&seal), Fr::from_le_bytes_mod_order(&commitment), Fr::from(tip_height)];
     let ok=Groth16::<Bls12_381>::verify(&vk,&inputs,&proof).unwrap();
     eprintln!("arkworks verify = {ok}"); assert!(ok, "windowed leap proof must verify");
     println!("WINDOWED_LEAP_OK depth={} verify={}", depth, ok);
