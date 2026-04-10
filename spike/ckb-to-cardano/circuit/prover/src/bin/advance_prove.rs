@@ -6,7 +6,7 @@ use ark_bls12_381::{Bls12_381, Fr, Fq, G1Affine as ArkG1, G2Affine as ArkG2};
 use ark_ec::AffineRepr;
 use ark_ff::{PrimeField, BigInteger};
 use ark_groth16::Groth16;
-use ark_r1cs_std::{uint8::UInt8, alloc::AllocVar, eq::EqGadget, fields::fp::FpVar, fields::FieldVar, ToBitsGadget};
+use ark_r1cs_std::{uint8::UInt8, boolean::Boolean, alloc::AllocVar, eq::EqGadget, fields::fp::FpVar, fields::FieldVar, ToBitsGadget};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_snark::SNARK;
 use ark_std::rand::SeedableRng;
@@ -20,6 +20,15 @@ fn hx32(s:&str)->[u8;32]{ hx(s).try_into().unwrap() }
 fn target_from_compact(c:u32)->[u8;32]{ let e=(c>>24)as usize; let m=c&0x007fffff; let mut t=[0u8;32]; let mb=m.to_be_bytes(); for k in 0..3 { let p=32-e+k; if p<32 {t[p]=mb[1+k];} } t }
 fn native_difficulty(c:u32)->[u8;32]{ let target=BigUint::from_bytes_be(&target_from_compact(c)); let max=(BigUint::from(1u8)<<256usize)-BigUint::from(1u8); let d=&max/&target; let mut o=[0u8;32]; let db=d.to_bytes_be(); o[32-db.len()..].copy_from_slice(&db); o }
 fn drev(mut be:[u8;32])->[u8;32]{ be.reverse(); be }  // BE difficulty -> LE for the digest field
+// off-circuit binary window-Merkle: root + (sibling, leaf_is_left) path for idx; merge=ckbhash(l||r)
+fn window_root_path(leaves:&[[u8;32]], idx:usize)->([u8;32], Vec<([u8;32],bool)>){
+    let mut level:Vec<[u8;32]>=leaves.to_vec(); let mut i=idx; let mut path=Vec::new();
+    while level.len()>1 {
+        let lil=i%2==0; let sib= if lil { level[i+1] } else { level[i-1] }; path.push((sib,lil));
+        let mut nx=Vec::new(); let mut j=0; while j<level.len(){ let mut c=level[j].to_vec(); c.extend_from_slice(&level[j+1]); nx.push(ckbhash(&c)); j+=2; } level=nx; i/=2;
+    }
+    (level[0], path)
+}
 
 fn raw104()->([u8;192],[u8;16]){
     let mut r=Vec::new();
@@ -41,7 +50,9 @@ fn raw104()->([u8;192],[u8;16]){
 #[derive(Clone)]
 struct AdvanceCircuit { raw:[u8;192], nonce:[u8;16], old_tip:[u8;32], diff_be:[u8;32],
     p_high:[u8;120], p_low:[u8;120],
-    old_root:[u8;32], new_root:[u8;32], old_total:[u8;32], new_total:[u8;32] }
+    old_root:[u8;32], new_root:[u8;32], old_total:[u8;32], new_total:[u8;32],
+    // window ring-buffer (RESTRUCTURE.md): the new header is inserted at slot = height mod W
+    old_wroot:[u8;32], new_wroot:[u8;32], old_slot_leaf:[u8;32], w_siblings:Vec<[u8;32]> }
 fn b2fp<F:PrimeField>(b:&[UInt8<F>])->Result<FpVar<F>,SynthesisError>{ let mut a=FpVar::<F>::zero(); let mut c=F::one(); for byte in b { for bit in byte.to_bits_le()? { a+=FpVar::from(bit)*c; c.double_in_place(); } } Ok(a) }
 impl ConstraintSynthesizer<Fr> for AdvanceCircuit {
     fn generate_constraints(self, cs: ConstraintSystemRef<Fr>) -> Result<(), SynthesisError> {
@@ -63,7 +74,7 @@ impl ConstraintSynthesizer<Fr> for AdvanceCircuit {
         let block_hash=blake2b256(&hin, b"ckb-default-hash")?;
         // build leaf_new digest (120B) entirely in-circuit from R1 outputs + raw fields
         let mut leaf=Vec::with_capacity(120);
-        leaf.extend(block_hash);                 // children_hash
+        leaf.extend(block_hash.clone());         // children_hash (clone: block_hash reused by the window update)
         leaf.extend(diff_le);                    // total_difficulty (LE), proven
         leaf.extend_from_slice(&raw[16..24]); leaf.extend_from_slice(&raw[16..24]); // number
         leaf.extend_from_slice(&raw[24..32]); leaf.extend_from_slice(&raw[24..32]); // epoch
@@ -85,8 +96,20 @@ impl ConstraintSynthesizer<Fr> for AdvanceCircuit {
         let mut bag_be: Vec<UInt8<Fr>> = bag[32..64].to_vec(); bag_be.reverse();
         let mut top_be: Vec<UInt8<Fr>> = n_top[32..64].to_vec(); top_be.reverse();
         for i in 0..32 { bag_be[i].enforce_equal(&old_total[i])?; top_be[i].enforce_equal(&new_total[i])?; }
-        // public inputs (4) bind (old_root, old_total, new_root, new_total) -> advance_ckbcert.ak
-        let pis=[(&old_root,&self.old_root),(&old_total,&self.old_total),(&new_root,&self.new_root),(&new_total,&self.new_total)];
+        // WINDOW RING-BUFFER UPDATE (RESTRUCTURE.md): insert this header's block_hash at slot = height mod W.
+        // Directions = low log2(W) bits of height (raw[16..24] LE); siblings witnessed; VERIFY the old window
+        // root (so siblings can't be forged) then recompute the new one. Slot is bound to the header's height.
+        let mut height_bits: Vec<Boolean<Fr>> = Vec::new();
+        for i in 16..24 { for b in raw[i].to_bits_le()? { height_bits.push(b); } }
+        let mut wpath=Vec::new();
+        for (k, sib) in self.w_siblings.iter().enumerate() { wpath.push((w(sib,&cs)?, height_bits[k].clone().not())); }
+        let old_slot_leaf=w(&self.old_slot_leaf,&cs)?;
+        let owr=merkle_gadget::merkle_root(&old_slot_leaf, &wpath)?;
+        let old_wroot=w(&self.old_wroot,&cs)?; for i in 0..32 { owr[i].enforce_equal(&old_wroot[i])?; }
+        let nwr=merkle_gadget::merkle_root(&block_hash, &wpath)?;     // new leaf = this header's block_hash
+        let new_wroot=w(&self.new_wroot,&cs)?; for i in 0..32 { nwr[i].enforce_equal(&new_wroot[i])?; }
+        // public inputs (6) bind (old_root, old_total, new_root, new_total, old_wroot, new_wroot) -> advance_ckbcert.ak
+        let pis=[(&old_root,&self.old_root),(&old_total,&self.old_total),(&new_root,&self.new_root),(&new_total,&self.new_total),(&old_wroot,&self.old_wroot),(&new_wroot,&self.new_wroot)];
         for (bytes,val) in pis { let pi=FpVar::new_input(cs.clone(),||Ok(Fr::from_le_bytes_mod_order(val)))?; b2fp(bytes)?.enforce_equal(&pi)?; }
         Ok(())
     }
@@ -110,12 +133,28 @@ fn main(){
     let n_low=ckb_mmr::merge(&p_low,&leaf); let n_top=ckb_mmr::merge(&p_high,&n_low); let new_root=ckb_mmr::mmr_hash(&n_top);
     let mut old_total=[0u8;32]; old_total.copy_from_slice(&bag[32..64]); old_total.reverse();
     let mut new_total=[0u8;32]; new_total.copy_from_slice(&n_top[32..64]); new_total.reverse();
-    let circ=AdvanceCircuit{raw,nonce,old_tip,diff_be,p_high,p_low,old_root,new_root,old_total,new_total};
+    // window ring-buffer (W=2^depth, default 64): old window holds the height-W header at slot; insert this one.
+    let depth: u32 = std::env::var("WINDOW_DEPTH").ok().and_then(|s| s.parse().ok()).unwrap_or(6);
+    let wsize=1usize<<depth; let height=21341104u64; let slot=(height % wsize as u64) as usize;
+    let mut leaves=vec![[0u8;32]; wsize];
+    for k in 0..wsize { leaves[k]=ckbhash(&((k as u64)+1).to_le_bytes()); }
+    let old_slot_leaf=leaves[slot];
+    let (old_wroot, wpath_off)=window_root_path(&leaves, slot);
+    let w_siblings:Vec<[u8;32]>=wpath_off.iter().map(|(s,_)|*s).collect();
+    let mut nl=leaves.clone(); nl[slot]=bh;
+    let (new_wroot,_)=window_root_path(&nl, slot);
+    let circ=AdvanceCircuit{raw,nonce,old_tip,diff_be,p_high,p_low,old_root,new_root,old_total,new_total,old_wroot,new_wroot,old_slot_leaf,w_siblings};
+    if std::env::var("COUNT_ONLY").is_ok() {
+        use ark_relations::r1cs::ConstraintSystem;
+        let cs=ConstraintSystem::<Fr>::new_ref(); circ.clone().generate_constraints(cs.clone()).unwrap();
+        eprintln!("ADVANCE_INTEGRATED depth={} CONSTRAINTS={} next_pow2={}", depth, cs.num_constraints(), (cs.num_constraints() as u64).next_power_of_two());
+        return;
+    }
     let mut rng=ark_std::rand::rngs::StdRng::seed_from_u64(7);
     eprintln!("AdvanceCKBCert+MMR-append: Groth16 setup (PoW + difficulty_verify + PROVEN append)...");
     let (pk,vk)=Groth16::<Bls12_381>::circuit_specific_setup(circ.clone(),&mut rng).unwrap();
     eprintln!("proving..."); let proof=Groth16::<Bls12_381>::prove(&pk,circ.clone(),&mut rng).unwrap();
-    let inputs=vec![Fr::from_le_bytes_mod_order(&old_root),Fr::from_le_bytes_mod_order(&old_total),Fr::from_le_bytes_mod_order(&new_root),Fr::from_le_bytes_mod_order(&new_total)];
+    let inputs=vec![Fr::from_le_bytes_mod_order(&old_root),Fr::from_le_bytes_mod_order(&old_total),Fr::from_le_bytes_mod_order(&new_root),Fr::from_le_bytes_mod_order(&new_total),Fr::from_le_bytes_mod_order(&old_wroot),Fr::from_le_bytes_mod_order(&new_wroot)];
     let ok=Groth16::<Bls12_381>::verify(&vk,&inputs,&proof).unwrap(); eprintln!("arkworks verify = {ok}"); assert!(ok);
     eprintln!("old_root={} new_root={}", hexs(&old_root), hexs(&new_root));
     let ic:Vec<String>=vk.gamma_abc_g1.iter().map(g1c).collect();

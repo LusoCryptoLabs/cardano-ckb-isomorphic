@@ -120,12 +120,14 @@ circuit enforces `tip_height − W < H.height ≤ tip_height` (tip = height + di
 verifies. So a relayer can only prove membership at the slot the header actually occupies, and only while
 that slot is live — closing the stale-slot attack.
 
-Remaining = **integration only** (mechanisms all validated): (1) splice `advance_windowed`'s update into
-the full `advance_prove` per-header step (compute `new_window_root` alongside the MMR-append); (2) Aiken
-wiring (`Checkpoint` gains `window_root` + `tip_height`; `advance_ckbcert` PIs bind `(old,new)` window
-roots; `cardano_bound` reads `window_root` and the leap PI carries `tip_height`); (3) reprove the
-integrated circuits + Aiken tests. The cryptographic core (membership at 2²¹, sound; ring-buffer update at
-2²⁰, tamper-rejected) is done.
+Integration: (1) **DONE** — the window update is spliced into the full `advance_prove` per-header step
+(new leaf = this header's `block_hash`, slot = `height mod W`, +2 public inputs `(old_wroot, new_wroot)`).
+Measured + proven: integrated advance = **1,944,098 constraints → 2²¹** at W=64 (PoW + parent-link +
+difficulty + MMR-append + window-update), `arkworks verify = true`. **W=64 keeps BOTH circuits in 2²¹**
+(per-leap 1.23 M, advance 1.94 M); W=256 spills the advance to 2²², so **W=64 is the production parameter.**
+Remaining: (2) Aiken wiring (`Checkpoint` gains `window_root` + `tip_height`; `advance_ckbcert` PIs bind
+`(old,new)` window roots; `cardano_bound` reads `window_root`, leap PI carries `tip_height`); (3) Aiken
+tests. The cryptographic core + both circuits are done and proven, all ≤ 2²¹ at W=64.
 
 ## Recommendation
 Adopt the windowed-membership restructure with `W = 64` (target 2²¹), keep D2-A, and freeze the circuit
