@@ -111,6 +111,13 @@ impl ConstraintSynthesizer<Fr> for AdvanceCircuit {
         // public inputs (6) bind (old_root, old_total, new_root, new_total, old_wroot, new_wroot) -> advance_ckbcert.ak
         let pis=[(&old_root,&self.old_root),(&old_total,&self.old_total),(&new_root,&self.new_root),(&new_total,&self.new_total),(&old_wroot,&self.old_wroot),(&new_wroot,&self.new_wroot)];
         for (bytes,val) in pis { let pi=FpVar::new_input(cs.clone(),||Ok(Fr::from_le_bytes_mod_order(val)))?; b2fp(bytes)?.enforce_equal(&pi)?; }
+        // 7th PI: authenticate new tip_height (= this header's height, raw[16..24]) so the per-leap
+        // height-bound reads a verified checkpoint tip rather than an unconstrained value.
+        let mut hfp = FpVar::<Fr>::zero(); let mut hc = Fr::from(1u64);
+        for b in &height_bits { hfp += FpVar::from(b.clone())*hc; hc = hc + hc; }
+        let new_tip = u64::from_le_bytes(self.raw[16..24].try_into().unwrap());
+        let pi_tip = FpVar::new_input(cs.clone(),||Ok(Fr::from(new_tip)))?;
+        hfp.enforce_equal(&pi_tip)?;
         Ok(())
     }
 }
@@ -154,7 +161,7 @@ fn main(){
     eprintln!("AdvanceCKBCert+MMR-append: Groth16 setup (PoW + difficulty_verify + PROVEN append)...");
     let (pk,vk)=Groth16::<Bls12_381>::circuit_specific_setup(circ.clone(),&mut rng).unwrap();
     eprintln!("proving..."); let proof=Groth16::<Bls12_381>::prove(&pk,circ.clone(),&mut rng).unwrap();
-    let inputs=vec![Fr::from_le_bytes_mod_order(&old_root),Fr::from_le_bytes_mod_order(&old_total),Fr::from_le_bytes_mod_order(&new_root),Fr::from_le_bytes_mod_order(&new_total),Fr::from_le_bytes_mod_order(&old_wroot),Fr::from_le_bytes_mod_order(&new_wroot)];
+    let inputs=vec![Fr::from_le_bytes_mod_order(&old_root),Fr::from_le_bytes_mod_order(&old_total),Fr::from_le_bytes_mod_order(&new_root),Fr::from_le_bytes_mod_order(&new_total),Fr::from_le_bytes_mod_order(&old_wroot),Fr::from_le_bytes_mod_order(&new_wroot),Fr::from(21341104u64)];
     let ok=Groth16::<Bls12_381>::verify(&vk,&inputs,&proof).unwrap(); eprintln!("arkworks verify = {ok}"); assert!(ok);
     eprintln!("old_root={} new_root={}", hexs(&old_root), hexs(&new_root));
     let ic:Vec<String>=vk.gamma_abc_g1.iter().map(g1c).collect();

@@ -125,9 +125,22 @@ Integration: (1) **DONE** — the window update is spliced into the full `advanc
 Measured + proven: integrated advance = **1,944,098 constraints → 2²¹** at W=64 (PoW + parent-link +
 difficulty + MMR-append + window-update), `arkworks verify = true`. **W=64 keeps BOTH circuits in 2²¹**
 (per-leap 1.23 M, advance 1.94 M); W=256 spills the advance to 2²², so **W=64 is the production parameter.**
-Remaining: (2) Aiken wiring (`Checkpoint` gains `window_root` + `tip_height`; `advance_ckbcert` PIs bind
-`(old,new)` window roots; `cardano_bound` reads `window_root`, leap PI carries `tip_height`); (3) Aiken
-tests. The cryptographic core + both circuits are done and proven, all ≤ 2²¹ at W=64.
+Remaining = **Aiken wiring** (mechanical; the circuits are done):
+- **`g16/ckbcert.Checkpoint`** gains `window_root: ByteArray` (32B) and `tip_height: Int`.
+- **`advance_prove`** must also bind **`new_tip_height`** as a public input (it already parses the height
+  at `raw[16..24]`), so the checkpoint's `tip_height` is authenticated — without it the per-leap height-bound
+  reads an unverified value. New advance PI list (7): `(old_root, old_diff, new_root, new_diff, old_wroot,
+  new_wroot, new_tip_height)`.
+- **`advance_ckbcert.ak`** binds those 7 PIs; the continuing checkpoint must carry `new_wroot` + `new_tip_height`
+  (with `new_tip_height > old.tip_height`, monotone).
+- **`cardano_bound.ak`** `canonical_root` returns `c.window_root`; the leap binding becomes
+  `inputs_bind(pi) == [field_of(window_root), field_of(seal), field_of(comm), tip_height]` (the per-leap's
+  4th PI is `tip_height`, read from the checkpoint).
+- **Tests** (`advance_test`, `ckbcert_test`, `leap_test`, …) update every `Checkpoint{..}` construction with
+  the two new fields; `aiken check` green.
+
+The cryptographic core + both circuits are done and proven, all ≤ 2²¹ at W=64; this wiring is the final
+mechanical step (no new gadgets).
 
 ## Recommendation
 Adopt the windowed-membership restructure with `W = 64` (target 2²¹), keep D2-A, and freeze the circuit
