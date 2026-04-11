@@ -47,14 +47,20 @@ fn inputs_bind(pi: List<Int>, root: ByteArray, seal: ByteArray, comm: ByteArray)
   pi == [field_of(root), field_of(seal), field_of(comm)]
 }
 
-// SEC B4: the canonical checkpoint root = the chain_root of the genesis-pinned checkpoint UTxO (the one
-// carrying the thread NFT), read as a REFERENCE INPUT. Fails if absent — the relayer cannot supply a root.
-fn canonical_root(tx: Transaction, nft: PolicyId) -> ByteArray {
+// RESTRUCTURE.md: the Transition leap proves membership against the WINDOW root and carries the
+// authenticated tip_height (PI #3) for its in-circuit height-bound, so it binds 4 public inputs.
+fn inputs_bind_w(pi: List<Int>, wroot: ByteArray, seal: ByteArray, comm: ByteArray, tip: Int) -> Bool {
+  pi == [field_of(wroot), field_of(seal), field_of(comm), tip]
+}
+
+// SEC B4: the canonical checkpoint = the genesis-pinned checkpoint UTxO (the one carrying the thread NFT),
+// read as a REFERENCE INPUT. Fails if absent — the relayer cannot supply checkpoint state.
+fn canonical_cp(tx: Transaction, nft: PolicyId) -> Checkpoint {
   expect Some(cp_in) =
     list.find(tx.reference_inputs, fn(i: Input) { has_thread(i.output.value, nft) })
   expect InlineDatum(d) = cp_in.output.datum
   expect c: Checkpoint = d
-  c.chain_root
+  c
 }
 
 // the continuing follower output (same address) — returns its datum AND value (for the B8 value check).
@@ -90,7 +96,7 @@ fn continuing(tx: Transaction, own: OutputReference) -> Option<(BoundState, Int)
 validator cardano_bound(vk: VerifyingKey, finalize_vk: VerifyingKey, checkpoint_nft: PolicyId) {
   spend(datum: Option<BoundState>, action: Action, own: OutputReference, tx: Transaction) {
     expect Some(st) = datum
-    let root = canonical_root(tx, checkpoint_nft) // SEC B4: canonical, not redeemer-supplied
+    let cp = canonical_cp(tx, checkpoint_nft) // SEC B4: canonical, not redeemer-supplied
     when action is {
       Transition { proof, new_state, public_inputs } -> {
         let snark_ok = verify(vk, proof, public_inputs)
@@ -100,13 +106,13 @@ validator cardano_bound(vk: VerifyingKey, finalize_vk: VerifyingKey, checkpoint_
             None -> False
           }
         let bound_ok =
-          inputs_bind(public_inputs, root, st.ckb_seal, commitment(new_state, st.ckb_seal))
+          inputs_bind_w(public_inputs, cp.window_root, st.ckb_seal, commitment(new_state, st.ckb_seal), cp.tip_height)
         snark_ok && cont_ok && bound_ok
       }
       Finalize { proof, public_inputs } -> {
         let snark_ok = verify(finalize_vk, proof, public_inputs)
         let no_cont = continuing(tx, own) == None
-        let bound_ok = inputs_bind(public_inputs, root, st.ckb_seal, finalize_commitment(st.ckb_seal))
+        let bound_ok = inputs_bind(public_inputs, cp.chain_root, st.ckb_seal, finalize_commitment(st.ckb_seal))
         snark_ok && no_cont && bound_ok
       }
     }
