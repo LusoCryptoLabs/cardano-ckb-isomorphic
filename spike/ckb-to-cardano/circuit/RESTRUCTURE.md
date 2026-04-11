@@ -125,7 +125,7 @@ Integration: (1) **DONE** — the window update is spliced into the full `advanc
 Measured + proven: integrated advance = **1,944,098 constraints → 2²¹** at W=64 (PoW + parent-link +
 difficulty + MMR-append + window-update), `arkworks verify = true`. **W=64 keeps BOTH circuits in 2²¹**
 (per-leap 1.23 M, advance 1.94 M); W=256 spills the advance to 2²², so **W=64 is the production parameter.**
-Remaining = **Aiken wiring** (mechanical; the circuits are done):
+**Aiken wiring — DONE** (`aiken check`: 77/77 pass, 0 fail). Changes made:
 - **`g16/ckbcert.Checkpoint`** gains `window_root: ByteArray` (32B) and `tip_height: Int`.
 - **`advance_prove`** must also bind **`new_tip_height`** as a public input (it already parses the height
   at `raw[16..24]`), so the checkpoint's `tip_height` is authenticated — without it the per-leap height-bound

@@ -21,6 +21,8 @@ const c_pinned: Checkpoint =
   Checkpoint {
     chain_root: #"fbd2fcbad6a2a7bfe0470696340064460491f0db2fa3e06d21ea60107da6fa85",
     total_difficulty: #"0000000000000000000000000000000000000000000000000000010000000000",
+    window_root: #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    tip_height: 21341101,
   }
 
 const c_gref: OutputReference =
@@ -94,7 +96,7 @@ test t_pinned_output_ok() {
 }
 
 test t_pinned_output_rejects_wrong_datum() {
-  let bad = Checkpoint { chain_root: #"00", total_difficulty: c_pinned.total_difficulty }
+  let bad = Checkpoint { chain_root: #"00", total_difficulty: c_pinned.total_difficulty, window_root: c_pinned.window_root, tip_height: c_pinned.tip_height }
   !is_pinned_genesis_output(cp_output(at(c_cp_script), thread_val(), bad), c_pinned, c_policy, c_cp_script)
 }
 
@@ -119,7 +121,7 @@ test g_genesis_accepted() {
 }
 
 test g_rejects_fake_genesis_datum() {
-  let fake = Checkpoint { chain_root: #"aaaa", total_difficulty: #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }
+  let fake = Checkpoint { chain_root: #"aaaa", total_difficulty: #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", window_root: #"bbbb", tip_height: 0 }
   let inputs = [genesis_consuming_input()]
   let outputs = [cp_output(at(c_cp_script), thread_val(), fake)]
   !genesis_mint_ok(inputs, outputs, mint_one(), c_policy, c_gref, c_pinned, c_cp_script)

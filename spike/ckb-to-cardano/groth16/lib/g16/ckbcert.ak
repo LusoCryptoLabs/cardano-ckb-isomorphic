@@ -16,6 +16,8 @@ use cardano/transaction.{Input, Output, OutputReference, InlineDatum}
 pub type Checkpoint {
   chain_root: ByteArray,          // 32B — the ChainRootMMR root
   total_difficulty: ByteArray,    // 32B big-endian — cumulative PoW work
+  window_root: ByteArray,         // 32B — ring-buffer Merkle root over the last W validated headers (RESTRUCTURE.md)
+  tip_height: Int,                // latest validated header height — authenticates the per-leap height-bound
 }
 
 /// The fixed asset name of the checkpoint thread token ("ckbcert-thread").

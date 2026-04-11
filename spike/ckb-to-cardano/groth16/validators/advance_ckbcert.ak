@@ -19,19 +19,22 @@ pub type Advance {
   proof: Proof,
   new_chain_root: ByteArray,
   new_total_difficulty: ByteArray,
-  public_inputs: List<Int>,       // = field encodings of (old_root, old_diff, new_root, new_diff)
+  new_window_root: ByteArray,     // ring-buffer window root after inserting this header (RESTRUCTURE.md)
+  new_tip_height: Int,            // this header's height — authenticates the checkpoint tip
+  public_inputs: List<Int>,       // = (old_root, old_diff, new_root, new_diff, old_wroot, new_wroot, new_tip_height)
 }
 
 validator advance_ckbcert(vk: VerifyingKey, thread_policy: PolicyId) {
   spend(datum: Option<Checkpoint>, redeemer: Advance, own: OutputReference, tx: Transaction) {
     expect Some(cp) = datum
-    let Advance { proof, new_chain_root, new_total_difficulty, public_inputs } = redeemer
+    let Advance { proof, new_chain_root, new_total_difficulty, new_window_root, new_tip_height, public_inputs } = redeemer
     // SEC B7: pin lengths to 32 bytes so the big-endian `less_than_bytearray` heaviest-chain compare is a
     // true numeric compare — a shorter, lexicographically-greater-but-numerically-smaller value (a lighter
     // chain) can no longer advance the checkpoint.
     expect builtin.length_of_bytearray(new_total_difficulty) == 32
     expect builtin.length_of_bytearray(new_chain_root) == 32
     expect builtin.length_of_bytearray(cp.total_difficulty) == 32
+    expect builtin.length_of_bytearray(new_window_root) == 32
     // 0) GENESIS PIN: the checkpoint being advanced must carry the one-shot thread token. Only the
     //    lineage seeded by ckbcert_thread at the pinned genesis has it, so attacker-seeded checkpoints
     //    (fake genesis) are unspendable as a checkpoint here.
@@ -44,14 +47,16 @@ validator advance_ckbcert(vk: VerifyingKey, thread_policy: PolicyId) {
       public_inputs == [
         field_of(cp.chain_root), field_of(cp.total_difficulty),
         field_of(new_chain_root), field_of(new_total_difficulty),
+        field_of(cp.window_root), field_of(new_window_root),
+        new_tip_height,
       ]
     // 3) HEAVIEST CHAIN: only advance to strictly more cumulative work (32B big-endian compare).
     let heavier = builtin.less_than_bytearray(cp.total_difficulty, new_total_difficulty)
     // 4) exactly one continuing checkpoint output carries the advanced state AND keeps the thread token.
     let cont_ok =
       when continuing(tx, self_in.output) is {
-        Some((out_value, Checkpoint { chain_root, total_difficulty })) ->
-          chain_root == new_chain_root && total_difficulty == new_total_difficulty && has_thread(
+        Some((out_value, Checkpoint { chain_root, total_difficulty, window_root, tip_height })) ->
+          chain_root == new_chain_root && total_difficulty == new_total_difficulty && window_root == new_window_root && tip_height == new_tip_height && new_tip_height > cp.tip_height && has_thread(
             out_value,
             thread_policy,
           )
