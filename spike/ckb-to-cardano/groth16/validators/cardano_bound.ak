@@ -43,10 +43,6 @@ fn finalize_commitment(seal: ByteArray) -> ByteArray {
   builtin.blake2b_256(builtin.append_bytearray(#"46494e", seal)) // "FIN" || seal
 }
 
-fn inputs_bind(pi: List<Int>, root: ByteArray, seal: ByteArray, comm: ByteArray) -> Bool {
-  pi == [field_of(root), field_of(seal), field_of(comm)]
-}
-
 // RESTRUCTURE.md: the Transition leap proves membership against the WINDOW root and carries the
 // authenticated tip_height (PI #3) for its in-circuit height-bound, so it binds 4 public inputs.
 fn inputs_bind_w(pi: List<Int>, wroot: ByteArray, seal: ByteArray, comm: ByteArray, tip: Int) -> Bool {
@@ -112,7 +108,7 @@ validator cardano_bound(vk: VerifyingKey, finalize_vk: VerifyingKey, checkpoint_
       Finalize { proof, public_inputs } -> {
         let snark_ok = verify(finalize_vk, proof, public_inputs)
         let no_cont = continuing(tx, own) == None
-        let bound_ok = inputs_bind(public_inputs, cp.chain_root, st.ckb_seal, finalize_commitment(st.ckb_seal))
+        let bound_ok = inputs_bind_w(public_inputs, cp.window_root, st.ckb_seal, finalize_commitment(st.ckb_seal), cp.tip_height)
         snark_ok && no_cont && bound_ok
       }
     }

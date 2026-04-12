@@ -47,8 +47,10 @@ value is the canonical way bridges lose money.
   Two SRS tiers down from 2²³, trust unchanged. **COMPLETE** — both circuits proven ≤ 2²¹ at W=64
   (per-leap 1.23 M sound; integrated advance 1.94 M) and the Aiken validators wired
   (`Checkpoint.{window_root,tip_height}`, `advance_ckbcert` 7 PIs, `cardano_bound` window binding;
-  `aiken check` 77/77). See `RESTRUCTURE.md`. Residual: `finalize_prove` (leap-out) still uses the deep
-  MMR (kept on `chain_root`); restructuring it is an optional follow-up.
+  `aiken check` 77/77). See `RESTRUCTURE.md`. **Finalize (leap-out) also restructured**
+  (`finalize_windowed.rs` = 1.23 M → 2²¹, proven; `cardano_bound` Finalize now binds the window root +
+  tip_height too) — so the *entire* forward leg (advance + transition + finalize) is on the 2²¹ windowed
+  path. Remaining for the freeze: D5 + the PLONK-in-Plutus budget spike.
 - **S2 (D2-A) — RESOLVED: adopt.** Per-outpoint membership adds only ~0.4–0.5 M constraints (one
   full-tx blake2b + molecule parse), which does not change the 2²³ tier — essentially free relative to
   the MMR cost. Adopt it as the rigorous seal model (more headroom still if the circuit is restructured
