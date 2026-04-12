@@ -44,8 +44,11 @@ value is the canonical way bridges lose money.
   **window root** over the last `W` validated headers; the per-leap proves `log2(W)`-deep membership in
   it instead of ~25-deep full-MMR membership. **IMPLEMENTED + proven** (`leap_windowed.rs`): `W = 64`
   (depth 6) = **1,227,901 → 2²¹** (end-to-end setup+prove+verify passes); `W = 256` = 1.33 M, still 2²¹.
-  Two SRS tiers down from 2²³, trust unchanged. **Remaining:** the CKB/Aiken side — `AdvanceCKBCert`
-  maintains the window root and `cardano_bound` reads `window_root` instead of `chain_root`.
+  Two SRS tiers down from 2²³, trust unchanged. **COMPLETE** — both circuits proven ≤ 2²¹ at W=64
+  (per-leap 1.23 M sound; integrated advance 1.94 M) and the Aiken validators wired
+  (`Checkpoint.{window_root,tip_height}`, `advance_ckbcert` 7 PIs, `cardano_bound` window binding;
+  `aiken check` 77/77). See `RESTRUCTURE.md`. Residual: `finalize_prove` (leap-out) still uses the deep
+  MMR (kept on `chain_root`); restructuring it is an optional follow-up.
 - **S2 (D2-A) — RESOLVED: adopt.** Per-outpoint membership adds only ~0.4–0.5 M constraints (one
   full-tx blake2b + molecule parse), which does not change the 2²³ tier — essentially free relative to
   the MMR cost. Adopt it as the rigorous seal model (more headroom still if the circuit is restructured
