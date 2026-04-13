@@ -22,6 +22,11 @@ value is the canonical way bridges lose money.
 - **S1 — PLONK/KZG verifier in Plutus, budget check.** Implement a minimal PLONK (or Halo2-KZG)
   verifier in Aiken over the BLS12-381 builtins; measure CPU/mem vs a tx budget (Groth16 baseline:
   22.7% CPU). PASS => adopt PLONK; FAIL => Groth16 + real ceremony.
+  - **RESULT (2026-06): PASS (est.)** — measured the Groth16 verify at exactly 2,271,870,552 cpu (22.7%)
+    + ~133 M/public-input, and from PLONK's known op count estimate a PLONK/KZG verify at **~27–32% of a
+    tx** (~1.2–1.5× Groth16) — feasible with headroom. So PLONK + the universal 2²¹ SRS is confirmed as
+    the D-2 direction. Confirming `plonk_verifier.ak` implementation is the follow-up. See
+    `spike/ckb-to-cardano/groth16/PLONK_BUDGET.md`.
   - **SRS finding (2026-06):** the largest battle-tested public BLS12-381 SRS is Ethereum's KZG
     ceremony (~95k contributors) but it only reaches 2^12-2^15 — far below our needs. A BLS12-381
     Powers-of-Tau to ~2^21 (~2.1M) exists but is less battle-tested and is *just under* the current
