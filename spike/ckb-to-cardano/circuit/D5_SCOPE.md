@@ -48,3 +48,13 @@ Implement D5 as a dedicated, spec-driven build with the differential test, **aft
 freeze decision — OR, if launch timing is tight, **document it as a known, scoped residual** (economic
 security holds; schedule-conformance deferred) and let the third-party audit weigh it. Do **not** ship a
 partial DAA. This scope + the exact RFC formula above is the spec to build against.
+
+## DECISION (2026-06): ACCEPTED AS A DOCUMENTED RESIDUAL — not a freeze blocker.
+Rationale: the heaviest-chain rule already binds each header's *work* to its *actual* target
+(`difficulty_verify`) and sums it, so a chain built on non-conforming (e.g. artificially easy) targets has
+**less cumulative work and loses** the comparison — an attacker gains nothing from a wrong target without
+real PoW behind it. D5 is therefore exact consensus-rule conformance, **not** a safety property, and
+deferring it does not weaken the value-safety argument. It is carried as a known residual for the
+third-party audit to weigh, and the full RFC-0020 implementation above (with its differential test) is an
+**optional post-audit hardening**, runnable in parallel with the external gates. It does **not** block the
+circuit freeze.

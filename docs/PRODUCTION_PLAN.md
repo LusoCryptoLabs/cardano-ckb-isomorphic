@@ -18,6 +18,23 @@ value is the canonical way bridges lose money.
 | D-3 | Seal model | **Target per-outpoint membership (D2-A)** (fallback per-leap-tx, documented) | Strictly more rigorous: proves the specific anchor cell was consumed, not just block inclusion. | **S2** circuit-cost spike |
 | D-4 | Light-client governance | **Recommend immutable (no upgrade key)** — TBC | An upgrade key is a governor in the safety path, the exact thing the design exists to avoid. If kept, document loudly. | decision |
 
+## FREEZE STATUS (2026-06) — circuit FROZEN; remaining blockers are EXTERNAL only
+All internal, circuit-affecting work for the trust-minimized forward leg is resolved:
+- **Restructure DONE & proven** (per-leap + advance + finalize windowed, all ≤ 2²¹ at W=64; `aiken check`
+  77/77) — `RESTRUCTURE.md`.
+- **D-2 setup strategy DECIDED**: universal-SRS PLONK, **budget-confirmed feasible** (~30% of a tx) —
+  `groth16/PLONK_BUDGET.md`. Implementing `plonk_verifier.ak` is a non-blocking parallel build (Groth16 +
+  ceremony is the fallback); the *decision* is made.
+- **D-3 seal model**: per-outpoint (D2-A) adopted, fits the budget.
+- **D5 (DAA conformance): ACCEPTED AS A DOCUMENTED RESIDUAL** (not a blocker — heaviest-chain already
+  binds work to the actual target, so non-conforming targets simply lose; full RFC-0020 build is optional
+  post-audit hardening) — `D5_SCOPE.md`.
+
+⇒ **The circuit is freezable now.** Nothing internal/in-sandbox blocks the project. The *only* remaining
+blockers are **external and require third parties / budget / a launch decision**: the independent audit,
+the universal/real ceremony (or SRS sourcing), and the mainnet-value go/no-go. The spikes below are the
+record of how the freeze decisions were reached.
+
 ## Gating spikes (must complete BEFORE circuit freeze + ceremony)
 - **S1 — PLONK/KZG verifier in Plutus, budget check.** Implement a minimal PLONK (or Halo2-KZG)
   verifier in Aiken over the BLS12-381 builtins; measure CPU/mem vs a tx budget (Groth16 baseline:
