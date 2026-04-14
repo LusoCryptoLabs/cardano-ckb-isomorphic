@@ -64,7 +64,9 @@ value is the canonical way bridges lose money.
 ## Critical path
 ```
 Phase 0  Freeze + finish in-scope engineering        [me]      weeks
-   - close residuals: D5 (in-circuit DAA conformance), forward-leg redeploy + seal-nullifier genesis
+   - close residuals: D5 (in-circuit DAA conformance — scoped against RFC-0020 in
+     `spike/ckb-to-cardano/circuit/D5_SCOPE.md`; a dedicated spec-driven build + differential test, or a
+     documented residual since economic security holds), forward-leg redeploy + seal-nullifier genesis
    - run S1, S2  -> finalize circuit + setup choice (D-2, D-3)
    - reproducible builds for CKB scripts, Aiken validators, circuit
    - freeze BINDING_SPEC + THREAT_MODEL; reconcile doc inconsistencies (e.g. ceremony wording)
