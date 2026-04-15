@@ -53,6 +53,24 @@ pub fn enforce_leq_be<F: PrimeField>(a: &[UInt8<F>], b: &[UInt8<F>]) -> Result<(
     gt.enforce_equal(&Boolean::FALSE)
 }
 
+/// Enforce `a >= b` for two equal-length LSB-first bit vectors that are EACH provably range-bounded to
+/// their bit length (so the integer comparison is exact, no field wraparound). Same MSB→LSB `lt/gt`
+/// shape as `enforce_leq_be`; enforces `a < b` is false. Used for the depth-K confirmation bound
+/// (`tip_height - height >= K`), where both `diff` and `K` are decomposed into exactly `depth` bits.
+pub fn enforce_geq_bits<F: PrimeField>(a: &[Boolean<F>], b: &[Boolean<F>]) -> Result<(), SynthesisError> {
+    assert_eq!(a.len(), b.len(), "enforce_geq_bits: operand bit-lengths must match");
+    let mut lt = Boolean::FALSE;
+    let mut gt = Boolean::FALSE;
+    for i in (0..a.len()).rev() {                // MSB-first (LSB-first vectors, so iterate high→low)
+        let eq_so_far = lt.or(&gt)?.not();
+        let a_lt = a[i].not().and(&b[i])?;       // 0 vs 1
+        let a_gt = a[i].and(&b[i].not())?;       // 1 vs 0
+        lt = lt.or(&eq_so_far.and(&a_lt)?)?;
+        gt = gt.or(&eq_so_far.and(&a_gt)?)?;
+    }
+    lt.enforce_equal(&Boolean::FALSE)            // a >= b  <=>  not(a < b)
+}
+
 /// R3: bind a tx to a header's `transactions_root`. raw_root = merkle_root(leaf, path) (the CBMT path);
 /// transactions_root = ckbhash(raw_root ‖ witnesses_root). Returns the 32-byte transactions_root.
 pub fn tx_root_from_proof<F: PrimeField>(

@@ -44,8 +44,21 @@ def cert_root(cert_hash):
     cert = _get(f"{AGG}/certificate/{cert_hash}")
     return cert["protocol_message"]["message_parts"]["cardano_transactions_merkle_root"]
 
+KOIOS_BASE = os.environ.get("KOIOS_BASE", "https://preview.koios.rest/api/v1")
+
 def tx_cbor(tx_hash):
-    return _get(f"{BF_BASE}/txs/{tx_hash}/cbor", {"project_id": BF_KEY})["cbor"]
+    """Raw tx CBOR. Prefer Blockfrost if a key is set; otherwise fall back to Koios (keyless,
+    free) so the relayer/front-end works with no API credentials. Both return identical bytes."""
+    if BF_KEY:
+        return _get(f"{BF_BASE}/txs/{tx_hash}/cbor", {"project_id": BF_KEY})["cbor"]
+    req = urllib.request.Request(
+        f"{KOIOS_BASE}/tx_cbor",
+        data=json.dumps({"_tx_hashes": [tx_hash]}).encode(),
+        headers={"content-type": "application/json", "accept": "application/json"})
+    rows = json.load(urllib.request.urlopen(req, timeout=30))
+    if not rows:
+        raise LookupError(f"tx {tx_hash} not found on Koios (not yet on-chain?)")
+    return rows[0]["cbor"]
 
 def classify(full_tx_cbor):
     """TRANSITION if the spend recreates the seal NFT at the binding_lock, else FINALIZE (leap-out)."""
@@ -76,17 +89,33 @@ def build_submission(spend_tx_hash):
         "witness": "0x" + witness.hex(),   # -> WitnessArgs.inputType for the BoundAsset spend
     }
 
+def seal_txs():
+    """Recent txs that moved the seal NFT, newest first. Blockfrost if keyed, else Koios (keyless)."""
+    asset_policy, asset_name = SEAL_POLICY, "5345414c"  # "SEAL"
+    if BF_KEY:
+        txs = _get(f"{BF_BASE}/assets/{asset_policy}{asset_name}/transactions?order=desc",
+                   {"project_id": BF_KEY})
+        return [t["tx_hash"] for t in txs]
+    rows = _get(f"{KOIOS_BASE}/asset_txs?_asset_policy={asset_policy}"
+                f"&_asset_name={asset_name}&_history=true")
+    return [r["tx_hash"] for r in sorted(rows, key=lambda r: r.get("block_height", 0), reverse=True)]
+
+def pending_submissions(limit=10):
+    """One non-blocking pass: recent seal spends with their relay status (for an HTTP /pending call)."""
+    out = []
+    for h in seal_txs()[:limit]:
+        try:
+            out.append(build_submission(h))
+        except Exception as e:
+            out.append({"status": "error", "tx": h, "error": str(e)[:160]})
+    return out
+
 def watch_binding_lock(poll_s=30):
-    """Step 1-2: poll Blockfrost for spends of the seal at the binding_lock; yield certified spends.
-    (Generator; the daemon form. Requires BLOCKFROST_PROJECT_ID.)"""
+    """Step 1-2: poll for spends of the seal at the binding_lock; yield certified spends.
+    (Generator; the daemon form.) Keyless via Koios unless BLOCKFROST_PROJECT_ID is set."""
     seen = set()
     while True:
-        # the seal sits in the binding_lock address UTxO set; a spend removes it. We track the seal
-        # NFT's movement: Blockfrost /assets/<policy><name>/transactions gives the tx that moved it.
-        asset = SEAL_POLICY + "5345414c"  # policy || "SEAL"
-        txs = _get(f"{BF_BASE}/assets/{asset}/transactions?order=desc", {"project_id": BF_KEY})
-        for t in txs:
-            h = t["tx_hash"]
+        for h in seal_txs():
             if h in seen:
                 continue
             seen.add(h)

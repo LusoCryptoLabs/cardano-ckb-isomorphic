@@ -1,0 +1,20 @@
+{
+  "cv_advance": {
+    "txHash": "0x422b1db16d071f50197bc83b59f4253bef7b1b0ca9f2e46eadc3ad60319516af",
+    "index": 0,
+    "codeHash": "0xe877a8028eac379e962a596671d1cd918aceddfa4c4cd78163168ba3b533ac55",
+    "size": 104952
+  },
+  "cv_deploy": {
+    "txHash": "0x5ffd669a07a4a8a4a2af9b7b0b3d476ad8eb69944f42f7376171000b49f27586",
+    "index": 0,
+    "codeHash": "0xdfc0aad01b4e3c307b9aa5966da83a965a7205c2647d234d415cfc7ad684f66f",
+    "size": 104224
+  },
+  "bound_asset": {
+    "txHash": "0xbd1b2c4d89c8c069ea3874b2d2f126d69b7498a34e0271c540efa1d0f10cc34c",
+    "index": 0,
+    "codeHash": "0xca24efc3663de1a5fef778664ced06ee3a3e42218385a812f7d0676dbfa3ab03",
+    "size": 57808
+  }
+}

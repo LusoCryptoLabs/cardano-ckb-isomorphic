@@ -16,20 +16,22 @@ name = "leap_prove"
 path = "src/bin/leap_prove.rs"
 
 [dependencies]
-ark-ff = "0.4"
-ark-ec = "0.4"
+ark-ff = { version = "0.4", features = ["parallel"] }
+ark-ec = { version = "0.4", features = ["parallel"] }
 ark-relations = "0.4"
 ark-r1cs-std = "0.4"
 ark-bls12-381 = "0.4"
-ark-groth16 = "0.4"
+ark-groth16 = { version = "0.4", features = ["parallel"] }
 ark-snark = "0.4"
 ark-serialize = "0.4"
-ark-std = "0.4"
+ark-std = { version = "0.4", features = ["parallel"] }
+ark-poly = { version = "0.4", features = ["parallel"] }
 eaglesong = "0.1"
 blake2b-rs = "0.2"
 bls12_381 = "0.8"
 num-bigint = "0.4"
 serde_json = "1"
+rayon = "1"
 
 [profile.release]
 opt-level = 3
@@ -53,3 +55,15 @@ path = "src/bin/finalize_prove.rs"
 [[bin]]
 name = "ceremony"
 path = "src/bin/ceremony.rs"
+
+[[bin]]
+name = "ceremony_selftest"
+path = "src/bin/ceremony_selftest.rs"
+
+[[bin]]
+name = "leap_windowed"
+path = "src/bin/leap_windowed.rs"
+
+[[bin]]
+name = "finalize_windowed"
+path = "src/bin/finalize_windowed.rs"

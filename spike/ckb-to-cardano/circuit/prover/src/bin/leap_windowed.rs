@@ -1,7 +1,8 @@
 //! RESTRUCTURED leap circuit (see ../../RESTRUCTURE.md): R2 chain-membership is proven against a
 //! shallow **window root** (a Merkle root over the last W validated header hashes, maintained by
 //! AdvanceCKBCert) instead of the ~25-deep full chain-MMR. Everything else (R1 PoW, R3 tx-CBMT, R4
-//! seal/commitment) is identical to leap_prove. Public inputs (3): (window_root, seal, commitment).
+//! seal/commitment) is identical to leap_prove. Public inputs (5): (window_root, seal, commitment,
+//! tip_height, K) — K is the SEC D6 confirmation-depth bound (tip_height - height >= K).
 //!
 //!   COUNT_ONLY=1 [WINDOW_DEPTH=6] cargo run --release --bin leap_windowed   # report R1CS size
 //!   cargo run --release --bin leap_windowed                                  # setup+prove+verify
@@ -62,7 +63,7 @@ fn window_root_path(leaves:&[[u8;32]], idx:usize)->([u8;32], Vec<([u8;32],bool)>
 
 #[derive(Clone)]
 struct WindowedLeap { raw:[u8;192], nonce:[u8;16], leaf:[u8;32], path:Vec<([u8;32],bool)>, wit:[u8;32],
-    new_state:Vec<u8>, seal:[u8;32], window_root:[u8;32], siblings:Vec<[u8;32]>, tip_height:u64 }
+    new_state:Vec<u8>, seal:[u8;32], window_root:[u8;32], siblings:Vec<[u8;32]>, tip_height:u64, k:u64 }
 fn bytes_to_fp<F:PrimeField>(b:&[UInt8<F>])->Result<FpVar<F>,SynthesisError>{
     let mut acc=FpVar::<F>::zero(); let mut c=F::one();
     for byte in b { for bit in byte.to_bits_le()? { acc += FpVar::from(bit)*c; c.double_in_place(); } }
@@ -119,9 +120,20 @@ impl ConstraintSynthesizer<Fr> for WindowedLeap {
         let mut height_fp = FpVar::<Fr>::zero(); let mut c = Fr::from(1u64);
         for b in &height_bits { height_fp += FpVar::from(b.clone())*c; c = c + c; }
         let mut diff_fp = FpVar::<Fr>::zero(); let mut c2 = Fr::from(1u64);
-        for k in 0..depth { let bit=Boolean::new_witness(cs.clone(),||Ok((diff_val>>k)&1==1))?; diff_fp += FpVar::from(bit)*c2; c2 = c2 + c2; }
+        let mut diff_bits: Vec<Boolean<Fr>> = Vec::with_capacity(depth);   // LSB-first, diff in [0,W)
+        for k in 0..depth { let bit=Boolean::new_witness(cs.clone(),||Ok((diff_val>>k)&1==1))?; diff_fp += FpVar::from(bit.clone())*c2; c2 = c2 + c2; diff_bits.push(bit); }
         let pi_tip=FpVar::new_input(cs.clone(),||Ok(Fr::from(self.tip_height)))?;
         (height_fp + diff_fp).enforce_equal(&pi_tip)?;
+        // SEC D6 (CKB-reorg defense): confirmation-depth bound  tip_height - height >= K.  K is PUBLIC
+        // INPUT #5 (governance-pinned by cardano_bound), range-checked to `depth` bits so 0 <= K < W; with
+        // diff also in [0,W) the bit-compare is exact. diff in [0,W) already => band becomes [H+K, H+W-1].
+        // A leap can no longer be proven at depth < K (was depth 0), so a shallow reorg cannot mint.
+        let pi_k=FpVar::new_input(cs.clone(),||Ok(Fr::from(self.k)))?;
+        let mut k_fp = FpVar::<Fr>::zero(); let mut ck = Fr::from(1u64);
+        let mut k_bits: Vec<Boolean<Fr>> = Vec::with_capacity(depth);
+        for j in 0..depth { let bit=Boolean::new_witness(cs.clone(),||Ok((self.k>>j)&1==1))?; k_fp += FpVar::from(bit.clone())*ck; ck = ck + ck; k_bits.push(bit); }
+        k_fp.enforce_equal(&pi_k)?;                                        // bind K to its depth bits => K in [0,W)
+        merkle_gadget::enforce_geq_bits(&diff_bits, &k_bits)?;             // diff >= K
         Ok(())
     }
 }
@@ -137,27 +149,44 @@ fn main(){
     let wsize = 1usize << depth;                                       // W = 2^depth (default 64)
     let height: u64 = u64::from_le_bytes(raw[16..24].try_into().unwrap()); // 21,341,101
     let slot = (height % wsize as u64) as usize;                       // ring-buffer slot = height mod W
-    let tip_height = height;                                           // checkpoint at this header (diff=0)
+    // TIP_OFFSET (test only): place the checkpoint tip `offset` blocks above this header so diff=offset,
+    // exercising the SEC D6 depth-K bound (diff must be >= K). Default 0 = legacy (header IS the tip).
+    let tip_height = height + std::env::var("TIP_OFFSET").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
     let mut leaves=vec![[0u8;32]; wsize];
     for k in 0..wsize { leaves[k]=ckbhash(&((k as u64)+1).to_le_bytes()); } // stand-in recent header hashes
     leaves[slot]=block_hash;                                           // this header sits at its slot
     let (window_root, wpath_off)=window_root_path(&leaves, slot);
     let siblings:Vec<[u8;32]>=wpath_off.iter().map(|(s,_)|*s).collect();
-    let circ=WindowedLeap{raw,nonce,leaf,path,wit,new_state:new_state.clone(),seal,window_root,siblings,tip_height};
+    // SEC D6: confirmation depth K (public input). 0..W-1; default 0 keeps legacy behaviour for benches.
+    // The real proof against a live checkpoint sets K = the governance min_confirmations and proves a
+    // header at depth >= K. The fixture uses diff=0 (tip==height), so a real K>0 here would be unprovable
+    // for THIS demo header; K is exercised by the relayer against a genuinely K-deep checkpoint.
+    let k: u64 = std::env::var("K").ok().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let circ=WindowedLeap{raw,nonce,leaf,path,wit,new_state:new_state.clone(),seal,window_root,siblings,tip_height,k};
     {
         let cs=ConstraintSystem::<Fr>::new_ref();
         circ.clone().generate_constraints(cs.clone()).unwrap();
-        eprintln!("WINDOW_DEPTH={} CONSTRAINTS={} witness_vars={} next_pow2={}",
-            depth, cs.num_constraints(), cs.num_witness_variables(), (cs.num_constraints() as u64).next_power_of_two());
+        eprintln!("WINDOW_DEPTH={} CONSTRAINTS={} witness_vars={} next_pow2={} K={} diff={} is_satisfied={}",
+            depth, cs.num_constraints(), cs.num_witness_variables(), (cs.num_constraints() as u64).next_power_of_two(),
+            k, tip_height - height, cs.is_satisfied().unwrap());
         if std::env::var("COUNT_ONLY").is_ok() { return; }
     }
     let mut rng=ark_std::rand::rngs::StdRng::seed_from_u64(7);
-    eprintln!("Groth16 setup over the WINDOWED leap circuit...");
-    let (pk,vk)=Groth16::<Bls12_381>::circuit_specific_setup(circ.clone(), &mut rng).unwrap();
+    let (pk,vk) = if let Ok(dir)=std::env::var("CEREMONY_OUT") {
+        let (pk,transcript)=ckb_consensus_circuit::setup_mpc::run_ceremony(circ.clone(), 3, 3, "leap_windowed");
+        ckb_consensus_circuit::setup_mpc::save_pk(&pk, &format!("{dir}/leap_windowed_pk.bin"));
+        let _ = std::fs::write(format!("{dir}/leap_windowed_transcript.json"), serde_json::to_string_pretty(&transcript).unwrap());
+        let vk=pk.vk.clone(); (pk,vk)
+    } else if let Ok(p)=std::env::var("CEREMONY_PK") {
+        eprintln!("loading ceremony key from {p}"); let pk=ckb_consensus_circuit::setup_mpc::load_pk(&p); let vk=pk.vk.clone(); (pk,vk)
+    } else {
+        eprintln!("Groth16 setup over the WINDOWED leap circuit...");
+        Groth16::<Bls12_381>::circuit_specific_setup(circ.clone(), &mut rng).unwrap()
+    };
     let proof=Groth16::<Bls12_381>::prove(&pk, circ.clone(), &mut rng).unwrap();
     let mut cc=new_state.clone(); cc.extend_from_slice(&seal); let commitment=b2b(&cc);
-    let inputs=vec![Fr::from_le_bytes_mod_order(&window_root), Fr::from_le_bytes_mod_order(&seal), Fr::from_le_bytes_mod_order(&commitment), Fr::from(tip_height)];
+    let inputs=vec![Fr::from_le_bytes_mod_order(&window_root), Fr::from_le_bytes_mod_order(&seal), Fr::from_le_bytes_mod_order(&commitment), Fr::from(tip_height), Fr::from(k)];
     let ok=Groth16::<Bls12_381>::verify(&vk,&inputs,&proof).unwrap();
-    eprintln!("arkworks verify = {ok}"); assert!(ok, "windowed leap proof must verify");
-    println!("WINDOWED_LEAP_OK depth={} verify={}", depth, ok);
+    eprintln!("arkworks verify = {ok} (WINDOWED_LEAP_OK depth={depth} K={k})"); assert!(ok, "windowed leap proof must verify");
+    println!("{}", serde_json::to_string_pretty(&ckb_consensus_circuit::setup_mpc::emit_redeemer(&vk,&proof,&inputs)).unwrap());
 }

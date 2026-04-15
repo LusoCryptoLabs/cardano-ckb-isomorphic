@@ -1,0 +1,14 @@
+{
+  "seal_policy": "1e7efe1770e7f800455fe902301252602e5a4d4945092e9960f6f19c",
+  "seal_name_hex": "5345414c",
+  "binding_lock_addr": "addr_test1wru9eafd2wkjpwhwrvth3dmuq5n564839yeww5cljmwwyzq3c55x5",
+  "owner_vkh": "2df44c71a4312463ba31315c5aa7725b6ad44cd544a055a3dde915a6",
+  "S0_hex": "626f756e642d61737365743a64656d6f3a7631",
+  "commitment": "cad8d630cf4ff1e9bd4b1658e236a87ea58c282affc882e70cab974cc37993e6",
+  "seal_mint_tx": "c07d8620807fc87ba8305d89adc9c91bd29d59f5b8777a4ab405dfde6258b669",
+  "seed": "99e48f95e3cfb4d2bef6f0ee78db7d1e8c53fda5b9583b0bd9b5dbcc43aa2858#2",
+  "transfer_tx": "301a4f2d84751c61dd4025035a826388b91d7d99eca455bc9537bb9cfa1ab6e5",
+  "S1_hex": "626f756e642d61737365743a64656d6f3a7632206f776e65723d626f62",
+  "new_commitment": "fd4d8f09a10011f06eac312a4f7fadcba8b1015a33db4fed814fd3080bc7bd3e",
+  "unbind_tx": "0d703ac1d72e324553669074db647c3f0e0c8300980949863001a4ad9efa7a3f"
+}

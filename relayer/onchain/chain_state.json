@@ -1,0 +1,23 @@
+{
+  "genesis": {
+    "txHash": "0x248ac2b5108cbdfea76e29dac19ef818d12f629ac862212d0516bed4595293a4",
+    "index": 0
+  },
+  "ckpt": {
+    "epoch": 1323,
+    "outpoint": {
+      "txHash": "0x0848f94efb1081bc317714fb34c078c21f882fa40ea3e458b49798782e140bf7",
+      "index": 0
+    }
+  },
+  "witness": {
+    "txHash": "0xe0c2c8d863010bc940239c08fec0d3da60e810fc39b527620f7e9855816845ca",
+    "index": 0
+  },
+  "deploy": {
+    "txHash": "0x194d02b6c6a17187ce3936ce76df00c5c6a56db0c5db559493d18671b90d5dbd",
+    "index": 0,
+    "txRoot": "0x49b5fe0a3ff6ec186badc5079e582f32e6ebeeda91c822add5d993f332daef4a",
+    "checkpointData": "0x4c434b5049b5fe0a3ff6ec186badc5079e582f32e6ebeeda91c822add5d993f332daef4a"
+  }
+}

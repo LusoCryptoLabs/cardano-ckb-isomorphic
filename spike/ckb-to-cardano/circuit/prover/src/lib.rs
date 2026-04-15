@@ -6,3 +6,4 @@ pub mod merkle_gadget;
 pub mod ckb_mmr;
 pub mod mmr_gadget;
 pub mod difficulty_gadget;
+pub mod setup_mpc;

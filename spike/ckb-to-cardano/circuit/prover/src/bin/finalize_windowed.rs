@@ -52,7 +52,7 @@ fn window_root_path(leaves:&[[u8;32]], idx:usize)->([u8;32], Vec<([u8;32],bool)>
 
 #[derive(Clone)]
 struct WindowedFinalize { raw:[u8;192], nonce:[u8;16], leaf:[u8;32], path:Vec<([u8;32],bool)>, wit:[u8;32],
-    seal:[u8;32], window_root:[u8;32], siblings:Vec<[u8;32]>, tip_height:u64 }
+    seal:[u8;32], window_root:[u8;32], siblings:Vec<[u8;32]>, tip_height:u64, k:u64 }
 fn bytes_to_fp<F:PrimeField>(b:&[UInt8<F>])->Result<FpVar<F>,SynthesisError>{
     let mut acc=FpVar::<F>::zero(); let mut c=F::one();
     for byte in b { for bit in byte.to_bits_le()? { acc += FpVar::from(bit)*c; c.double_in_place(); } }
@@ -103,9 +103,19 @@ impl ConstraintSynthesizer<Fr> for WindowedFinalize {
         let mut height_fp = FpVar::<Fr>::zero(); let mut c = Fr::from(1u64);
         for b in &height_bits { height_fp += FpVar::from(b.clone())*c; c = c + c; }
         let mut diff_fp = FpVar::<Fr>::zero(); let mut c2 = Fr::from(1u64);
-        for k in 0..depth { let bit=Boolean::new_witness(cs.clone(),||Ok((diff_val>>k)&1==1))?; diff_fp += FpVar::from(bit)*c2; c2 = c2 + c2; }
+        let mut diff_bits: Vec<Boolean<Fr>> = Vec::with_capacity(depth);
+        for k in 0..depth { let bit=Boolean::new_witness(cs.clone(),||Ok((diff_val>>k)&1==1))?; diff_fp += FpVar::from(bit.clone())*c2; c2 = c2 + c2; diff_bits.push(bit); }
         let pi_tip=FpVar::new_input(cs.clone(),||Ok(Fr::from(self.tip_height)))?;
         (height_fp + diff_fp).enforce_equal(&pi_tip)?;
+        // SEC D6: confirmation-depth bound tip_height - height >= K (K = public input #5, governance-pinned).
+        // Finalize (leap-out) needs the SAME depth bound as transition — a reorg that erased the seal-spend
+        // header could otherwise authorise a release the canonical chain never had.
+        let pi_k=FpVar::new_input(cs.clone(),||Ok(Fr::from(self.k)))?;
+        let mut k_fp = FpVar::<Fr>::zero(); let mut ck = Fr::from(1u64);
+        let mut k_bits: Vec<Boolean<Fr>> = Vec::with_capacity(depth);
+        for j in 0..depth { let bit=Boolean::new_witness(cs.clone(),||Ok((self.k>>j)&1==1))?; k_fp += FpVar::from(bit.clone())*ck; ck = ck + ck; k_bits.push(bit); }
+        k_fp.enforce_equal(&pi_k)?;
+        merkle_gadget::enforce_geq_bits(&diff_bits, &k_bits)?;
         Ok(())
     }
 }
@@ -124,7 +134,8 @@ fn main(){
     leaves[slot]=block_hash;
     let (window_root, wpath_off)=window_root_path(&leaves, slot);
     let siblings:Vec<[u8;32]>=wpath_off.iter().map(|(s,_)|*s).collect();
-    let circ=WindowedFinalize{raw,nonce,leaf,path,wit,seal,window_root,siblings,tip_height};
+    let k: u64 = std::env::var("K").ok().and_then(|s| s.parse().ok()).unwrap_or(0);   // SEC D6 confirmation depth
+    let circ=WindowedFinalize{raw,nonce,leaf,path,wit,seal,window_root,siblings,tip_height,k};
     {
         let cs=ConstraintSystem::<Fr>::new_ref();
         circ.clone().generate_constraints(cs.clone()).unwrap();
@@ -133,11 +144,20 @@ fn main(){
         if std::env::var("COUNT_ONLY").is_ok() { return; }
     }
     let mut rng=ark_std::rand::rngs::StdRng::seed_from_u64(7);
-    let (pk,vk)=Groth16::<Bls12_381>::circuit_specific_setup(circ.clone(), &mut rng).unwrap();
+    let (pk,vk) = if let Ok(dir)=std::env::var("CEREMONY_OUT") {
+        let (pk,transcript)=ckb_consensus_circuit::setup_mpc::run_ceremony(circ.clone(), 3, 3, "finalize_windowed");
+        ckb_consensus_circuit::setup_mpc::save_pk(&pk, &format!("{dir}/finalize_windowed_pk.bin"));
+        let _ = std::fs::write(format!("{dir}/finalize_windowed_transcript.json"), serde_json::to_string_pretty(&transcript).unwrap());
+        let vk=pk.vk.clone(); (pk,vk)
+    } else if let Ok(p)=std::env::var("CEREMONY_PK") {
+        eprintln!("loading ceremony key from {p}"); let pk=ckb_consensus_circuit::setup_mpc::load_pk(&p); let vk=pk.vk.clone(); (pk,vk)
+    } else {
+        Groth16::<Bls12_381>::circuit_specific_setup(circ.clone(), &mut rng).unwrap()
+    };
     let proof=Groth16::<Bls12_381>::prove(&pk, circ.clone(), &mut rng).unwrap();
     let comm={let mut c=b"FIN".to_vec(); c.extend_from_slice(&seal); b2b(&c)};
-    let inputs=vec![Fr::from_le_bytes_mod_order(&window_root), Fr::from_le_bytes_mod_order(&seal), Fr::from_le_bytes_mod_order(&comm), Fr::from(tip_height)];
+    let inputs=vec![Fr::from_le_bytes_mod_order(&window_root), Fr::from_le_bytes_mod_order(&seal), Fr::from_le_bytes_mod_order(&comm), Fr::from(tip_height), Fr::from(k)];
     let ok=Groth16::<Bls12_381>::verify(&vk,&inputs,&proof).unwrap();
-    eprintln!("arkworks verify = {ok}"); assert!(ok, "windowed finalize proof must verify");
-    println!("FINALIZE_WINDOWED_OK depth={} verify={}", depth, ok);
+    eprintln!("arkworks verify = {ok} (FINALIZE_WINDOWED_OK depth={depth} K={k})"); assert!(ok, "windowed finalize proof must verify");
+    println!("{}", serde_json::to_string_pretty(&ckb_consensus_circuit::setup_mpc::emit_redeemer(&vk,&proof,&inputs)).unwrap());
 }

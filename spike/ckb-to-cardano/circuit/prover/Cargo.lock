@@ -295,6 +295,7 @@ dependencies = [
  "ark-ec",
  "ark-ff",
  "ark-groth16",
+ "ark-poly",
  "ark-r1cs-std",
  "ark-relations",
  "ark-serialize",
@@ -304,6 +305,7 @@ dependencies = [
  "bls12_381",
  "eaglesong",
  "num-bigint",
+ "rayon",
  "serde_json",
 ]
 

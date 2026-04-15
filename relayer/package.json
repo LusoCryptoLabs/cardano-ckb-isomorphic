@@ -1,0 +1,17 @@
+{
+  "name": "relayer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@ckb-ccc/core": "^1.12.5",
+    "@emurgo/cardano-serialization-lib-nodejs": "^15.0.3"
+  }
+}
