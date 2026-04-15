@@ -10,11 +10,13 @@ use aiken/collection/list
 use aiken/collection/dict
 use aiken/collection/pairs
 use cardano/address.{Address, Script}
-use cardano/assets.{quantity_of, tokens, Value, from_lovelace, from_asset}
+use cardano/assets.{PolicyId, quantity_of, tokens, Value, from_lovelace, from_asset}
 use cardano/transaction.{Transaction, Output, Input, InlineDatum, NoDatum, Datum, OutputReference, ScriptPurpose, Spend, placeholder}
 use g16/seal_set.{Insert}
+use g16/ckbcert.{has_thread}
+use leap_ratelimit.{Tick}
 use leap_guard.{
-  LeapFact, GuardPolicy, Direction, LeapIn, LeapOut, authorize_mint, authorize_burn, enforce_policy,
+  LeapFact, GuardPolicy, PolicyState, Direction, LeapIn, LeapOut, authorize_mint, authorize_burn, enforce_policy,
 }
 
 pub type LeapRedeemer {
@@ -28,27 +30,18 @@ pub type BoundState {
   state: ByteArray,
 }
 
-/// Read the admin policy from a REFERENCE INPUT at `policy_script_hash` (an open, no-cap default if no
-/// such reference input is present). Reference, not spend, so one governance UTxO gates every leap tx.
-fn read_policy(self: Transaction, policy_script_hash: ByteArray) -> GuardPolicy {
-  when
-    list.find(
-      self.reference_inputs,
-      fn(i: Input) {
-        when i.output.address.payment_credential is {
-          Script(h) -> h == policy_script_hash
-          _ -> False
-        }
-      },
-    )
-  is {
-    Some(i) -> {
-      expect InlineDatum(d) = i.output.datum
-      expect p: GuardPolicy = d
-      p
-    }
-    None -> GuardPolicy { paused_global: False, paused_in: False, paused_out: False, min_amount: 0, max_amount: 0 }
-  }
+/// Read the admin policy from the governor-signed cell, matched by its ONE-SHOT NFT as a REFERENCE INPUT.
+/// SEC D6 (MF-4): fail-CLOSED, exactly-one. Previously this matched by script hash with a first-match find
+/// and an OPEN default on absence, so an attacker could omit the policy reference input (pauses/caps
+/// unenforced) or front a decoy cell at the same script hash. The one-shot NFT makes the cell unforgeable
+/// and exactly-one makes it unambiguous — the SAME cell cardano_bound.read_k reads, so caps/pause and K can
+/// never disagree. Reference, not spend, so one governance UTxO gates every leap tx.
+fn read_policy(self: Transaction, policy_nft: PolicyId, policy_name: ByteArray) -> GuardPolicy {
+  expect [i] =
+    list.filter(self.reference_inputs, fn(i: Input) { quantity_of(i.output.value, policy_nft, policy_name) == 1 })
+  expect InlineDatum(d) = i.output.datum
+  expect ps: PolicyState = d
+  ps.policy
 }
 
 // SEC N-FIN-1 (one mint per leap): the leap's CKB seal must be CONSUMED in the global seal-nullifier
@@ -81,14 +74,34 @@ fn seal_consumed(self: Transaction, nullifier_hash: ByteArray, seal: ByteArray) 
   }
 }
 
+// SEC D6 (aggregate cap): require the singleton rate-limiter to be ticked for exactly this leap's amount.
+// Find the limiter input by its THREAD TOKEN (not merely script hash — a decoy at the same hash without the
+// token must not satisfy this), require EXACTLY ONE, and read its Spend redeemer `Tick.amount == amount`.
+// leap_ratelimit then verifies the accumulator math (acc += amount <= cap) against that same amount.
+fn rate_ticked(self: Transaction, ratelimit_thread: PolicyId, amount: Int) -> Bool {
+  when list.filter(self.inputs, fn(i: Input) { has_thread(i.output.value, ratelimit_thread) }) is {
+    [rl_in] ->
+      when pairs.get_first(self.redeemers, Spend(rl_in.output_reference)) is {
+        Some(rd) -> {
+          expect t: Tick = rd
+          t.amount == amount
+        }
+        None -> False
+      }
+    _ -> False
+  }
+}
+
 validator leap_mint_guard(
   ft_name: ByteArray,
   bound_script_hash: ByteArray,
-  policy_script_hash: ByteArray,
+  policy_nft: PolicyId,
+  policy_name: ByteArray,
   seal_nullifier_hash: ByteArray,
+  ratelimit_thread: PolicyId,
 ) {
   mint(redeemer: LeapRedeemer, policy_id: ByteArray, self: Transaction) {
-    let policy = read_policy(self, policy_script_hash)
+    let policy = read_policy(self, policy_nft, policy_name)
     let minted = quantity_of(self.mint, policy_id, ft_name)
     let only_one_name = ( self.mint |> tokens(policy_id) |> dict.size ) == 1
 
@@ -128,7 +141,7 @@ validator leap_mint_guard(
           })
         // fact_consumed = True is now JUSTIFIED: the unique cardano_bound UTxO was spent in this tx.
         // SEC N-FIN-1: and the leap's seal must be nullified once in the registry (one mint per seal).
-        only_one_name && enforce_policy(policy, LeapIn, fact.amount) && authorize_mint(fact, minted, 0, to_recipient, True) && seal_consumed(self, seal_nullifier_hash, bs.ckb_seal)
+        only_one_name && enforce_policy(policy, LeapIn, fact.amount) && authorize_mint(fact, minted, 0, to_recipient, True) && seal_consumed(self, seal_nullifier_hash, bs.ckb_seal) && rate_ticked(self, ratelimit_thread, fact.amount)
       }
       // LeapOutBurn is a pure burn (negative mint) — non-inflationary; the authoritative event is the CKB
       // release gated by burn_gated_unlock on the CKB side. The bound amount it must match is read from the
@@ -171,42 +184,73 @@ const m_bound_oref: OutputReference =
   OutputReference { transaction_id: #"00000000000000000000000000000000000000000000000000000000000000aa", output_index: 0 }
 const m_null_oref: OutputReference =
   OutputReference { transaction_id: #"00000000000000000000000000000000000000000000000000000000000000bb", output_index: 0 }
+// SEC D6 aggregate cap: rate-limiter thread policy + its spent input.
+const m_rl: PolicyId = #"44444444444444444444444444444444444444444444444444444444"
+const m_rl_addr: ByteArray = #"55555555555555555555555555555555555555555555555555555555"
+const thread_name: ByteArray = #"636b62636572742d746872656164"
+const m_rl_oref: OutputReference =
+  OutputReference { transaction_id: #"00000000000000000000000000000000000000000000000000000000000000cc", output_index: 0 }
+// SEC D6 (MF-4): the governor-signed policy cell, matched by its one-shot NFT as a reference input.
+const m_polnft: PolicyId = #"66666666666666666666666666666666666666666666666666666666"
+const m_polname: ByteArray = #"706f6c696379"
+const m_pol_addr: ByteArray = #"77777777777777777777777777777777777777777777777777777777"
+const m_pol_oref: OutputReference =
+  OutputReference { transaction_id: #"00000000000000000000000000000000000000000000000000000000000000ee", output_index: 0 }
 
 fn mk_out(h: ByteArray, val: Value, datum: Datum) -> Output {
   Output { address: Address { payment_credential: Script(h), stake_credential: None }, value: val, datum, reference_script: None }
+}
+
+// an open (no-cap, unpaused) policy cell carrying the one-shot policy NFT.
+fn pol_ref() -> Input {
+  let st = PolicyState {
+    governor: #"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    policy: GuardPolicy { paused_global: False, paused_in: False, paused_out: False, min_amount: 0, max_amount: 0, min_confirmations: 12 },
+  }
+  Input { output_reference: m_pol_oref, output: mk_out(m_pol_addr, from_asset(m_polnft, m_polname, 1), InlineDatum(st)) }
 }
 
 fn base(with_nullifier: Bool, reds: Pairs<ScriptPurpose, Data>) -> Transaction {
   let bs = BoundState { ckb_seal: m_seal, state: m_state }
   let bound_in = Input { output_reference: m_bound_oref, output: mk_out(m_bound, from_lovelace(2), InlineDatum(bs)) }
   let reg_in = Input { output_reference: m_null_oref, output: mk_out(m_null, from_lovelace(2), NoDatum) }
+  // the singleton rate-limiter input, carrying the thread token (found by rate_ticked via has_thread).
+  let rl_in = Input { output_reference: m_rl_oref, output: mk_out(m_rl_addr, from_asset(m_rl, thread_name, 1), NoDatum) }
   let bound_out = mk_out(m_bound, from_lovelace(2), InlineDatum(bs))
   let recip_out = mk_out(m_recip, from_asset(m_policy, m_ft, 100), NoDatum)
-  let inputs = if with_nullifier { [bound_in, reg_in] } else { [bound_in] }
-  Transaction { ..placeholder, inputs: inputs, outputs: [bound_out, recip_out], mint: from_asset(m_policy, m_ft, 100), redeemers: reds }
+  let inputs = if with_nullifier { [bound_in, reg_in, rl_in] } else { [bound_in] }
+  Transaction { ..placeholder, inputs: inputs, reference_inputs: [pol_ref()], outputs: [bound_out, recip_out], mint: from_asset(m_policy, m_ft, 100), redeemers: reds }
 }
 
 test leapin_rejects_without_nullifier() {
-  !leap_mint_guard.mint(m_ft, m_bound, #"00", m_null, LeapInMint, m_policy, base(False, []))
+  !leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_null, m_rl, LeapInMint, m_policy, base(False, []))
 }
 
-fn red(key: ByteArray) -> Pairs<ScriptPurpose, Data> {
+// redeemers: the nullifier Insert + the rate-limiter Tick (amount must equal the leap fact amount = 100).
+fn red(key: ByteArray, tick_amount: Int) -> Pairs<ScriptPurpose, Data> {
   let ins: Data = Insert { key, sibs: [] }
-  [Pair(Spend(m_null_oref), ins)]
+  let tick: Data = Tick { amount: tick_amount }
+  [Pair(Spend(m_null_oref), ins), Pair(Spend(m_rl_oref), tick)]
 }
 
-test leapin_accepts_when_seal_consumed() {
-  leap_mint_guard.mint(m_ft, m_bound, #"00", m_null, LeapInMint, m_policy, base(True, red(m_seal)))
+test leapin_accepts_when_seal_consumed_and_ticked() {
+  leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_null, m_rl, LeapInMint, m_policy, base(True, red(m_seal, 100)))
 }
 
 test leapin_rejects_wrong_seal_key() {
-  !leap_mint_guard.mint(m_ft, m_bound, #"00", m_null, LeapInMint, m_policy, base(True, red(#"dead0000000000000000000000000000000000000000000000000000000000ff")))
+  !leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_null, m_rl, LeapInMint, m_policy, base(True, red(#"dead0000000000000000000000000000000000000000000000000000000000ff", 100)))
+}
+
+// SEC D6: a leap whose rate-limiter Tick under-reports the amount (99 != fact 100) must be rejected, so the
+// accumulator can never be fed a smaller value than what is actually minted.
+test leapin_rejects_when_rate_underreported() {
+  !leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_null, m_rl, LeapInMint, m_policy, base(True, red(m_seal, 99)))
 }
 
 test seal_consumed_reads_redeemer() {
-  seal_consumed(base(True, red(m_seal)), m_null, m_seal)
+  seal_consumed(base(True, red(m_seal, 100)), m_null, m_seal)
 }
 test seal_consumed_rejects_wrong_key() {
-  !seal_consumed(base(True, red(#"dead0000000000000000000000000000000000000000000000000000000000ff")), m_null, m_seal)
+  !seal_consumed(base(True, red(#"dead0000000000000000000000000000000000000000000000000000000000ff", 100)), m_null, m_seal)
 }
 

@@ -158,8 +158,17 @@ fn main(){
         return;
     }
     let mut rng=ark_std::rand::rngs::StdRng::seed_from_u64(7);
-    eprintln!("AdvanceCKBCert+MMR-append: Groth16 setup (PoW + difficulty_verify + PROVEN append)...");
-    let (pk,vk)=Groth16::<Bls12_381>::circuit_specific_setup(circ.clone(),&mut rng).unwrap();
+    let (pk,vk) = if let Ok(dir)=std::env::var("CEREMONY_OUT") {
+        let (pk,transcript)=ckb_consensus_circuit::setup_mpc::run_ceremony(circ.clone(), 3, 3, "advance");
+        ckb_consensus_circuit::setup_mpc::save_pk(&pk, &format!("{dir}/advance_pk.bin"));
+        let _ = std::fs::write(format!("{dir}/advance_transcript.json"), serde_json::to_string_pretty(&transcript).unwrap());
+        let vk=pk.vk.clone(); (pk,vk)
+    } else if let Ok(p)=std::env::var("CEREMONY_PK") {
+        eprintln!("loading ceremony key from {p}"); let pk=ckb_consensus_circuit::setup_mpc::load_pk(&p); let vk=pk.vk.clone(); (pk,vk)
+    } else {
+        eprintln!("AdvanceCKBCert+MMR-append: Groth16 setup (PoW + difficulty_verify + PROVEN append)...");
+        Groth16::<Bls12_381>::circuit_specific_setup(circ.clone(),&mut rng).unwrap()
+    };
     eprintln!("proving..."); let proof=Groth16::<Bls12_381>::prove(&pk,circ.clone(),&mut rng).unwrap();
     let inputs=vec![Fr::from_le_bytes_mod_order(&old_root),Fr::from_le_bytes_mod_order(&old_total),Fr::from_le_bytes_mod_order(&new_root),Fr::from_le_bytes_mod_order(&new_total),Fr::from_le_bytes_mod_order(&old_wroot),Fr::from_le_bytes_mod_order(&new_wroot),Fr::from(21341104u64)];
     let ok=Groth16::<Bls12_381>::verify(&vk,&inputs,&proof).unwrap(); eprintln!("arkworks verify = {ok}"); assert!(ok);

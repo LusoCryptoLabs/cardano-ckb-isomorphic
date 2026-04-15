@@ -158,8 +158,19 @@ fn main(){
         if std::env::var("COUNT_ONLY").is_ok() { return; }
     }
     let mut rng=ark_std::rand::rngs::StdRng::seed_from_u64(7);
-    eprintln!("Groth16 setup over the FAITHFUL leap circuit (R1 real PoW+compact-decode, R3 real CBMT, R4)...");
-    let (pk,vk)=Groth16::<Bls12_381>::circuit_specific_setup(circ.clone(), &mut rng).unwrap();
+    // KEY SOURCE: CEREMONY_OUT=<dir> runs the real two-phase ceremony on THIS circuit and persists the key;
+    // CEREMONY_PK=<path> loads a previously-ceremonied key; otherwise the legacy deterministic setup.
+    let (pk,vk) = if let Ok(dir)=std::env::var("CEREMONY_OUT") {
+        let (pk,transcript)=ckb_consensus_circuit::setup_mpc::run_ceremony(circ.clone(), 3, 3, "leap");
+        ckb_consensus_circuit::setup_mpc::save_pk(&pk, &format!("{dir}/leap_pk.bin"));
+        let _ = std::fs::write(format!("{dir}/leap_transcript.json"), serde_json::to_string_pretty(&transcript).unwrap());
+        let vk=pk.vk.clone(); (pk,vk)
+    } else if let Ok(p)=std::env::var("CEREMONY_PK") {
+        eprintln!("loading ceremony key from {p}"); let pk=ckb_consensus_circuit::setup_mpc::load_pk(&p); let vk=pk.vk.clone(); (pk,vk)
+    } else {
+        eprintln!("Groth16 setup over the FAITHFUL leap circuit (R1 real PoW+compact-decode, R3 real CBMT, R4)...");
+        Groth16::<Bls12_381>::circuit_specific_setup(circ.clone(), &mut rng).unwrap()
+    };
     eprintln!("proving...");
     let proof=Groth16::<Bls12_381>::prove(&pk, circ.clone(), &mut rng).unwrap();
     let inputs=vec![Fr::from_le_bytes_mod_order(&chain_root), Fr::from_le_bytes_mod_order(&seal), Fr::from_le_bytes_mod_order(&commitment)];

@@ -3,6 +3,7 @@
 //// a VERIFIED CKB→Cardano leap (the Groth16 `cardano_bound` transition authenticates the leap; this guard
 //// enforces NO-INFLATION / EXACT-BURN / REPLAY-ONCE of the FT against the leap's amount). The validator
 //// `leap_mint_guard.ak` wires these against the real `self.mint` and the leap fact.
+use aiken/crypto.{VerificationKeyHash}
 
 /// A verified leap fact (the Groth16-attested CKB lock): `amount` units to `recipient`, identified by `nonce`.
 pub type LeapFact {
@@ -41,6 +42,19 @@ pub type GuardPolicy {
   paused_out: Bool,
   min_amount: Int,
   max_amount: Int,
+  // SEC D6: minimum CKB confirmation depth K a leap proof must prove (tip_height - height >= K). The
+  // governor sets this; cardano_bound pins it into the Groth16 public inputs so a relayer cannot prove a
+  // smaller K. 0 = depth-0 (legacy/insecure); production ships a non-zero K (< W, with live-window margin).
+  min_confirmations: Int,
+}
+
+/// The threaded policy datum: the governor authorized to change it + the current policy. Lives here (the
+/// lib) so both `chiral_policy` (writer) and `cardano_bound`/`leap_mint_guard` (readers) share one shape —
+/// the previous split (chiral_policy wrote PolicyState, leap_mint_guard read bare GuardPolicy) was a latent
+/// CBOR mismatch.
+pub type PolicyState {
+  governor: VerificationKeyHash,
+  policy: GuardPolicy,
 }
 
 /// Leap direction so a single direction can be halted independently.
@@ -83,9 +97,9 @@ test burn_replay_rejected() { !authorize_burn(52000000, 0, 52000000, False) }
 
 // ---- policy: caps + pause (mirror of the CKB core tests) ----
 fn pol(min: Int, max: Int) -> GuardPolicy {
-  GuardPolicy { paused_global: False, paused_in: False, paused_out: False, min_amount: min, max_amount: max }
+  GuardPolicy { paused_global: False, paused_in: False, paused_out: False, min_amount: min, max_amount: max, min_confirmations: 0 }
 }
-const open_policy: GuardPolicy = GuardPolicy { paused_global: False, paused_in: False, paused_out: False, min_amount: 0, max_amount: 0 }
+const open_policy: GuardPolicy = GuardPolicy { paused_global: False, paused_in: False, paused_out: False, min_amount: 0, max_amount: 0, min_confirmations: 0 }
 test policy_open_allows_any() { enforce_policy(open_policy, LeapIn, 1) && enforce_policy(open_policy, LeapOut, 52000000) }
 test policy_within_cap_ok() { enforce_policy(pol(1000, 100000000), LeapIn, 52000000) }
 test policy_over_cap_rejected() { !enforce_policy(pol(0, 100000000), LeapIn, 100000001) }

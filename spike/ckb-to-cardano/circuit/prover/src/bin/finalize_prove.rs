@@ -41,6 +41,7 @@ fn mkleaf(h:&Value, hash:[u8;32])->[u8;120]{
     ckb_mmr::leaf(hash, ndiff_le(uh(h,"compact_target") as u32), uh(h,"number") as u64, uh(h,"epoch") as u64, uh(h,"timestamp") as u64, uh(h,"compact_target") as u32)
 }
 
+#[derive(Clone)]
 struct FinalizeLeap { raw:[u8;192], nonce:[u8;16], cbmt_leaf:[u8;32], cbmt_path:Vec<([u8;32],bool)>, wit:[u8;32],
     leaf0:[u8;120], mpath:Vec<([u8;120],bool,[u8;120])>, chain_root:[u8;32], seal:[u8;32] }
 fn b2fp<F:PrimeField>(b:&[UInt8<F>])->Result<FpVar<F>,SynthesisError>{ let mut a=FpVar::<F>::zero(); let mut c=F::one(); for byte in b { for bit in byte.to_bits_le()? { a+=FpVar::from(bit)*c; c.double_in_place(); } } Ok(a) }
@@ -114,7 +115,16 @@ fn main(){
     let mut rng=ark_std::rand::rngs::StdRng::seed_from_u64(7);
     eprintln!("finalize: Groth16 setup+prove on LIVE data...");
     let setup=FinalizeLeap{raw,nonce,cbmt_leaf,cbmt_path:circ.cbmt_path.clone(),wit,leaf0:leaves[3],mpath:circ.mpath.clone(),chain_root,seal};
-    let (pk,vk)=Groth16::<Bls12_381>::circuit_specific_setup(setup,&mut rng).unwrap();
+    let (pk,vk) = if let Ok(dir)=std::env::var("CEREMONY_OUT") {
+        let (pk,transcript)=ckb_consensus_circuit::setup_mpc::run_ceremony(setup, 3, 3, "finalize");
+        ckb_consensus_circuit::setup_mpc::save_pk(&pk, &format!("{dir}/finalize_pk.bin"));
+        let _ = std::fs::write(format!("{dir}/finalize_transcript.json"), serde_json::to_string_pretty(&transcript).unwrap());
+        let vk=pk.vk.clone(); (pk,vk)
+    } else if let Ok(p)=std::env::var("CEREMONY_PK") {
+        eprintln!("loading ceremony key from {p}"); let pk=ckb_consensus_circuit::setup_mpc::load_pk(&p); let vk=pk.vk.clone(); (pk,vk)
+    } else {
+        Groth16::<Bls12_381>::circuit_specific_setup(setup,&mut rng).unwrap()
+    };
     let proof=Groth16::<Bls12_381>::prove(&pk,circ,&mut rng).unwrap();
     let inputs=vec![Fr::from_le_bytes_mod_order(&chain_root),Fr::from_le_bytes_mod_order(&seal),Fr::from_le_bytes_mod_order(&commitment)];
     assert!(Groth16::<Bls12_381>::verify(&vk,&inputs,&proof).unwrap());

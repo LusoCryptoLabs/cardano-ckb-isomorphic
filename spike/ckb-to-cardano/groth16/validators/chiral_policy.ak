@@ -8,13 +8,7 @@ use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
 use cardano/assets.{PolicyId, quantity_of}
 use cardano/transaction.{Transaction, OutputReference, InlineDatum}
-use leap_guard.{GuardPolicy}
-
-/// The threaded policy datum: the governor authorized to change it + the current policy.
-pub type PolicyState {
-  governor: VerificationKeyHash,
-  policy: GuardPolicy,
-}
+use leap_guard.{GuardPolicy, PolicyState}
 
 pub type PolicyRedeemer {
   // governor updates pause flags / caps (sanity-checked: min <= max unless max==0)
@@ -39,7 +33,12 @@ validator chiral_policy(nft_policy: PolicyId, nft_name: ByteArray) {
     // identity preserved (governor unchanged here; rotate via a dedicated path if ever needed) + sane caps
     let governor_same = new_state.governor == state.governor
     let p = new_state.policy
-    let sane_caps = p.min_amount >= 0 && p.max_amount >= 0 && ( p.max_amount == 0 || p.min_amount <= p.max_amount )
+    // SEC D6: K must leave a usable live window. W=64 is the FROZEN membership window; a leap is provable
+    // only for a header at depth in [K, W). Require K + MIN_LIVE_WINDOW <= W (MIN_LIVE_WINDOW=32 => K<=32)
+    // so a fat-fingered/compromised governor cannot set a self-bricking K while still passing "sane".
+    let sane_caps =
+      p.min_amount >= 0 && p.max_amount >= 0 && ( p.max_amount == 0 || p.min_amount <= p.max_amount )
+        && p.min_confirmations >= 0 && p.min_confirmations <= 32
     signed && governor_same && sane_caps
   }
 
@@ -51,7 +50,7 @@ validator chiral_policy(nft_policy: PolicyId, nft_name: ByteArray) {
 // ---- tests ----
 fn gov() -> VerificationKeyHash { #"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1" }
 fn mk(min: Int, max: Int) -> GuardPolicy {
-  GuardPolicy { paused_global: False, paused_in: False, paused_out: False, min_amount: min, max_amount: max }
+  GuardPolicy { paused_global: False, paused_in: False, paused_out: False, min_amount: min, max_amount: max, min_confirmations: 12 }
 }
 
 // the sane-caps invariant the validator enforces on every update
@@ -71,4 +70,18 @@ test governor_pinned() {
   let a = PolicyState { governor: gov(), policy: mk(0, 0) }
   let b = PolicyState { governor: gov(), policy: mk(1000, 100000000) }
   a.governor == b.governor // an update keeps the governor
+}
+
+// SEC D6: K must be in [0, 32] (= W - MIN_LIVE_WINDOW, W=64) so a leap always has a live window.
+test k_in_range_ok() {
+  let p = GuardPolicy { ..mk(0, 0), min_confirmations: 12 }
+  p.min_confirmations >= 0 && p.min_confirmations <= 32
+}
+test k_too_large_rejected() {
+  let p = GuardPolicy { ..mk(0, 0), min_confirmations: 33 }
+  !( p.min_confirmations >= 0 && p.min_confirmations <= 32 )
+}
+test k_negative_rejected() {
+  let p = GuardPolicy { ..mk(0, 0), min_confirmations: -1 }
+  !( p.min_confirmations >= 0 && p.min_confirmations <= 32 )
 }
