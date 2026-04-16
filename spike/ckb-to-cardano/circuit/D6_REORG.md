@@ -116,7 +116,21 @@ via the seal-nullifier's own thread-pin + SMT non-membership). Add as belt-and-s
   byte-binding** `blake2b(state‖seal)` (not on `field_of(seal)`, which is non-injective: `r` is 255-bit so
   `H` and `H+r` alias). A future refactor must never drop the seal from the commitment.
 
-## 8. User impact
+## 8b. Ceremony + on-chain gate — live record
+The depth-K circuits were re-ceremonied (real two-phase Groth16, `setup_mpc.rs`) to replace the
+deterministic `seed_from_u64` keys, and the production key was gated through the actual Plutus verifier:
+- **leap_windowed**: ceremony `vk_blake2b = e4ea14f83953…` (Phase-1 PoT ×3 + Phase-2 δ ×3, each with a
+  verifiable Schnorr PoK + batched pairing checks; forged-PoK rejected). A **K=12** demo proof under the
+  ceremony key (public inputs `[window_root, seal, commitment, tip=21341113, K=12]`, ic length 6) **verifies
+  on-chain** in the Aiken Groth16 verifier `cardano_bound` uses: `leap_proof_verifies_onchain` PASS, **CPU
+  2,537,799,674 / mem 71,725** (~25% of the 10B tx budget — the +0.27B vs the pre-K key is the one extra
+  G1 MSM term for K). So: depth-K circuit → real ceremony key → K=12 proof → live Plutus verify.
+- **finalize_windowed**: ceremony re-running (K=0 demo). Record to be appended when its key lands.
+- Sandbox caveat (irreducible): contributor *independence* is simulated; the machinery + verifiable
+  transcript let real external contributors slot in. Proving keys are large + reproducible → gitignored;
+  these vk hashes are the committed record.
+
+## 9. User impact
 - ckCKB doesn't exist until **K confirmations** (latency; same as an exchange deposit). Default target
   K≈12–24 (~2–4 min at ~8 s/block), W−K ≥ 32 blocks of relayer slack.
 - CKB-native **outflows** above the cap settle in tranches / over time (throughput = `cap/window`).
