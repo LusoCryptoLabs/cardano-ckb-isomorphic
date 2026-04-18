@@ -13,7 +13,13 @@ use cardano/transaction.{Transaction, OutputReference, Output, InlineDatum}
 use g16/ckbcert.{has_thread, is_thread_burn, mints_one_thread}
 use leap_guard.{PolicyState}
 
-validator chiral_policy_thread(genesis_ref: OutputReference, policy_script: ByteArray) {
+// NOTE: the minter takes ONLY `genesis_ref` (not the chiral_policy script hash) to break the deploy-time
+// parameter circularity (chiral_policy is parameterized by THIS policy id, so this minter cannot also be
+// parameterized by chiral_policy's hash). The address binding is enforced on the CONSUMING side:
+// cardano_bound.read_k requires the policy NFT to sit at the chiral_policy script hash. So this minter only
+// guarantees one-shot uniqueness + a sane-K genesis datum; placing the token at the wrong address is a
+// liveness fail (read_k can't find it), never a security one.
+validator chiral_policy_thread(genesis_ref: OutputReference) {
   mint(_redeemer: Data, policy_id: PolicyId, tx: Transaction) {
     let Transaction { inputs, outputs, mint, .. } = tx
     if is_thread_burn(mint, policy_id) {
@@ -21,7 +27,7 @@ validator chiral_policy_thread(genesis_ref: OutputReference, policy_script: Byte
     } else {
       let unique = list.any(inputs, fn(i) { i.output_reference == genesis_ref })
       let one = mints_one_thread(mint, policy_id)
-      let pinned_out = list.any(outputs, fn(o: Output) { is_sane_genesis(o, policy_id, policy_script) })
+      let pinned_out = list.any(outputs, fn(o: Output) { is_sane_genesis(o, policy_id) })
       unique && one && pinned_out
     }
   }
@@ -31,14 +37,9 @@ validator chiral_policy_thread(genesis_ref: OutputReference, policy_script: Byte
   }
 }
 
-/// The pinned genesis policy cell: at `policy_script`, carries the thread token, and its initial PolicyState
-/// has a SANE confirmation depth (0..32) so K can never be born outside the live-window band.
-fn is_sane_genesis(o: Output, policy: PolicyId, policy_script: ByteArray) -> Bool {
-  let at_script =
-    when o.address.payment_credential is {
-      Script(h) -> h == policy_script
-      _ -> False
-    }
+/// The genesis policy cell: carries the thread token, and its initial PolicyState has a SANE confirmation
+/// depth (0..32) so K can never be born outside the live-window band.
+fn is_sane_genesis(o: Output, policy: PolicyId) -> Bool {
   let datum_ok =
     when o.datum is {
       InlineDatum(d) -> {
@@ -47,7 +48,7 @@ fn is_sane_genesis(o: Output, policy: PolicyId, policy_script: ByteArray) -> Boo
       }
       _ -> False
     }
-  at_script && has_thread(o.value, policy) && datum_ok
+  has_thread(o.value, policy) && datum_ok
 }
 
 // ---- genesis mock-tx tests ----
@@ -101,11 +102,11 @@ fn mk_mint_tx(with_gref: Bool, state: PolicyState, with_token: Bool) -> Transact
 }
 
 test cpt_genesis_mint_ok() {
-  chiral_policy_thread.mint(t_gref, t_pol_script, Void, t_policy, mk_mint_tx(True, ps(12), True))
+  chiral_policy_thread.mint(t_gref, Void, t_policy, mk_mint_tx(True, ps(12), True))
 }
 test cpt_without_unique_ref_rejected() {
-  !chiral_policy_thread.mint(t_gref, t_pol_script, Void, t_policy, mk_mint_tx(False, ps(12), True))
+  !chiral_policy_thread.mint(t_gref, Void, t_policy, mk_mint_tx(False, ps(12), True))
 }
 test cpt_insane_k_genesis_rejected() {
-  !chiral_policy_thread.mint(t_gref, t_pol_script, Void, t_policy, mk_mint_tx(True, ps(40), True))
+  !chiral_policy_thread.mint(t_gref, Void, t_policy, mk_mint_tx(True, ps(40), True))
 }
