@@ -174,7 +174,7 @@ validator leap_mint_guard(
 
 // ---- mock-tx tests for the N-FIN-1 seal-consumption wiring ----
 const m_policy: ByteArray = #"8f11f2b176c143f1aaba0e48662052b0b8c3830161c73194eb60df2a"
-const m_ft: ByteArray = #"636b434b42"
+const m_ft: ByteArray = #"cf87434b42"  // "χCKB"
 const m_bound: ByteArray = #"11111111111111111111111111111111111111111111111111111111"
 const m_null: ByteArray = #"22222222222222222222222222222222222222222222222222222222"
 const m_recip: ByteArray = #"33333333333333333333333333333333333333333333333333333333"
