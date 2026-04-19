@@ -63,7 +63,7 @@ export const CARDANO = {
   policyId: "<FT mint policy id from Step B>",
   ftLabelHex: "0014df10",
   refLabelHex: "000643b0",
-  tokenNameAscii: "wADA",
+  tokenNameAscii: "χADA",
 };
 ```
 

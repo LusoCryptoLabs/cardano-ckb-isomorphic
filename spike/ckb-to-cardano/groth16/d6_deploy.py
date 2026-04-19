@@ -28,7 +28,7 @@ WORK = "/tmp/d6deploy"; os.makedirs(WORK, exist_ok=True)
 # ---- governance / FT params (deployment choices) ----
 THREAD_NAME = "636b62636572742d746872656164"      # shared thread asset name "ckbcert-thread"
 POLICY_NAME = THREAD_NAME                          # the policy NFT asset name (cardano_bound.policy_name)
-FT_NAME     = "636b434b42"                         # "ckCKB"
+FT_NAME     = "cf87434b42"                         # "χCKB" (U+03C7 chi 'cf87' ++ "CKB") — the leaped-CKB token on Cardano
 K_DEFAULT   = 12                                   # genesis min_confirmations (sane: 0..32)
 CAP         = 0                                    # 0 = aggregate cap disabled at genesis; governor sets real cap
 WINDOW_LEN  = 3600                                 # rate-limiter window (slots)

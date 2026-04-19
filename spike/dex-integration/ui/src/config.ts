@@ -11,8 +11,8 @@ export type CkbNetwork = "testnet" | "mainnet";
 export type CardanoNetwork = "preview" | "mainnet";
 
 export const TOKEN = {
-  name: "Wrapped ADA",
-  symbol: "wADA",
+  name: "Chiral ADA",
+  symbol: "χADA",
   decimals: 6, // MUST match the source asset; immutable after genesis
   logoUri: "",
 } as const;
@@ -39,7 +39,7 @@ export const CARDANO = {
   policyId: "00000000000000000000000000000000000000000000000000000000",
   ftLabelHex: "0014df10", // CIP-67 (333) fungible token
   refLabelHex: "000643b0", // CIP-67 (100) reference NFT
-  tokenNameAscii: "wADA",
+  tokenNameAscii: "χADA", // UTF-8 (not literally ASCII): utf8('cf87') ++ "ADA"
 } as const;
 
 const PLACEHOLDER_RE = /0{8,}$|…|P0L1CY|BA5A99AB|25c29dc3/;

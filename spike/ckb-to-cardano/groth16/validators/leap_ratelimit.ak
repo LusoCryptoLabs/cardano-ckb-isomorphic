@@ -1,5 +1,5 @@
 //// leap_ratelimit.ak — SEC D6 AGGREGATE value cap. A thread-pinned SINGLETON UTxO that bounds the TOTAL
-//// ckCKB minted-but-not-yet-final per rolling time window, so a thief cannot split one large reorg-theft
+//// χCKB minted-but-not-yet-final per rolling time window, so a thief cannot split one large reorg-theft
 //// into N sub-(per-leap-cap) leaps inside one reorg window. Every `LeapInMint` must spend+recreate this
 //// cell (mints are already serialized through the seal-nullifier singleton, so this adds no new
 //// serialization). `leap_mint_guard` cross-checks that the limiter's `Tick.amount` == the verified leap
@@ -29,7 +29,7 @@ use g16/ckbcert.{has_thread}
 /// The rolling accumulator datum on the singleton limiter cell.
 pub type RateState {
   window_start: Int,      // slot at which the current window opened
-  minted_in_window: Int,  // total ckCKB minted since window_start
+  minted_in_window: Int,  // total χCKB minted since window_start
 }
 
 /// Spend redeemer: the FT amount being minted this tx (pinned to the verified leap fact by leap_mint_guard).
@@ -91,7 +91,7 @@ const t_policy: PolicyId = #"8f11f2b176c143f1aaba0e48662052b0b8c3830161c73194eb6
 const t_name: ByteArray = #"636b62636572742d746872656164"
 const t_script: ByteArray = #"8f11f2b176c143f1aaba0e48662052b0b8c3830161c73194eb60df2b"
 const t_ftpol: PolicyId = #"8f11f2b176c143f1aaba0e48662052b0b8c3830161c73194eb60df2c"  // wrapped-FT policy
-const t_ftnm: ByteArray = #"636b434b42"                                                // "ckCKB"
+const t_ftnm: ByteArray = #"cf87434b42"                                                // "χCKB"
 const t_oref: OutputReference =
   OutputReference { transaction_id: #"0000000000000000000000000000000000000000000000000000000000000000", output_index: 0 }
 

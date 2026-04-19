@@ -8,8 +8,8 @@
 //    authorized inside a tx that satisfies that script (which must check amount == verified-leap amount).
 //    If you set `bridgeLockHash` to a key-derived lock, the token is rug-mintable — do not.
 export const TOKEN = {
-  name: "Wrapped ADA",          // human name (CIP-68 / Unique-cell)
-  symbol: "wADA",               // ticker
+  name: "Chiral ADA",           // human name (CIP-68 / Unique-cell) — ADA leaped onto CKB
+  symbol: "χADA",               // ticker (U+03C7 chi = Chiral; UTF-8 'cf87' ++ "ADA")
   decimals: 6,                  // MUST match the source asset; immutable after genesis
   logoUri: "https://…/wada.png",// optional; wallets/explorers may show it
 };
@@ -31,5 +31,5 @@ export const CARDANO = {
   // CIP-67 labels: (333) fungible token, (100) reference NFT carrying metadata. Fixed constants.
   ftLabelHex: "0014df10",             // CIP-67 (333)
   refLabelHex: "000643b0",            // CIP-67 (100)
-  tokenNameAscii: "wADA",             // the bare name; full asset name = label ++ utf8(name)
+  tokenNameAscii: "χADA",             // the bare name (UTF-8, not literally ASCII); full asset name = label ++ utf8(name)
 };
