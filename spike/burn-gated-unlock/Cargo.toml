@@ -26,6 +26,12 @@ path = "src/bin/burn_nullifier_registry.rs"
 name = "bound_asset_unified_ours"
 path = "src/bin/bound_asset_unified_ours.rs"
 
+# v2: the ownership-toggle leap script (docs/LEAP_BRIEF_V2.md). Disjoint deployment, new code_hash; v1 cells
+# never run it (version byte + new code_hash). Closes B1/B2/B3 + S5 nullifier (B4 core).
+[[bin]]
+name = "bound_asset_v2"
+path = "src/bin/bound_asset_v2.rs"
+
 [dependencies]
 ckb-std = "0.16"
 blake2 = { version = "0.10", default-features = false }
