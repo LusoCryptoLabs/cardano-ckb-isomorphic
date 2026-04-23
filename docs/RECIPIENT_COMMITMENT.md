@@ -1,13 +1,16 @@
 # RECIPIENT_COMMITMENT.md — the shared recipient-commitment primitive (KEYSTONE)
 
-**Status:** Design-complete, implementation-ready. (Repaired after adversarial review — F1, F3, F5, F8, F9 + minors.)
+**Status:** Implemented for the LEAP (Cardano `binding_lock.LeapToCkb` + CKB `bound_asset_v2`). §6 mint-leg
+reuse is **SUPERSEDED** by an implementation finding (the mint-leg recipient binding is circuit-dependent, not
+closeable by RC — see §6). (Repaired after adversarial review — F1, F3, F5, F8, F9 + minors.)
 **Purpose:** Define ONE cryptographic primitive — the *recipient commitment* `RC` — reused verbatim by
 two otherwise-independent cross-chain flows:
 
 1. the **ownership-toggle leap** (`LEAP_TO_CKB`, Cardano→CKB), where the surviving CKB cell's lock must be
    the owner-intended recipient and not a relayer's lock (closes **B1**, gives the carrier **B3** needs); and
-2. the **Groth16 mint leg** (`leap_mint_guard`, CKB→Cardano), where the minted Cardano asset's recipient is
-   today a bare unsigned slice of state (RECIP-1) and must instead be owner-bound and certified.
+2. ~~the **Groth16 mint leg**~~ — **SEE §6:** grounding against the real code during implementation showed the
+   mint-leg recipient binding (RECIP-1) is a **CIRCUIT** problem, NOT closeable by an on-chain RC. The keystone
+   closes B1 on the **leap only** (whose source is owner-signed); the proof-authorized mint leg stays parked.
 
 This document is the single definition of `RC`. `LEAP_BRIEF_V2.md` references it and does not duplicate it.
 
@@ -271,9 +274,32 @@ existing `length(new_c) == 32` invariant (`bl:51`) is untouched.
 
 ---
 
-## 6. Reuse by the Groth16 mint leg (RECIP-1) — the symmetric application
+## 6. The Groth16 mint leg (RECIP-1) — NOT closeable by RC (implementation finding)
 
-### 6.1 The actual mint-leg datum (MAJOR F5 — FIXED)
+> **CORRECTION (found during implementation, 2026-06-10).** The original §6 below claimed RC could be
+> "reused verbatim" by the mint leg to close RECIP-1. Grounding it against the real code shows it CANNOT, and
+> an on-chain RC field there would be a **redundant no-op**:
+>
+> - The **leap (S5)** binds the recipient by an OWNER SIGNATURE on its Cardano source — a key signs the
+>   `SealDatum` (`binding_lock.ak:35-36`). RC ties the recipient to that signature; the recipient is in
+>   owner-signed, Mithril-certified data, not a witness.
+> - The **mint leg** source is CKB and its authorization is the GROTH16 PROOF. The recipient lives in
+>   `bs.state[16..28]` (`leap_mint_guard.ak:133`), where `bs.state == new_state` (`cardano_bound.ak:142`) and
+>   `new_state` is a **FREE WITNESS** in the leap circuit (`MINT_AUDIT.md`, INFL-1/VERIF-1). The existing
+>   `commitment(new_state, seal) = blake2b256(new_state ‖ seal)` (`cardano_bound.ak:34,146`) is ALREADY bound
+>   into the proof's public inputs, and `new_state` already contains the recipient — so the recipient is
+>   already committed. Folding it again into `RC = blake2b256(state ‖ ckb_seal ‖ recipient)` re-hashes bytes
+>   already inside `state`; the prover simply sets `new_state` (incl. recipient) and the RC consistently,
+>   binding **nothing new**.
+>
+> **Conclusion:** RECIP-1 on the mint leg is purely a **CIRCUIT** problem, identical in kind to the amount gap
+> (INFL-1): the circuit must constrain `new_state`'s recipient (and amount) to the CKB-side beneficiary's
+> verified intent — `leap_windowed.rs` must decode the seal-tx, not witness `new_state` freely. No on-chain
+> datum change closes it. The keystone RC is therefore specific to **owner-signed-source** flows (the leap).
+> **§6.1–6.4 below are SUPERSEDED and were not implemented; the mint leg stays parked** (not value-ready for
+> amount OR recipient). RQ-1 (recipient slot-width collision between the two legs) is consequently moot.
+
+### 6.1 (SUPERSEDED — see correction above) The actual mint-leg datum
 
 The previous draft referenced a non-existent `BoundState.commitment` field. The **real** mint-leg datum is
 (`lmg:27-31`):
