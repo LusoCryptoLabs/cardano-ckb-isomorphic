@@ -11,6 +11,7 @@
 //! RC = blake2b256(state ‖ SOURCE seal ‖ recipient_lock_hash) (closes B1).
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
+#[cfg(test)] extern crate alloc;   // host test build: default_alloc!() (which links alloc) is cfg(not(test))-gated
 use alloc::vec::Vec;
 use ckb_std::{ckb_constants::Source, high_level::{load_witness_args, load_cell_data, load_cell_type_hash, load_cell_lock_hash, load_script}};
 // SEC A1: the ONLY trusted checkpoint is one carrying the TxSetCert verifier's type script (cert-verified
@@ -352,4 +353,57 @@ mod sync_polyfill {
     sync_ops!(u32, __sync_val_compare_and_swap_4,__sync_bool_compare_and_swap_4,__sync_lock_test_and_set_4,__sync_fetch_and_add_4,__sync_fetch_and_sub_4,__sync_fetch_and_or_4,__sync_fetch_and_and_4,__sync_fetch_and_xor_4);
     sync_ops!(u64, __sync_val_compare_and_swap_8,__sync_bool_compare_and_swap_8,__sync_lock_test_and_set_8,__sync_fetch_and_add_8,__sync_fetch_and_sub_8,__sync_fetch_and_or_8,__sync_fetch_and_and_8,__sync_fetch_and_xor_8);
     #[no_mangle] pub extern "C" fn __sync_synchronize() {}
+}
+
+// ---- host unit tests for the PURE byte-offset logic (the riskiest part of the v2 re-layout) ----
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn cbor_bstr(b:&[u8])->Vec<u8>{ let mut o=Vec::new(); let n=b.len();
+        if n<24 { o.push(0x40+n as u8); } else { o.push(0x58); o.push(n as u8); } o.extend_from_slice(b); o }
+    // Constr 121 [owner, commitment, recipient] = the v2 LeapSealDatum wire shape (RECIPIENT_COMMITMENT §7.2)
+    fn leap_datum(owner:&[u8], commitment:&[u8], recipient:&[u8])->Vec<u8>{
+        let mut o=Vec::new(); o.push(0xD8); o.push(0x79); o.push(0x83);   // tag 121, array(3)
+        o.extend(cbor_bstr(owner)); o.extend(cbor_bstr(commitment)); o.extend(cbor_bstr(recipient)); o }
+
+    #[test]
+    fn tag_of_accepts_valid_v2_cells() {
+        let mut d=[0u8;70].to_vec(); d[0]=0x02; d[1]=CKB_OWNED;
+        assert_eq!(tag_of(&d), Ok(CKB_OWNED));
+        d[1]=CARDANO_BOUND; assert_eq!(tag_of(&d), Ok(CARDANO_BOUND));
+    }
+    #[test]
+    fn tag_of_rejects_bad_version_tag_and_short() {
+        let mut d=[0u8;70].to_vec(); d[0]=0x01; d[1]=CKB_OWNED;
+        assert_eq!(tag_of(&d), Err(43));                 // v1 cell (version != 0x02) kept out
+        d[0]=0x02; d[1]=0x03; assert_eq!(tag_of(&d), Err(44));   // illegal tag
+        assert_eq!(tag_of(&[0x02u8,0x02]), Err(7));      // len < 70
+    }
+    #[test]
+    fn seal_readers_hit_field1_and_field2() {
+        let owner=[0x0bu8;28]; let commitment=[0x11u8;32]; let recipient=[0x33u8;32];
+        let d=leap_datum(&owner,&commitment,&recipient);
+        assert_eq!(seal_commitment(&d), commitment.to_vec());   // field 1
+        assert_eq!(seal_recipient(&d), recipient.to_vec());     // field 2 (the NEW reader)
+    }
+    #[test]
+    fn rc_preimage_is_state_seal_recipient_concatenation() {
+        // RC = blake2b256(state ‖ SOURCE seal ‖ recipient); multi-part == single concatenated buffer.
+        let state=[0xAAu8;10]; let seal=[0xBBu8;36]; let recip=[0x33u8;32];
+        let rc=b2b256(&[&state,&seal,&recip]);
+        let mut cat=Vec::new(); cat.extend_from_slice(&state); cat.extend_from_slice(&seal); cat.extend_from_slice(&recip);
+        assert_eq!(rc, b2b256(&[&cat]));
+        assert_ne!(rc, b2b256(&[&state,&seal]));        // recipient genuinely enters the digest
+    }
+    #[test]
+    fn v2_layout_offsets() {
+        // version(1) tag(1) seal_txid(32) seal_idx(4) lock(32) state -> seal=[2..38], lock=[38..70], state=[70..]
+        let mut d=[0u8;78].to_vec(); d[0]=0x02; d[1]=CKB_OWNED;
+        for k in 2..34 { d[k]=0xCC; }   // seal txid
+        for k in 38..70 { d[k]=0xDD; }  // lock slot
+        for k in 70..78 { d[k]=0xEE; }  // state
+        assert_eq!(&d[2..34], &[0xCCu8;32][..]);
+        assert_eq!(&d[38..70], &[0xDDu8;32][..]);
+        assert_eq!(&d[70..], &[0xEEu8;8][..]);
+    }
 }
