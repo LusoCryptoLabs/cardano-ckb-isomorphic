@@ -13,3 +13,7 @@ serde_json = "1"
 [[test]]
 name = "v2_guards"
 path = "tests/v2_guards.rs"
+
+[[test]]
+name = "v2_finalize"
+path = "tests/v2_finalize.rs"
