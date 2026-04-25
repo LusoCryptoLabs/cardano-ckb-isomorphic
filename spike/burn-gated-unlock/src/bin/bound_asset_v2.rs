@@ -16,12 +16,21 @@ use alloc::vec::Vec;
 use ckb_std::{ckb_constants::Source, high_level::{load_witness_args, load_cell_data, load_cell_type_hash, load_cell_lock_hash, load_script}};
 // SEC A1: the ONLY trusted checkpoint is one carrying the TxSetCert verifier's type script (cert-verified
 // in-VM). Same authenticated checkpoint as v1 (cv_deploy type-hash 0x855231b3).
-const LCKP_TYPE_HASH: [u8;32] = [133,82,49,179,57,175,212,62,166,215,227,196,181,212,68,27,38,60,90,54,42,71,159,85,234,239,130,153,203,135,121,185];
+// Deploy/test-time parameterization of the two "set at deploy" type hashes (default = production value).
+const fn hexv(c:u8)->u8{ match c { b'0'..=b'9'=>c-b'0', b'a'..=b'f'=>c-b'a'+10, b'A'..=b'F'=>c-b'A'+10, _=>0 } }
+const fn hex32(s:&str)->[u8;32]{ let b=s.as_bytes(); let mut o=[0u8;32]; let mut i=0; while i<32 { o[i]=(hexv(b[2*i])<<4)|hexv(b[2*i+1]); i+=1; } o }
+const LCKP_TYPE_HASH: [u8;32] = match option_env!("CHIRAL_LCKP_TH") {
+    Some(h) => hex32(h),
+    None => [133,82,49,179,57,175,212,62,166,215,227,196,181,212,68,27,38,60,90,54,42,71,159,85,234,239,130,153,203,135,121,185],
+};
 // B4/F2: the ONE canonical leap seal-outpoint nullifier registry. Its type hash is the genesis type-id of the
 // singleton registry deployed alongside v2 (burn_nullifier_registry pattern). HARDCODED — never a script arg —
 // so no bound cell can point the nullifier check at a parallel/empty registry. **SET AT DEPLOY** from the
 // canonical registry genesis type-id (mirrors LCKP_TYPE_HASH).
-const LEAP_REGISTRY_TYPE_HASH: [u8;32] = [0u8;32];   // PLACEHOLDER — bake the canonical registry genesis type-id here
+const LEAP_REGISTRY_TYPE_HASH: [u8;32] = match option_env!("CHIRAL_REG_TH") {
+    Some(h) => hex32(h),
+    None => [0u8;32],   // PLACEHOLDER — bake the canonical registry genesis type-id here (or pass CHIRAL_REG_TH)
+};
 const CARDANO_BOUND: u8 = 0x01;
 const CKB_OWNED: u8 = 0x02;
 use blake2::{Blake2s256, Digest};
