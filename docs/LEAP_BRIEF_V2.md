@@ -660,10 +660,18 @@ seal-txid/datum/commitment codes 8/9/10 are reused where semantics are unchanged
 - **RQ-7 (LeapToCkb vs FINALIZE naming):** `LEAP_TO_CKB` (inbound, Cardano→CKB) re-parks the seal
   (`Some(true)`) and reads the recipient datum; `FINALIZE` (outbound leap-out, CKB→Cardano) releases the seal
   (`Some(false)`) and reads no recipient. Keep them distinct in code and tests.
-- **RQ-8 (F7 batch-count enforcement):** the same-tx cross-type-group close (§6.5) requires the registry to
-  assert `inserted_keys.len() == leap_consumer_count` and that all inserted keys are distinct. Specify and test
-  exactly how the registry counts in-tx leap consumers (by recognizing v2 `bound_asset` type-hash inputs on a
-  leap branch) so the count cannot be under-reported.
+- **RQ-8 (F7 batch-count enforcement) — STATUS + sharpened.** The **single-key** path is DONE: the canonical
+  registry is the existing `burn_nullifier_registry` (genesis type-id singleton, 256-deep SMT), reused
+  verbatim; the consumer + real registry are in-VM tested end-to-end
+  (`v2vmtest::s5_leap_with_real_nullifier_registry`), and `LEAP_REGISTRY_TYPE_HASH` is set to that registry's
+  genesis type-id at deploy. The single-key registry is **safe** for the realistic path (distinct seals; it
+  admits at most one insert per spend, so two *distinct*-key leaps in one tx already fail). The residual is the
+  **cross-type-group SAME-seal** vector: two v2 instances (different args ⇒ different type groups) genesis'd
+  against the SAME Cardano seal output in one tx share one nullifier key, so a single insert would satisfy
+  both. Closing it needs EITHER the batch registry (`inserted_keys.len() == #leap-inputs`, all distinct — the
+  registry counts in-tx inputs whose type-script CODE hash == the v2 verifier's, since per-instance args make
+  type hashes differ) OR a verifier-side "exactly one v2-leap input per tx" guard (own-`code_hash` scan). It is
+  an exotic multi-instance attack; pick the mechanism at deploy rather than ship a rushed batch.
 - **RQ-9 (A6 code renumber):** v2 repurposes the cell-layout codes around `31`/`32`; the AS-IS A6 single-cell
   rejects (`bau:186-187`) must be renumbered to a free range. Pick the final mapping at implementation.
 - **RQ-10 (mint-leg nullifier scope):** the keystone reuse on the Groth16 mint leg (`RECIPIENT_COMMITMENT.md`

@@ -81,6 +81,17 @@ fn build_verifier(lckp_hex: &str, reg_hex: &str) {
     assert!(st.success(), "verifier build failed");
 }
 
+const REGISTRY: &str = "../../../../burn-gated-unlock/target/riscv64imac-unknown-none-elf/release/burn_nullifier_registry";
+// the registry's SMT (mirrors burn_nullifier_registry.rs: h2 personalized "ckb-smt-null-set").
+fn h2(l: &[u8; 32], r: &[u8; 32]) -> [u8; 32] { let mut h = blake2b_ref::Blake2bBuilder::new(32).personal(b"ckb-smt-null-set").build(); h.update(l); h.update(r); let mut o = [0u8; 32]; h.finalize(&mut o); o }
+fn empty_levels() -> [[u8; 32]; 256] { let mut e = [[0u8; 32]; 256]; let mut cur = [0u8; 32]; let mut d = 0; while d < 256 { e[d] = cur; cur = h2(&cur, &cur); d += 1; } e }   // e[d] = empty subtree of height d
+fn empty_root() -> [u8; 32] { let mut e = [0u8; 32]; let mut d = 0; while d < 256 { e = h2(&e, &e); d += 1; } e }
+fn root_after_insert(key: &[u8; 32], e: &[[u8; 32]; 256]) -> [u8; 32] {           // fold(PRESENT, key, siblings=e)
+    let mut cur = [1u8; 32]; let mut d = 0;
+    while d < 256 { let bi = 255 - d; let bit = (key[bi / 8] >> (7 - (bi % 8))) & 1; cur = if bit == 1 { h2(&e[d], &cur) } else { h2(&cur, &e[d]) }; d += 1; }
+    cur
+}
+
 // fixed deployment constants shared by the leap fixtures
 const SRC_TXID: [u8; 32] = [0xABu8; 32];
 const OWNER: [u8; 28] = [0x0bu8; 28];
@@ -213,4 +224,64 @@ fn s4_leap_to_cardano_accepts() {
         .witness(w_cert.as_bytes().pack())
         .build());
     ctx.verify_tx(&tx, MAX_CYCLES).expect("v2 LEAP_TO_CARDANO must pass in CKB-VM");
+}
+
+// S5 driven by the REAL burn_nullifier_registry: its SMT non-membership->insert actually enforces single-use
+// (vs the always_success mock used by the other tests). Proves the consumer + real registry integrate.
+#[test]
+fn s5_leap_with_real_nullifier_registry() {
+    let mut ctx = Context::default();
+    let as_op = ctx.deploy_cell(ALWAYS_SUCCESS.clone());
+    let recipient_lock = ctx.build_script(&as_op, Bytes::from(b"recip".to_vec())).unwrap();
+    let recipient = recipient_lock.calc_script_hash().as_slice().to_vec();
+    let reg_op = ctx.deploy_cell(Bytes::from(std::fs::read(REGISTRY).unwrap()));
+    let reg_type = ctx.build_script(&reg_op, Bytes::from(vec![0x77u8; 32])).unwrap();   // 32-byte type-id args
+    let reg_h = reg_type.calc_script_hash().as_slice().to_vec();
+    let ckpt_type = ctx.build_script(&as_op, Bytes::new()).unwrap();
+    let lckp_h = ckpt_type.calc_script_hash().as_slice().to_vec();
+
+    let out_state = b"leap-demo-state".to_vec();
+    let mut src_seal36 = SRC_TXID.to_vec(); src_seal36.extend_from_slice(&0u32.to_le_bytes());
+    let rc = b2b256(&[&out_state, &src_seal36, &recipient]);
+    let datum = datum3(&OWNER, &rc, &recipient);
+    let tx_body = leap_tx_body(&SRC_TXID, 0, &LOCK_ADDR, &SEAL_POLICY, &b"SEAL".to_vec(), &datum);
+    let th = b2b256(&[&tx_body]);
+    let (cert_root, witness) = certify(&tx_body);
+    let null_key = b2b256(&[&src_seal36]);
+    let e = empty_levels();
+    let new_root = root_after_insert(&null_key, &e);
+    let mut reg_wit = null_key.to_vec(); for d in 0..256 { reg_wit.extend_from_slice(&e[d]); }
+
+    build_verifier(&hexstr(&lckp_h), &hexstr(&reg_h));
+    let v_op = ctx.deploy_cell(Bytes::from(std::fs::read(VERIFIER).unwrap()));
+    let lock = ctx.build_script(&as_op, Bytes::new()).unwrap();
+    let mut args = SEAL_POLICY.to_vec(); args.extend_from_slice(&LOCK_ADDR);
+    let vtype = ctx.build_script(&v_op, Bytes::from(args)).unwrap();
+
+    let mut bin = vec![0x02u8, 0x01u8]; bin.extend_from_slice(&SRC_TXID); bin.extend_from_slice(&0u32.to_le_bytes());
+    bin.extend_from_slice(&[0u8; 32]); bin.extend_from_slice(&out_state);
+    let bound_in = ctx.create_cell(CellOutput::new_builder().capacity(20000u64.pack()).lock(lock.clone()).type_(Some(vtype.clone()).pack()).build(), Bytes::from(bin));
+    let mut bout = vec![0x02u8, 0x02u8]; bout.extend_from_slice(&th); bout.extend_from_slice(&0u32.to_le_bytes());
+    bout.extend_from_slice(&recipient); bout.extend_from_slice(&out_state);
+    let mut ckpt_data = b"LCKP".to_vec(); ckpt_data.extend_from_slice(&cert_root);
+    let ckpt_op = ctx.create_cell(CellOutput::new_builder().capacity(20000u64.pack()).lock(lock.clone()).type_(Some(ckpt_type).pack()).build(), Bytes::from(ckpt_data));
+    let reg_in = ctx.create_cell(CellOutput::new_builder().capacity(20000u64.pack()).lock(lock.clone()).type_(Some(reg_type.clone()).pack()).build(), Bytes::from(empty_root().to_vec()));
+
+    let w_cert = WitnessArgs::new_builder().input_type(Some(Bytes::from(witness)).pack()).build();
+    let w_reg = WitnessArgs::new_builder().input_type(Some(Bytes::from(reg_wit)).pack()).build();
+    let tx = ctx.complete_tx(TransactionBuilder::default()
+        .input(CellInput::new_builder().previous_output(bound_in).build())
+        .input(CellInput::new_builder().previous_output(reg_in).build())
+        .output(CellOutput::new_builder().capacity(19000u64.pack()).lock(recipient_lock).type_(Some(vtype).pack()).build())
+        .output_data(Bytes::from(bout).pack())
+        .output(CellOutput::new_builder().capacity(20000u64.pack()).lock(lock).type_(Some(reg_type).pack()).build())   // continuing registry
+        .output_data(Bytes::from(new_root.to_vec()).pack())
+        .cell_dep(CellDep::new_builder().out_point(v_op).build())
+        .cell_dep(CellDep::new_builder().out_point(ckpt_op).build())
+        .cell_dep(CellDep::new_builder().out_point(reg_op).build())
+        .cell_dep(CellDep::new_builder().out_point(as_op).build())
+        .witness(w_cert.as_bytes().pack())
+        .witness(w_reg.as_bytes().pack())
+        .build());
+    ctx.verify_tx(&tx, MAX_CYCLES).expect("v2 LEAP_TO_CKB with the REAL nullifier registry must pass in CKB-VM");
 }
