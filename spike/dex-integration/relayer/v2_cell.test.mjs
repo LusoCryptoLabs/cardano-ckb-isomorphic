@@ -42,6 +42,14 @@ test("registry witness is key ‖ 256 siblings (8224 bytes)", () => {
   assert.equal(w.replace(/^0x/, "").slice(0, 64), "77".repeat(32));
 });
 
+test("CROSS-LANGUAGE vector: byte-identical to the bound_asset_v2 Rust host test", () => {
+  // The same fixed (tag, seal, idx, lock, state) must encode identically off-chain (here) and on-chain
+  // (bound_asset_v2.rs::tests::layout_vector_matches_offchain_builder). If these diverge, the builder emits
+  // cells the verifier won't parse.
+  const expected = "0x0202" + "ab".repeat(32) + "00000000" + "33".repeat(32) + "ee".repeat(8);
+  assert.equal(encodeV2Cell({ tag: TAG.CKB_OWNED, sealTxid: "0x" + "ab".repeat(32), sealIdx: 0, lockSlot: "0x" + "33".repeat(32), state: "0x" + "ee".repeat(8) }), expected);
+});
+
 test("rejects bad tag, short txid, wrong sibling count", () => {
   assert.throws(() => encodeV2Cell({ tag: 0x03, sealTxid: "0x" + "00".repeat(32) }));
   assert.throws(() => encodeV2Cell({ tag: TAG.CKB_OWNED, sealTxid: "0x00" }));

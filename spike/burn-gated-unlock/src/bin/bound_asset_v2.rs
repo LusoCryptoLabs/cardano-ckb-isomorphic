@@ -405,6 +405,18 @@ mod tests {
         assert_ne!(rc, b2b256(&[&state,&seal]));        // recipient genuinely enters the digest
     }
     #[test]
+    fn layout_vector_matches_offchain_builder() {
+        // CROSS-LANGUAGE vector shared with relayer/v2_cell.test.mjs: the off-chain builder must emit
+        // byte-identical cells, else it produces cells this verifier won't parse.
+        let mut d = vec![0x02u8, CKB_OWNED];
+        d.extend_from_slice(&[0xABu8; 32]); d.extend_from_slice(&0u32.to_le_bytes());
+        d.extend_from_slice(&[0x33u8; 32]); d.extend_from_slice(&[0xEEu8; 8]);
+        let hex: alloc::string::String = d.iter().map(|b| alloc::format!("{:02x}", b)).collect();
+        let expected = alloc::format!("0202{}00000000{}{}", "ab".repeat(32), "33".repeat(32), "ee".repeat(8));
+        assert_eq!(hex, expected);
+        assert_eq!(tag_of(&d), Ok(CKB_OWNED));
+    }
+    #[test]
     fn v2_layout_offsets() {
         // version(1) tag(1) seal_txid(32) seal_idx(4) lock(32) state -> seal=[2..38], lock=[38..70], state=[70..]
         let mut d=[0u8;78].to_vec(); d[0]=0x02; d[1]=CKB_OWNED;
