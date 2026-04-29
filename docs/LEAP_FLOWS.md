@@ -1,5 +1,9 @@
 # Leap flows — orchestration (leap-in, transfer, leap-out)
 
+> ⚠️ **TERMINOLOGY:** the "leap-in / leap-out" in this file are MINT / BURN — read them as **bind / unbind**.
+> The word **leap** is reserved for the RGB++-style ownership TOGGLE on a surviving cell (v2), which is a
+> different mechanism. See **`docs/TERMINOLOGY.md`** (authoritative) and `docs/LEAP_BRIEF_V2.md`.
+>
 > How the pieces (Cardano binding lock + seal NFT; CKB BoundAsset + the verification oracle)
 > compose into the end-to-end value flows.
 >
