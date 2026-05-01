@@ -66,7 +66,7 @@ fn v2_finalize_accepts_real_cert() {
         Bytes::from(cell));
 
     // the "LCKP"||cert_root checkpoint cell-dep, TYPED so its type-hash == the verifier's LCKP_TYPE_HASH.
-    let mut ckpt_data = b"LCKP".to_vec(); ckpt_data.extend_from_slice(&cert_root);
+    let mut ckpt_data = b"LCKP".to_vec(); ckpt_data.extend_from_slice(&cert_root); ckpt_data.extend_from_slice(&4_357_154u64.to_le_bytes());   // M2: LCKP‖root‖height(8 LE)
     let ckpt_op = ctx.create_cell(
         CellOutput::new_builder().capacity(20000u64.pack()).lock(lock.clone()).type_(Some(ckpt_type).pack()).build(),
         Bytes::from(ckpt_data));
@@ -109,7 +109,7 @@ fn run_dispatch(version: u8, tag: u8) -> Result<ckb_testtool::ckb_types::core::C
     let bound_in = ctx.create_cell(
         CellOutput::new_builder().capacity(20000u64.pack()).lock(lock.clone()).type_(Some(vtype).pack()).build(),
         Bytes::from(cell));
-    let mut ckpt_data = b"LCKP".to_vec(); ckpt_data.extend_from_slice(&cert_root);
+    let mut ckpt_data = b"LCKP".to_vec(); ckpt_data.extend_from_slice(&cert_root); ckpt_data.extend_from_slice(&4_357_154u64.to_le_bytes());   // M2: LCKP‖root‖height(8 LE)
     let ckpt_op = ctx.create_cell(
         CellOutput::new_builder().capacity(20000u64.pack()).lock(lock.clone()).type_(Some(ckpt_type).pack()).build(),
         Bytes::from(ckpt_data));

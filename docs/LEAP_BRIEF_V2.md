@@ -501,44 +501,35 @@ Cardano `Transfer` routes to TRANSITION (no nullifier insert), confirmed by the 
 
 ---
 
-## 7. Reorg / finality handling for the Mithril import (M2 — INHERITED ASSUMPTION)
+## 7. Reorg / finality handling for the Mithril import (M2 — IMPLEMENTED, Option A)
 
-**M2 is an inherited Mithril trust assumption, NOT an enforced on-chain depth gate.** The previous draft
-proposed extending the `LCKP` checkpoint to `"LCKP"‖root‖cardano_tip_slot‖root_max_slot` and having the
-TxSetCert verifier enforce `root_max_slot ≤ cardano_tip_slot − K`. **That mechanism is unimplementable as
-specified**, for two ground-truth reasons:
+> **CORRECTION + STATUS.** An earlier draft claimed M2 was unimplementable because "the LCKP / TxSetCert carry
+> no slot source." **That was wrong.** The Mithril cert's signed message AUTHENTICATES the Cardano tip height:
+> `latest_block_number` is a signed cert part, committed by `check_m1`'s `Sha256(parts) == signed_message` plus
+> the BLS-STM aggregate. The verifier simply **discarded** it. M2 (Option A) is now implemented:
 
-1. The **live `LCKP` format carries NO slot source**: it is `"LCKP"(4) ‖ root(32)` (consumed at `bau:165` with
-   `d.len() >= 36`; `LIVE_STATUS.md:46` shows the live checkpoint cell is `"LCKP"||root`). There are no slot
-   fields, and the per-leap script only ever sees the 32-byte root (`bau:159-176`).
-2. The **Mithril TxSetCert verifier and certificate carry no per-tx or per-root slot/height the script can read
-   in-VM** — a certified tx-set root attests *membership in a stake-majority-signed snapshot*, not a confirmation
-   depth. There is no authenticated `root_max_slot` or `cardano_tip_slot` to compare. Inventing one would be
-   exactly the "invented mechanism" the review forbids.
+1. **`cert-verify` publishes the authenticated height.** It extracts `latest_block_number` from the signed
+   parts and publishes `"LCKP" ‖ tx_root(32) ‖ latest_block_number(8 LE)` — 44 bytes (was 36)
+   (`spike/light-client-cell/cert-verify/src/main.rs`). When the checkpoint is ADVANCED (a prior LCKP is spent
+   in-group), the new height **must not regress** (monotonic; `return 16`).
+2. **`bound_asset_v2` binds the leap to it.** `checkpoint_root()` reads the 44-byte format and returns
+   `(root, height)`; a leap requires a non-zero authenticated finalized height (`return 6`). Verified in real
+   CKB-VM (the in-VM leap + finalize suites run against 44-byte checkpoints).
 
-### 7.1 What M2 actually rests on (honest statement)
+### 7.1 Why this is the right-sized gate (Mithril already certifies FINALIZED data)
+Mithril CardanoTransactions certifies **immutable-file (finalized) Cardano data** — the certified tx-set is
+reorg-safe by construction, and `latest_block_number` is already a finalized height. The leap's reorg safety is
+therefore *inherent* in Mithril's finality; Option A makes that finality **explicit and on-chain-checked** (an
+authenticated height carried by a monotonic, non-regressing checkpoint) instead of an unstated assumption. A
+literal `root_max_slot ≤ tip − K` gate would need a SEPARATE current-tip oracle (a two-checkpoint scheme) and is
+largely **redundant** with Mithril's immutable-file finality — deliberately not built (it adds machinery, not
+safety).
 
-The leap finalizes on **Mithril-certified, stake-majority-signed, finalized Cardano snapshots** — the *same*
-trust root the LIVE mint / transfer / unbind flows already depend on and that ran on Pudge end-to-end
-(`LIVE_STATUS.md` Steps 3–5). A certified tx-set is final by Mithril's honest-stake-majority assumption and
-snapshot cadence; invalidating an imported leap would require a Cardano reorg **deeper than the Mithril
-snapshot that certified it**, which contradicts the Mithril security assumption (`BINDING_SPEC.md:146`). So:
-
-> **M2 status: INHERITED-ASSUMPTION. The v2 leap is *no worse than production* on reorg finality — it inherits
-> exactly the finality of every live binding flow.** There is **no** enforced on-chain depth gate, and this doc
-> does **not** claim one.
-
-### 7.2 Optional future verifier upgrade (would enable a real depth gate)
-
-A depth gate becomes *implementable* only if the TxSetCert verifier is upgraded to expose an **authenticated**
-`root_max_slot` (the highest Cardano slot included in `root`) and an authenticated tip, and the `LCKP` cell is
-extended to carry them under the same `LCKP_TYPE_HASH` authentication (`bau:14,166-167`). Then a future verifier
-(not the per-leap script) could admit a root only if `root_max_slot ≤ tip − K_SLOTS`. This is a **verifier-side
-upgrade**, out of scope for v2 because the current verifier exposes no slot source. Until then, M2 remains the
-inherited assumption of §7.1.
-
-**Residual (RQ-4):** decide whether to fund the TxSetCert verifier upgrade for high-value-at-risk instances. For
-the demo and parity-with-production, the inherited Mithril assumption is accepted.
+### 7.2 Residual (RQ-4)
+For per-leap freshness beyond "the checkpoint carries an authenticated, monotonic finalized height," make the
+LCKP checkpoint a **type-id singleton** so a leap can only reference the one canonical (latest) checkpoint — a
+deploy-time hardening (the live relayer already maintains a single canonical checkpoint). The
+height + monotonic enforcement above is the substantive M2 closure.
 
 ---
 

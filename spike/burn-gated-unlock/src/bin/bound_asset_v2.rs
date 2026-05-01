@@ -172,14 +172,19 @@ fn seal_at_lock(b:&[u8], lock_addr:&[u8], seal_policy:&[u8]) -> Option<bool> {
     None
 }
 
-fn checkpoint_root()->Option<Vec<u8>>{
+// SEC M2: the LCKP checkpoint is "LCKP" ‖ tx_root(32) ‖ latest_block_number(8 LE) — the AUTHENTICATED Cardano
+// finalized height the (upgraded) cert-verify publishes from the signed cert. Returns (root, height).
+fn checkpoint_root()->Option<(Vec<u8>, u64)>{
     let mut i=0;
     loop {
         match load_cell_data(i, Source::CellDep) {
             Ok(d)=>{
-                if d.len()>=36 && &d[0..4]==b"LCKP" {
+                if d.len()>=44 && &d[0..4]==b"LCKP" {
                     if let Ok(Some(th))=load_cell_type_hash(i, Source::CellDep) {
-                        if th==LCKP_TYPE_HASH { return Some(d[4..36].to_vec()); }
+                        if th==LCKP_TYPE_HASH {
+                            let mut hb=[0u8;8]; hb.copy_from_slice(&d[36..44]);
+                            return Some((d[4..36].to_vec(), u64::from_le_bytes(hb)));
+                        }
                     }
                 }
                 i+=1;
@@ -307,7 +312,10 @@ fn program_entry()->i8{
     // A6 (renumbered to 38/39, RQ-9): exactly one bound cell in this type group.
     if load_cell_data(1, Source::GroupInput).is_ok() { return 38; }
     if load_cell_data(1, Source::GroupOutput).is_ok() { return 39; }
-    let cert_root = match checkpoint_root() { Some(r)=>r, None=>return 1 };
+    // SEC M2: bind the leap to a checkpoint carrying an AUTHENTICATED, finalized Cardano height (the upgraded
+    // cert-verify requires + monotonically advances it). A height of 0 is not a real finalized snapshot.
+    let (cert_root, cert_height) = match checkpoint_root() { Some(r)=>r, None=>return 1 };
+    if cert_height == 0 { return 6; }
     let w = match load_witness_args(0, Source::GroupInput) {
         Ok(w)=>w, Err(_)=> match load_witness_args(0, Source::GroupOutput) { Ok(w)=>w, Err(_)=>return 2 } };
     let lock = match w.input_type().to_opt() { Some(l)=>l.raw_data(), None=>return 3 };
