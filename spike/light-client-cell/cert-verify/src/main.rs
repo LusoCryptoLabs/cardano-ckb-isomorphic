@@ -206,8 +206,22 @@ fn program_entry()->i8{
     if !verify(&ct){ return 20; }
     // bind tx_root to the signed cardano_transactions_merkle_root part (so the published root is the cert's)
     match part_val(&ct, b"cardano_transactions_merkle_root") { Some(v) if v==hexlow(&ct.tx_root).as_slice() => {}, _ => return 14 }
-    // publish LCKP || tx_root in this output cell (an authenticated tx-set checkpoint)
+    // SEC M2: the Cardano tip height is AUTHENTICATED — `latest_block_number` is a signed cert part (committed
+    // by check_m1's Sha256(parts)==signed_message + the BLS aggregate). Publish it next to the root so leap
+    // consumers bind to the certified snapshot's EXPLICIT finalized height (Mithril certifies immutable data,
+    // so this height is final; surfacing it makes the inherited finality on-chain-checkable, not assumed).
+    let height = match part_val(&ct, b"latest_block_number") { Some(v) => parse_uint(v, 0).0, None => return 15 };
+    let hb = height.to_le_bytes();
+    // M2 monotonic: when this checkpoint is ADVANCED (a previous LCKP is spent in the same group), the new
+    // height must NOT regress — so the canonical checkpoint cannot roll back to a staler snapshot.
+    if let Ok(prev) = load_cell_data(0, Source::GroupInput) {
+        if prev.len() >= 44 && &prev[0..4]==b"LCKP" {
+            let mut ph=[0u8;8]; ph.copy_from_slice(&prev[36..44]);
+            if height < u64::from_le_bytes(ph) { return 16; }
+        }
+    }
+    // publish LCKP || tx_root(32) || latest_block_number(8 LE)  (44 bytes)
     match load_cell_data(0,Source::GroupOutput){
-        Ok(o)=> if o.len()==36 && &o[0..4]==b"LCKP" && &o[4..36]==ct.tx_root.as_slice(){0}else{5},
+        Ok(o)=> if o.len()==44 && &o[0..4]==b"LCKP" && &o[4..36]==ct.tx_root.as_slice() && o[36..44]==hb {0} else {5},
         Err(_)=>4 }
 }

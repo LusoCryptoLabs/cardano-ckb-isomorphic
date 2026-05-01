@@ -16,15 +16,17 @@ tally, the one open decision (M2), the gated outward-facing steps, and the resid
   layout.
 - **Terminology:** `TERMINOLOGY.md` (leap = the toggle; old leap-in/out = bind/unbind).
 
-## ⚖️ The one decision — M2 (RQ-4): reorg/finality
-v2 has **no on-chain confirmation-depth gate** (RGB++'s `BTC_TIME_lock` is one; ours is the relayer waiting for
-a Mithril cert). It is unimplementable as-is — the `LCKP` checkpoint is `"LCKP"‖root` with no slot source.
-**Choose one:**
-1. **Accept the inherited Mithril assumption** (parity with the live mint/transfer/unbind flows; finality =
-   Mithril honest-stake-majority snapshot). Zero extra work. Recommended for the demo + first testnet run.
-2. **Fund the verifier upgrade** — extend the TxSetCert verifier + `LCKP` to carry an authenticated
-   `root_max_slot`/tip, enabling an on-chain `root_max_slot ≤ tip − K` gate (`LEAP_BRIEF_V2.md` §7.2). A real
-   sub-project; warranted only for high-value-at-risk instances.
+## ✅ M2 (reorg/finality) — IMPLEMENTED (Option A)
+The earlier "no slot source" claim was wrong: the Mithril cert's signed message **authenticates**
+`latest_block_number` (the Cardano finalized tip height). Done:
+- `cert-verify` now publishes `"LCKP" ‖ tx_root ‖ height(8 LE)` (44 B) and **monotonically** advances the
+  height (no regression).
+- `bound_asset_v2` reads the 44-byte checkpoint and binds each leap to a non-zero authenticated finalized
+  height (verified in real CKB-VM).
+Mithril already certifies immutable (finalized) data, so this makes the inherited finality **explicit +
+on-chain-checked** rather than assumed; a literal `tip − K` gate would need a separate tip oracle and is
+redundant (`LEAP_BRIEF_V2.md` §7). **Residual hardening (RQ-4):** make the LCKP checkpoint a type-id singleton
+so a leap can only reference the canonical (latest) one.
 
 ## 🔒 Gated go-live (outward-facing — needs confirmation + funded keys)
 These submit live transactions; do them deliberately, not by inference.

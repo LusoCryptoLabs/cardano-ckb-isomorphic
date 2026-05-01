@@ -132,7 +132,7 @@ fn build_s5(bad_rc: bool, wrong_lock: bool, omit_registry: bool) -> (Context, ck
     let mut bout = vec![0x02u8, 0x02u8]; bout.extend_from_slice(&th); bout.extend_from_slice(&0u32.to_le_bytes());
     bout.extend_from_slice(&recipient); bout.extend_from_slice(&out_state);
     let out_lock = if wrong_lock { lock.clone() } else { recipient_lock };          // wrong actual lock -> 29
-    let mut ckpt_data = b"LCKP".to_vec(); ckpt_data.extend_from_slice(&cert_root);
+    let mut ckpt_data = b"LCKP".to_vec(); ckpt_data.extend_from_slice(&cert_root); ckpt_data.extend_from_slice(&4_357_154u64.to_le_bytes());   // M2: LCKP‖root‖height(8 LE)
     let ckpt_op = ctx.create_cell(CellOutput::new_builder().capacity(20000u64.pack()).lock(lock.clone()).type_(Some(ckpt_type).pack()).build(), Bytes::from(ckpt_data));
 
     let w_cert = WitnessArgs::new_builder().input_type(Some(Bytes::from(witness)).pack()).build();
@@ -210,7 +210,7 @@ fn s4_leap_to_cardano_accepts() {
     // CardanoBound output: dest seal == th, lock slot ZEROED, state unchanged
     let mut bout = vec![0x02u8, 0x01u8]; bout.extend_from_slice(&th); bout.extend_from_slice(&0u32.to_le_bytes());
     bout.extend_from_slice(&[0u8; 32]); bout.extend_from_slice(&out_state);
-    let mut ckpt_data = b"LCKP".to_vec(); ckpt_data.extend_from_slice(&cert_root);
+    let mut ckpt_data = b"LCKP".to_vec(); ckpt_data.extend_from_slice(&cert_root); ckpt_data.extend_from_slice(&4_357_154u64.to_le_bytes());   // M2: LCKP‖root‖height(8 LE)
     let ckpt_op = ctx.create_cell(CellOutput::new_builder().capacity(20000u64.pack()).lock(sink.clone()).type_(Some(ckpt_type).pack()).build(), Bytes::from(ckpt_data));
 
     let w_cert = WitnessArgs::new_builder().input_type(Some(Bytes::from(witness)).pack()).build();
@@ -259,7 +259,7 @@ fn s2_transition_accepts() {
     // output CkbOwned: dest seal = th, lock slot == its ACTUAL lock (ls_pin), state = new_state
     let mut bout = vec![0x02u8, 0x02u8]; bout.extend_from_slice(&th); bout.extend_from_slice(&0u32.to_le_bytes());
     bout.extend_from_slice(&out_lock_h); bout.extend_from_slice(&new_state);
-    let mut ckpt_data = b"LCKP".to_vec(); ckpt_data.extend_from_slice(&cert_root);
+    let mut ckpt_data = b"LCKP".to_vec(); ckpt_data.extend_from_slice(&cert_root); ckpt_data.extend_from_slice(&4_357_154u64.to_le_bytes());   // M2: LCKP‖root‖height(8 LE)
     let ckpt_op = ctx.create_cell(CellOutput::new_builder().capacity(20000u64.pack()).lock(lock.clone()).type_(Some(ckpt_type).pack()).build(), Bytes::from(ckpt_data));
 
     let w_cert = WitnessArgs::new_builder().input_type(Some(Bytes::from(witness)).pack()).build();
@@ -312,7 +312,7 @@ fn s5_leap_with_real_nullifier_registry() {
     let bound_in = ctx.create_cell(CellOutput::new_builder().capacity(20000u64.pack()).lock(lock.clone()).type_(Some(vtype.clone()).pack()).build(), Bytes::from(bin));
     let mut bout = vec![0x02u8, 0x02u8]; bout.extend_from_slice(&th); bout.extend_from_slice(&0u32.to_le_bytes());
     bout.extend_from_slice(&recipient); bout.extend_from_slice(&out_state);
-    let mut ckpt_data = b"LCKP".to_vec(); ckpt_data.extend_from_slice(&cert_root);
+    let mut ckpt_data = b"LCKP".to_vec(); ckpt_data.extend_from_slice(&cert_root); ckpt_data.extend_from_slice(&4_357_154u64.to_le_bytes());   // M2: LCKP‖root‖height(8 LE)
     let ckpt_op = ctx.create_cell(CellOutput::new_builder().capacity(20000u64.pack()).lock(lock.clone()).type_(Some(ckpt_type).pack()).build(), Bytes::from(ckpt_data));
     let reg_in = ctx.create_cell(CellOutput::new_builder().capacity(20000u64.pack()).lock(lock.clone()).type_(Some(reg_type.clone()).pack()).build(), Bytes::from(empty_root().to_vec()));
 
