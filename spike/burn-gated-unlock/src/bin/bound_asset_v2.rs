@@ -13,7 +13,8 @@
 #![cfg_attr(not(test), no_main)]
 #[cfg(test)] extern crate alloc;   // host test build: default_alloc!() (which links alloc) is cfg(not(test))-gated
 use alloc::vec::Vec;
-use ckb_std::{ckb_constants::Source, high_level::{load_witness_args, load_cell_data, load_cell_type_hash, load_cell_lock_hash, load_script}};
+use ckb_std::{ckb_constants::Source, high_level::{load_witness_args, load_cell_data, load_cell_type, load_cell_type_hash, load_cell_lock_hash, load_script}};
+use ckb_std::ckb_types::prelude::*;   // RQ-8: Byte32/Byte::as_slice on Script.code_hash()/hash_type()
 // SEC A1: the ONLY trusted checkpoint is one carrying the TxSetCert verifier's type script (cert-verified
 // in-VM). Same authenticated checkpoint as v1 (cv_deploy type-hash 0x855231b3).
 // Deploy/test-time parameterization of the two "set at deploy" type hashes (default = production value).
@@ -174,8 +175,12 @@ fn seal_at_lock(b:&[u8], lock_addr:&[u8], seal_policy:&[u8]) -> Option<bool> {
 
 // SEC M2: the LCKP checkpoint is "LCKP" ‖ tx_root(32) ‖ latest_block_number(8 LE) — the AUTHENTICATED Cardano
 // finalized height the (upgraded) cert-verify publishes from the signed cert. Returns (root, height).
-fn checkpoint_root()->Option<(Vec<u8>, u64)>{
-    let mut i=0;
+// RQ-4 hardening: the canonical checkpoint is a TYPE-ID SINGLETON, so at most one LIVE cell carries
+// LCKP_TYPE_HASH and a leap can only reference the latest snapshot. Defense-in-depth: scan ALL cell-deps and
+// fail closed if two trusted checkpoints DISAGREE — never silently pick a stale root from a smuggled-in dep.
+fn checkpoint_root()->Result<(Vec<u8>, u64), i8>{
+    let mut found: Option<(Vec<u8>, u64)> = None;
+    let mut i=0usize;
     loop {
         match load_cell_data(i, Source::CellDep) {
             Ok(d)=>{
@@ -183,16 +188,22 @@ fn checkpoint_root()->Option<(Vec<u8>, u64)>{
                     if let Ok(Some(th))=load_cell_type_hash(i, Source::CellDep) {
                         if th==LCKP_TYPE_HASH {
                             let mut hb=[0u8;8]; hb.copy_from_slice(&d[36..44]);
-                            return Some((d[4..36].to_vec(), u64::from_le_bytes(hb)));
+                            let cur=(d[4..36].to_vec(), u64::from_le_bytes(hb));
+                            match &found {
+                                Some(prev) if *prev != cur => return Err(53),   // RQ-4: conflicting checkpoints -> fail closed
+                                Some(_) => {}                                    // exact-duplicate dep -> harmless
+                                None => found = Some(cur),
+                            }
                         }
                     }
                 }
                 i+=1;
             }
-            Err(_)=>return None,
+            Err(_)=>break,
         }
-        if i>64 { return None; }
+        if i>64 { break; }
     }
+    found.ok_or(1)   // no trusted checkpoint present at all
 }
 
 // v2 cell tag check: version 0x02, tag ∈ {CARDANO_BOUND, CKB_OWNED}, min length 70.
@@ -202,6 +213,23 @@ fn tag_of(d:&[u8])->Result<u8,i8>{
     let t=d[1];
     if t!=CARDANO_BOUND && t!=CKB_OWNED { return Err(44); }
     Ok(t)
+}
+// RQ-8: serialize leaps across instances. Exactly one bound_asset_v2 cell (ANY per-instance args) may appear
+// among the tx's inputs, and one among its outputs. Instances are identified by CODE hash (shared across all
+// args) so this spans every type group. Forbidding the batch at the verifier closes the cross-type-group
+// same-seal vector (two groups nullifying one Cardano seal via a single registry insert) — the deploy-time
+// choice over a batch-aware registry (docs/LEAP_BRIEF_V2.md §10, RQ-8). Unrelated cells are ignored (only our
+// own code counts), so legitimate co-occurring protocols are never griefed.
+fn count_instances(source: Source, my_code:&[u8], my_ht:u8)->usize{
+    let mut c=0usize; let mut i=0usize;
+    loop {
+        match load_cell_type(i, source) {
+            Ok(Some(s))=>{ if s.code_hash().as_slice()==my_code && s.hash_type().as_slice()[0]==my_ht { c+=1; } i+=1; }
+            Ok(None)=>{ i+=1; }
+            Err(_)=>break,
+        }
+    }
+    c
 }
 // Invariant LS (B3/F6): every produced CkbOwned cell's lock slot must equal its ACTUAL on-chain lock, and the
 // actual lock must not be the well-known anyone-can-spend (all-zero) hash.
@@ -312,9 +340,16 @@ fn program_entry()->i8{
     // A6 (renumbered to 38/39, RQ-9): exactly one bound cell in this type group.
     if load_cell_data(1, Source::GroupInput).is_ok() { return 38; }
     if load_cell_data(1, Source::GroupOutput).is_ok() { return 39; }
+    // RQ-8: one bound cell of THIS code among inputs, one among outputs — across ALL type groups (serialize
+    // leaps; closes the cross-group same-seal batch by forbidding batching here). Runs before the cert so a
+    // batched tx is rejected cheaply (51/52) regardless of whose certificate it carries.
+    let code = script.code_hash();
+    let my_ht = script.hash_type().as_slice()[0];
+    if count_instances(Source::Input, code.as_slice(), my_ht) > 1 { return 51; }
+    if count_instances(Source::Output, code.as_slice(), my_ht) > 1 { return 52; }
     // SEC M2: bind the leap to a checkpoint carrying an AUTHENTICATED, finalized Cardano height (the upgraded
     // cert-verify requires + monotonically advances it). A height of 0 is not a real finalized snapshot.
-    let (cert_root, cert_height) = match checkpoint_root() { Some(r)=>r, None=>return 1 };
+    let (cert_root, cert_height) = match checkpoint_root() { Ok(r)=>r, Err(e)=>return e };
     if cert_height == 0 { return 6; }
     let w = match load_witness_args(0, Source::GroupInput) {
         Ok(w)=>w, Err(_)=> match load_witness_args(0, Source::GroupOutput) { Ok(w)=>w, Err(_)=>return 2 } };
@@ -423,6 +458,19 @@ mod tests {
         let expected = alloc::format!("0202{}00000000{}{}", "ab".repeat(32), "33".repeat(32), "ee".repeat(8));
         assert_eq!(hex, expected);
         assert_eq!(tag_of(&d), Ok(CKB_OWNED));
+    }
+    #[test]
+    fn cross_language_rc_and_stateonly_vectors() {
+        // CROSS-LANGUAGE vectors shared with relayer/cardano_leap_v2.test.mjs: the Cardano builder must compute
+        // byte-identical commitments (plain BLAKE2b-256, NO personalization), else the certified datum won't
+        // match the verifier's RC (S5) / state-only commitment (S1/S2/S4) checks.
+        let state = b"leap-demo-state";
+        let mut seal36 = [0xABu8; 36]; for k in 32..36 { seal36[k] = 0; }   // "ab"*32 ‖ 0u32 LE
+        let recip = [0x33u8; 32];
+        let rc: alloc::string::String = b2b256(&[state, &seal36, &recip]).iter().map(|b| alloc::format!("{:02x}", b)).collect();
+        assert_eq!(rc, "c08948bc1439930d9007793543b88abf866d712e2f9cbccce3c7fea86775fbc7");
+        let so: alloc::string::String = b2b256(&[b"leap-out-state"]).iter().map(|b| alloc::format!("{:02x}", b)).collect();
+        assert_eq!(so, "10f5119872cc031eba985be57ac53ab22972c1b25066edb31932aa6d2c21c092");
     }
     #[test]
     fn v2_layout_offsets() {

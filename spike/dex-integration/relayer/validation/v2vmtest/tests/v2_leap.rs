@@ -226,6 +226,54 @@ fn s4_leap_to_cardano_accepts() {
     ctx.verify_tx(&tx, MAX_CYCLES).expect("v2 LEAP_TO_CARDANO must pass in CKB-VM");
 }
 
+// S1 GENESIS (∅ -> CkbOwned): a fresh bound cell minted by a certified Cardano seal. There is NO bound INPUT,
+// so the cert witness is read from GroupOutput[0] (program_entry's fallback). Exercises the genesis branch end
+// to end in CKB-VM — seal == th, STATE-ONLY commitment, seal-positively-at-lock, and ls_pin on the new cell —
+// closing the last open positive branch in the v2 matrix.
+#[test]
+fn s1_genesis_accepts() {
+    let mut ctx = Context::default();
+    let as_op = ctx.deploy_cell(ALWAYS_SUCCESS.clone());
+    let out_lock = ctx.build_script(&as_op, Bytes::from(b"genowner".to_vec())).unwrap();   // the new cell's owner
+    let out_lock_h = out_lock.calc_script_hash().as_slice().to_vec();
+    let reg_type = ctx.build_script(&as_op, Bytes::from(b"registry".to_vec())).unwrap();
+    let reg_h = reg_type.calc_script_hash().as_slice().to_vec();
+    let ckpt_type = ctx.build_script(&as_op, Bytes::new()).unwrap();
+    let lckp_h = ckpt_type.calc_script_hash().as_slice().to_vec();
+
+    let out_state = b"genesis-state".to_vec();
+    let commitment = b2b256(&[&out_state]);                              // STATE-ONLY (live parity)
+    let datum = datum2(&OWNER, &commitment);
+    let tx_body = leap_tx_body(&SRC_TXID, 0, &LOCK_ADDR, &SEAL_POLICY, &b"SEAL".to_vec(), &datum);
+    let th = b2b256(&[&tx_body]);
+    let (cert_root, witness) = certify(&tx_body);
+
+    build_verifier(&hexstr(&lckp_h), &hexstr(&reg_h));
+    let v_op = ctx.deploy_cell(Bytes::from(std::fs::read(VERIFIER).unwrap()));
+    let lock = ctx.build_script(&as_op, Bytes::new()).unwrap();          // funding-cell lock (always_success)
+    let mut args = SEAL_POLICY.to_vec(); args.extend_from_slice(&LOCK_ADDR);
+    let vtype = ctx.build_script(&v_op, Bytes::from(args)).unwrap();
+
+    // NO bound input — only a funding cell. Output 0 is the genesis CkbOwned cell (so GroupOutput[0] == witness[0]).
+    let funding = ctx.create_cell(CellOutput::new_builder().capacity(20000u64.pack()).lock(lock.clone()).build(), Bytes::new());
+    let mut bout = vec![0x02u8, 0x02u8]; bout.extend_from_slice(&th); bout.extend_from_slice(&0u32.to_le_bytes());
+    bout.extend_from_slice(&out_lock_h); bout.extend_from_slice(&out_state);
+    let mut ckpt_data = b"LCKP".to_vec(); ckpt_data.extend_from_slice(&cert_root); ckpt_data.extend_from_slice(&4_357_154u64.to_le_bytes());
+    let ckpt_op = ctx.create_cell(CellOutput::new_builder().capacity(20000u64.pack()).lock(lock.clone()).type_(Some(ckpt_type).pack()).build(), Bytes::from(ckpt_data));
+
+    let w_cert = WitnessArgs::new_builder().input_type(Some(Bytes::from(witness)).pack()).build();
+    let tx = ctx.complete_tx(TransactionBuilder::default()
+        .input(CellInput::new_builder().previous_output(funding).build())
+        .output(CellOutput::new_builder().capacity(19000u64.pack()).lock(out_lock).type_(Some(vtype).pack()).build())
+        .output_data(Bytes::from(bout).pack())
+        .cell_dep(CellDep::new_builder().out_point(v_op).build())
+        .cell_dep(CellDep::new_builder().out_point(ckpt_op).build())
+        .cell_dep(CellDep::new_builder().out_point(as_op).build())
+        .witness(w_cert.as_bytes().pack())
+        .build());
+    ctx.verify_tx(&tx, MAX_CYCLES).expect("v2 GENESIS must pass in CKB-VM");
+}
+
 // S2 TRANSITION (CkbOwned -> CkbOwned): a CKB-native state transition; exercises ls_pin (invariant LS, B3 for
 // the produced CkbOwned cell) which no leap test hits. State MAY change; the new commitment binds out_state.
 #[test]
