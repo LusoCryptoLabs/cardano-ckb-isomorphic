@@ -47,9 +47,9 @@ ambiguity that a fold-into-state approach would create, and is *why* re-layout b
 | **B1** recipient has no carrier / relayer picks recipient | **CLOSED** | `RC` (folding state ‖ **SOURCE** seal ‖ recipient) rides in `SealDatum` field 1 (commitment) + explicit field 2; owner-signed (`bl:35-36`), Mithril-certified; CKB recomputes `RC` over `in_data[2..38]` and pins the on-chain lock. `RECIPIENT_COMMITMENT.md` §1,§4; new `seal_recipient` next to `bau:66`; `bl:19-22,24-27,38-57` |
 | **B2** mode is shape-inferred (leap ≡ transition) | **CLOSED** | 1-byte **authenticated tag** at cell-data `[1]` as PRIMARY dispatch key; exhaustive 5-shape whitelist with `_ => 40`. Replaces presence-only dispatch at `bau:205,213,231`; tag read in §2,§3 |
 | **B3** type script never reads the cell lock | **CLOSED** | ADD `load_cell_lock_hash` (absent at `bau:10`); pin output lock on leap-in (`return 29`, §4) and input lock on leap-out (`return 31`, §5) to the committed hash |
-| **B4** no cross-leg replay nullifier | **CLOSED** (core) · RQ-8 | CKB-VM SMT **source-seal-outpoint** nullifier in ONE **genesis-pinned canonical** registry (hardcoded type-id constant, §6.3) gating BOTH leap branches; key derived from the **certified** body, not relayer cell bytes (§6.2, F3). Reuse `bnr` whole-file; consumer ported from `bgu:142-160`; args `bau:182`. The single-seal→single-outcome core is closed; the same-tx **cross-type-group** batch-count enforcement (§6.5) is an integration detail (**RQ-8**). |
+| **B4** no cross-leg replay nullifier | **CLOSED** | CKB-VM SMT **source-seal-outpoint** nullifier in ONE **genesis-pinned canonical** registry (hardcoded type-id constant, §6.3) gating BOTH leap branches; key derived from the **certified** body, not relayer cell bytes (§6.2, F3). Reuse `bnr` whole-file; consumer ported from `bgu:142-160`; args `bau:182`. The same-tx **cross-type-group** batch is now also closed by the verifier-side one-leap-per-tx guard (`count_instances`, `return 51/52`; **RQ-8 RESOLVED**). |
 | **M1** `seal_prime` not pinned to the one-shot NFT | **CLOSED** | leap-out requires `seal_at_lock(..policy..) == Some(true)` (`bau:119-157`); the `seal_nft` mint validator now binds `committed_policy == policy_id` (`sn:10-16`, the inert `_redeemer` is replaced — §5.1, F8); optional `mint_qty==1` (`bgu:85-118`) |
-| **M2** Cardano reorg unenforced | **INHERITED-ASSUMPTION (no enforced on-chain depth gate)** | The leap finalizes on Mithril-certified (stake-majority-signed) finalized snapshots, exactly as the LIVE mint/transfer/unbind flows do. The `LCKP` format `"LCKP"‖root` (`LIVE_STATUS.md:46`, consumed `bau:165`) carries **NO slot source** and the TxSetCert verifier exposes none, so an on-chain `root_max_slot ≤ tip − K` gate is **unimplementable** without a verifier upgrade. M2 is *no worse than production*; residual is RQ-4 (§7) |
+| **M2** Cardano reorg unenforced | **CLOSED (Option A)** | The Mithril cert AUTHENTICATES `latest_block_number`; `cert-verify` now publishes `"LCKP"‖root‖height(8 LE)` (44 B) and advances it **monotonically** (no regression). `bound_asset_v2` binds each leap to a non-zero authenticated finalized height (`return 6`), and `checkpoint_root()` fails closed on conflicting checkpoints (`return 53`, RQ-4). Mithril certifies immutable (finalized) data, so this makes the inherited finality **explicit + on-chain-checked**; a literal depth gate is redundant (§7). Verified in CKB-VM. |
 | **M3** state-unchanged not enforced on flip | **CLOSED** | explicit `in_state == out_state` on **both** flip branches: `LEAP_TO_CARDANO` (`return 32`, §5) and `LEAP_TO_CKB` (`return 47`, §4.3) |
 
 ---
@@ -525,11 +525,13 @@ literal `root_max_slot ≤ tip − K` gate would need a SEPARATE current-tip ora
 largely **redundant** with Mithril's immutable-file finality — deliberately not built (it adds machinery, not
 safety).
 
-### 7.2 Residual (RQ-4)
-For per-leap freshness beyond "the checkpoint carries an authenticated, monotonic finalized height," make the
-LCKP checkpoint a **type-id singleton** so a leap can only reference the one canonical (latest) checkpoint — a
-deploy-time hardening (the live relayer already maintains a single canonical checkpoint). The
-height + monotonic enforcement above is the substantive M2 closure.
+### 7.2 RQ-4 — RESOLVED (checkpoint singleton + fail-closed on conflict)
+The LCKP checkpoint is a **type-id singleton**, so at most one LIVE cell carries `LCKP_TYPE_HASH` and a leap can
+only reference the one canonical (latest) snapshot. As **defense-in-depth**, `checkpoint_root()` no longer
+returns on the first match: it scans ALL cell-deps and **fails closed (`return 53`)** if two trusted checkpoints
+disagree — a smuggled-in stale checkpoint can never make the verifier silently pick the wrong root. Proven in
+real CKB-VM (`v2vmtest/tests/v2_hardening.rs::rq4_conflicting_checkpoints_rejected_53`). Combined with the
+authenticated, monotonic finalized height (§7), M2 is fully closed.
 
 ---
 
@@ -637,10 +639,10 @@ seal-txid/datum/commitment codes 8/9/10 are reused where semantics are unchanged
 - **RQ-3 (Transfer vs. leap routing):** confirm the relayer `classify()` never routes a plain `Transfer` into
   a leap branch (only true tag-flips insert nullifiers); add an integration test that a `Transfer` produces no
   nullifier insert.
-- **RQ-4 (M2 — INHERITED ASSUMPTION):** v2 has **no enforced on-chain depth gate** (the `LCKP`/TxSetCert carry
-  no slot source — §7). M2 is accepted as the same Mithril finality the live flows inherit. The optional future
-  TxSetCert+`LCKP` slot upgrade (§7.2) would let a depth gate be added; decide whether to fund it for
-  high-value instances. **This is the one item NOT fully closed on-chain by design.**
+- **RQ-4 (M2) — RESOLVED.** The checkpoint now carries an AUTHENTICATED, monotonic finalized height (§7) and
+  `checkpoint_root()` **fails closed on conflicting checkpoints** (`return 53`, §7.2), with the LCKP cell a
+  type-id singleton. Proven in CKB-VM (`v2_hardening::rq4_conflicting_checkpoints_rejected_53`). A literal depth
+  gate stays deliberately unbuilt (redundant with Mithril's immutable-file finality — §7.1).
 - **RQ-5 (seal_idx authentication):** the SMT key folds the **certified** `src_idx` from `ins` (`bau:203`), not
   `in_data[34..38]`, and cross-checks them (`return 46`). Confirm `parse()` yields the consumed `(txid, idx)`
   for the specific seal outpoint on both S4 and S5 in integration (F3 closure depends on it).
@@ -651,18 +653,16 @@ seal-txid/datum/commitment codes 8/9/10 are reused where semantics are unchanged
 - **RQ-7 (LeapToCkb vs FINALIZE naming):** `LEAP_TO_CKB` (inbound, Cardano→CKB) re-parks the seal
   (`Some(true)`) and reads the recipient datum; `FINALIZE` (outbound leap-out, CKB→Cardano) releases the seal
   (`Some(false)`) and reads no recipient. Keep them distinct in code and tests.
-- **RQ-8 (F7 batch-count enforcement) — STATUS + sharpened.** The **single-key** path is DONE: the canonical
-  registry is the existing `burn_nullifier_registry` (genesis type-id singleton, 256-deep SMT), reused
-  verbatim; the consumer + real registry are in-VM tested end-to-end
-  (`v2vmtest::s5_leap_with_real_nullifier_registry`), and `LEAP_REGISTRY_TYPE_HASH` is set to that registry's
-  genesis type-id at deploy. The single-key registry is **safe** for the realistic path (distinct seals; it
-  admits at most one insert per spend, so two *distinct*-key leaps in one tx already fail). The residual is the
-  **cross-type-group SAME-seal** vector: two v2 instances (different args ⇒ different type groups) genesis'd
-  against the SAME Cardano seal output in one tx share one nullifier key, so a single insert would satisfy
-  both. Closing it needs EITHER the batch registry (`inserted_keys.len() == #leap-inputs`, all distinct — the
-  registry counts in-tx inputs whose type-script CODE hash == the v2 verifier's, since per-instance args make
-  type hashes differ) OR a verifier-side "exactly one v2-leap input per tx" guard (own-`code_hash` scan). It is
-  an exotic multi-instance attack; pick the mechanism at deploy rather than ship a rushed batch.
+- **RQ-8 (cross-type-group same-seal batch) — RESOLVED (verifier-side one-leap-per-tx guard).** The single-key
+  path was already DONE (canonical `burn_nullifier_registry`, genesis type-id singleton, 256-deep SMT, in-VM
+  tested end-to-end in `v2vmtest::s5_leap_with_real_nullifier_registry`). The residual cross-type-group SAME-seal
+  vector (two v2 instances genesis'd against one Cardano seal in one tx sharing a single nullifier insert) is now
+  closed by `count_instances()`: `bound_asset_v2` rejects any tx carrying **more than one bound-cell of its own
+  CODE among inputs (`return 51`) or outputs (`return 52`)** — identifying instances by code_hash spans all
+  per-instance type groups, so batching is forbidden at the verifier (the chosen mechanism over a batch-aware
+  registry). It runs before the cert, so a batched tx is rejected cheaply. Proven in CKB-VM
+  (`v2_hardening::rq8_two_bound_inputs_rejected_51`). Unrelated co-occurring cells are ignored (own-code only),
+  so no griefing.
 - **RQ-9 (A6 code renumber):** v2 repurposes the cell-layout codes around `31`/`32`; the AS-IS A6 single-cell
   rejects (`bau:186-187`) must be renumbered to a free range. Pick the final mapping at implementation.
 - **RQ-10 (mint-leg nullifier scope):** the keystone reuse on the Groth16 mint leg (`RECIPIENT_COMMITMENT.md`
