@@ -16,5 +16,12 @@
     "index": 0,
     "codeHash": "0xca24efc3663de1a5fef778664ced06ee3a3e42218385a812f7d0676dbfa3ab03",
     "size": 57808
+  },
+  "cv_deploy_v2": {
+    "txHash": "0xa42e39427e51894f098f98cdd273226ac674058b5f6aec79c813edfb060cfeb8",
+    "index": 0,
+    "codeHash": "0x75b288f3774bfe553fc72895f940578214e2111208f5a85fb5c5dbf5e9017bf9",
+    "size": 104728,
+    "lckpTypeHash": "0xa055798e911a4f7ed074d5e1ee6273683e9a446c70d3e22adab680d70eea5b74"
   }
 }

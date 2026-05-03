@@ -1,0 +1,14 @@
+{
+  "checkpoint": {
+    "txHash": "0xe5e61bdc83a43a753deead3d3883aed2be8b6efcc98f18245f06831971711f83",
+    "index": 0
+  },
+  "root": "0xf613ac5aa1389d702bb708a1274423950b2f2f83caca656da08fb015c7a4366a",
+  "height": "4367879",
+  "data": "0x4c434b50f613ac5aa1389d702bb708a1274423950b2f2f83caca656da08fb015c7a4366a07a6420000000000",
+  "witnessCell": {
+    "txHash": "0xf20bb1331eb1d72b0292ef23f28c58e670cafce37eb1fb0fa2adaa32d667ae53",
+    "index": 0
+  },
+  "lckpTypeHash": "0xa055798e911a4f7ed074d5e1ee6273683e9a446c70d3e22adab680d70eea5b74"
+}

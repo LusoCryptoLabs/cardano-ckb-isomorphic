@@ -14,7 +14,8 @@ test("dataCodeHash == CKB's well-known empty ckbhash (proves we use ckb-default-
 
 test("registry binary's immutable code hash is stable (no option_env => deterministic)", () => {
   const h = deriveCodeHashes();
-  assert.equal(h.registryCodeHash, "0x8b3c821b7a332dd424e00ae2204c4f07950b05ed64fd6987f661755fbd3f5177");
+  // built with RUSTFLAGS="-C target-feature=-a,+forced-atomics" (the atomic-free production binary the CKB-VM accepts)
+  assert.equal(h.registryCodeHash, "0x9d2fc246766108bda40b6818abd8adb137ac993699d04ba30ecad4127bbca743");
   assert.ok(h.boundBytes > 0 && h.registryBytes > 0);
 });
 
