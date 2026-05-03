@@ -4,9 +4,9 @@
     "index": 0
   },
   "ckpt": {
-    "epoch": 1323,
+    "epoch": 1324,
     "outpoint": {
-      "txHash": "0x0848f94efb1081bc317714fb34c078c21f882fa40ea3e458b49798782e140bf7",
+      "txHash": "0x2519ee3cd7ba463aa70b9d24afd07fa1fca184728850c55f52d78792ac7b5c7a",
       "index": 0
     }
   },

@@ -1,0 +1,17 @@
+{
+  "registryCode": {
+    "txHash": "0x2b96f094f34f88d1e8191212ac80133ee66f0a4c59bd23e7c14319b027cc5352",
+    "index": 0,
+    "codeHash": "0x9d2fc246766108bda40b6818abd8adb137ac993699d04ba30ecad4127bbca743"
+  },
+  "registryGenesis": {
+    "txHash": "0x4e159851cb5459f41fd9548748c48ad378453dad278b0b39a16aa513057714d7",
+    "index": 0
+  },
+  "chiralRegTh": "0xdc18fd562bca1834536c926ce8c9d94f608318c3a79a43959c0c46a84265a24e",
+  "boundCode": {
+    "txHash": "0x9a53b5fa677c553c32c1f424e1f15f691629398bfaa7131a1929684d30c8926e",
+    "index": 0,
+    "codeHash": "0x9e3cc70aef86193208f26de7e7102ba15e10b287a4f793a43926345933fc36b3"
+  }
+}

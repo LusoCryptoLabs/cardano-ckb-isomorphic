@@ -62,6 +62,7 @@ async function deployCodeCell(signer, bin, lock) {
   await tx.completeInputsByCapacity(signer);
   await tx.completeFeeBy(signer);
   const txHash = await signer.sendTransaction(tx);
+  await signer.client.waitTransaction(txHash, 1, { timeout: 180000 }); // settle before the next tx funds itself
   return { txHash, outPoint: { txHash, index: 0 }, codeHash: ccc.hashCkb(data) };
 }
 
@@ -78,6 +79,7 @@ async function deployRegistryGenesis(signer, regCodeOutPoint, regCodeHash, lock)
   tx.addCellDeps(ccc.CellDep.from({ outPoint: regCodeOutPoint, depType: "code" })); // so the type script can run
   await tx.completeFeeBy(signer);
   const txHash = await signer.sendTransaction(tx);
+  await signer.client.waitTransaction(txHash, 1, { timeout: 180000 });
   return { txHash, outPoint: { txHash, index: 0 }, typeScript: regType, typeHash: regType.hash() };
 }
 
