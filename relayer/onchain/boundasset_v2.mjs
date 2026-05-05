@@ -76,7 +76,7 @@ async function main() {
   const ckptDep = { outPoint: ckpt.checkpoint, depType: "code" };
 
   const data = ckbOwnedData(txid, 0, lockSlot, state);
-  const bcCap = minCap(data, true) + BigInt(20e8);
+  const bcCap = BigInt(260e8); // occupied = 8 + lock(53) + type(32+1+57 args = 90) + data(~89) = 240; +margin
   const fund = await pickPlain(client, lock, bcCap + FEE + BigInt(61e8));
   const tx = ccc.Transaction.from({
     inputs: [{ previousOutput: fund.outPoint, since: 0n }],
