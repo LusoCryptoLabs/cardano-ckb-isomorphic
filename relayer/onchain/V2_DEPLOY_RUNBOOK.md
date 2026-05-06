@@ -30,6 +30,33 @@ didn't — see GOLIVE bug #2.)
   (build the verifier with `-C debug-assertions=on` to get `ckb_std::debug!` output; `--bin` overrides the script).
 - Fund consolidation (orphaned cells from failed deploys): `node reclaim.mjs --live`.
 
-## Next: the leap TOGGLE (S4/S5) — see GOLIVE §"the leap TOGGLE is next"
-S4 leap-to-cardano (mint seal_prime + CKB S4) then S5 leap-to-ckb (Cardano LeapToCkb seal-spend + CKB S5). The
-S5 Cardano driver still needs writing (pycardano, from `cardano_leap_v2.mjs`'s plan / `transfer_seal_ours.py`).
+## The leap TOGGLE — DONE (full round-trip live)
+The single living seal round-tripped **CkbOwned →(S4)→ CardanoBound →(S5)→ CkbOwned**, each leg a Mithril
+certify-then-prove cycle. The toggle reuses the SAME seal (baked `seal_policy ec8d2c74…`): S4/S5 spend +
+re-park it at `binding_lock`, toggling its datum shape — NOT minting a new one-shot policy (wrong policy id
+would fail `seal_at_lock`).
+
+- S4 leap-to-cardano: Cardano Transfer `5c60bfb3…` (state-only datum) → CKB `0x838e39f2…` (CkbOwned→CardanoBound)
+- S5 leap-to-ckb: Cardano LeapToCkb `f81a66bf…` (RC datum) → CKB `0xb45812da…` (CardanoBound→CkbOwned),
+  recipient `0x7a971a3b…`; registry root `5b7ed70c…`→`f5a10236…` (seal nullified)
+
+### Re-run / extend the toggle
+```
+# S4 (CkbOwned -> CardanoBound)
+wsl: cd cardano/binding && CHIRAL_PREVIEW_KEY=/mnt/c/Users/<u>/.chiral/preview_relayer.key AIKEN=~/.aiken/bin/aiken \
+       python3 leap_to_cardano_ours.py            # Transfer seal, records s4_transfer_tx / s4_seal_index
+  (wait ≈5 min for Mithril cert: python produce_witness.py <s4_transfer_tx> -> status "ready")
+  node leap_to_cardano_v2.mjs [--dump]            # --dump -> s4_dump.json for ckb-debugger, else live
+
+# S5 (CardanoBound -> CkbOwned) — the dangerous leg
+wsl: python3 leap_to_ckb_ours.py [recipient_lock_hash_hex]   # default recipient = our Pudge lock; records s5_*
+  (wait ≈5 min for cert: python produce_witness.py <s5_leap_tx> -> "ready")
+  node leap_to_ckb_v2.mjs [--dump]                # --dump -> s5_dump.json; verify BOTH groups:
+    ckb-debugger --tx-file s5_dump.json --script-group-type type --cell-type input --cell-index 0  # bound
+    ckb-debugger --tx-file s5_dump.json --script-group-type type --cell-type input --cell-index 1  # registry SMT
+```
+Note: the recipient must equal the CKB lock that will own the result (S5 pins the cell's ACTUAL lock to it).
+A SECOND toggle must read the live registry outpoint from `boundasset_v2_state.json::registry` (the genesis
+singleton is consumed) and supply real SMT siblings — `reg_nullifier_witness.py` only does the genesis-empty
+insert. Files: `leap_common_v2.mjs` (shared), `leap_to_cardano_v2.mjs`, `leap_to_ckb_v2.mjs`,
+`reg_nullifier_witness.py`. Full status + hashes: `docs/LEAP_V2_GOLIVE.md`.

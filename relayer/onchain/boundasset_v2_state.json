@@ -1,10 +1,15 @@
 {
   "bound": {
-    "txHash": "0x408d9c2862a437c751c5a93f2e7ff6316e66f495826d2939b5193952783bcfe8",
+    "txHash": "0xb45812da24a0824de6cab1e38d18fef4e46a9adee57414018f2aa6a4201cf62f",
     "index": 0,
-    "seal_txid": "08000078bce80ed84d5409e12aa28c24e06591c87c23cdfff8606f947ba006cb",
+    "seal_txid": "f81a66bf73c0ee3e4010d6a06a370092e7848c0f92d4ea4a7c5865d8fd799c14",
     "seal_idx": 0,
     "lock_slot": "0x7a971a3b730d3e5b69f73ac7add6dcd2396cab9523176132ed23e17500c820c7",
     "state": "bound-asset:demo:v1"
+  },
+  "registry": {
+    "txHash": "0xb45812da24a0824de6cab1e38d18fef4e46a9adee57414018f2aa6a4201cf62f",
+    "index": 1,
+    "root": "0xf5a102362fde3a1acc37a92924a62658af0b83b269c51ea6c89bc6d483759d6b"
   }
 }

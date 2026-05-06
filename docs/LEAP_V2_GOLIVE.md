@@ -1,8 +1,43 @@
 # Leap v2 — LIVE on testnet (Pudge ⇄ preview)
 
-The RGB++-style ownership-toggle leap is **deployed and proven end-to-end on both testnets.** The genesis —
-a CkbOwned cell created on CKB by proving a Mithril-certified Cardano seal mint, validated by the live
-`bound_asset_v2` against the M2 44-byte checkpoint — **succeeded on Pudge** (tx `0x408d9c28…`).
+The RGB++-style ownership-toggle leap is **deployed and the FULL ownership toggle is proven end-to-end on
+both testnets.** A single living seal round-trips **CkbOwned →(S4 leap-to-cardano)→ CardanoBound →(S5
+leap-to-ckb)→ CkbOwned**, each leg a Mithril certify-then-prove cycle, with the source seal nullified
+against replay. The genesis (CkbOwned minted from a certified Cardano seal) succeeded first (tx
+`0x408d9c28…`), then both toggle directions executed live.
+
+## The full toggle — live transaction trail
+
+| Leg | Cardano (preview) | CKB (Pudge) | what it proves |
+|---|---|---|---|
+| **Genesis** (∅→CkbOwned) | seal mint `08000078…` | `0x408d9c28…` | certified Cardano event validates on CKB |
+| **S4 leap-to-cardano** (CkbOwned→CardanoBound) | Transfer `5c60bfb3…` (state-only datum) | `0x838e39f2…` | owner leaves CKB; state preserved, CardanoBound names the cert, lock slot zeroed |
+| **S5 leap-to-ckb** (CardanoBound→CkbOwned) | LeapToCkb `f81a66bf…` (RC datum) | `0xb45812da…` | owner returns; **B1** recipient binding, **B3** actual-lock pin, **RC** keystone, **B4** seal nullifier insert |
+
+The toggle conserves ONE seal NFT under the deployed `bound_asset_v2`'s baked `seal_policy` (`ec8d2c74…`):
+S4/S5 spend+re-park the *same* seal at `binding_lock`, toggling its datum shape (2-field state-only ↔
+3-field `LeapSealDatum{owner, RC, recipient}`) — not minting a fresh one-shot policy (which would carry a
+different policy id and fail the verifier's `seal_at_lock`). This is the literal RGB++ model: one seal,
+ownership toggles.
+
+- **S5 keystone, verified byte-identical across languages:** `RC = blake2b256(state ‖ src_seal36 ‖
+  recipient) = 9e69a079…` — computed by the pycardano driver into the certified datum AND recomputed by the
+  CKB verifier over the CardanoBound cell's seal field; they match (error 27 passes). Nullifier key =
+  `blake2b256(src_seal36) = f30ff09b…`; registry SMT root `5b7ed70c…` → `f5a10236…` (one-shot insert).
+- **Both S5 script groups dry-ran `Run result: 0` in ckb-debugger** before the live send (bound 282K
+  cycles; registry SMT insert 4.8M cycles), on a faithful mock with the real secp lock dep_group.
+- **Terminal state verified on Pudge:** final CkbOwned `0xb45812da:0` LIVE (locked to recipient
+  `0x7a971a3b…`, state preserved); continuing registry `0xb45812da:1` LIVE (nullifier inserted); the
+  genesis CkbOwned, the CardanoBound, and the registry genesis singleton all consumed.
+
+Drivers: `cardano/binding/leap_to_cardano_ours.py` (S4) + `leap_to_ckb_ours.py` (S5, the new pycardano
+LeapToCkb driver); `relayer/onchain/leap_to_cardano_v2.mjs` (S4 CKB) + `leap_to_ckb_v2.mjs` (S5 CKB) +
+`leap_common_v2.mjs` (shared) + `reg_nullifier_witness.py` (registry SMT insert witness).
+
+## The genesis
+
+The genesis — a CkbOwned cell created on CKB by proving a Mithril-certified Cardano seal mint, validated by
+the live `bound_asset_v2` against the M2 44-byte checkpoint — **succeeded on Pudge** (tx `0x408d9c28…`).
 
 ## Live deployment
 
@@ -33,17 +68,20 @@ seal policy `ec8d2c74…`, seal mint `08000078…` (Mithril-certified).
 
 The AVK was also a stale epoch (1323 vs 1324); advancing it un-stuck the live v1 lineage too.
 
-## Status: end-to-end genesis proven; the leap TOGGLE is next
-The genesis proves the hard part — the M2 checkpoint + Mithril cert + MMR proof + `bound_asset_v2` all validate
-a real certified Cardano event on CKB. Remaining to exercise the full toggle:
-- **S4 leap-to-cardano** (CkbOwned → CardanoBound): mint `seal_prime` one-shot on Cardano, consume the CkbOwned
-  cell, recreate as CardanoBound. Cardano side ≈ `mint_seal_ours.py` (state-only datum); CKB side via the S4
-  branch.
-- **S5 leap-to-ckb** (CardanoBound → CkbOwned): the dangerous direction — owner-signed `LeapToCkb` seal-spend on
-  Cardano (RC datum), then the CKB S5 leap binding the recipient + inserting the nullifier. Needs the pycardano
-  `LeapToCkb` driver (`relayer/cardano_leap_v2.mjs` is the lib-agnostic plan; template = `transfer_seal_ours.py`).
+## Status: FULL TOGGLE PROVEN end-to-end on both testnets
+Genesis + S4 + S5 all executed live (trail above). The dangerous S5 direction works: a permissionless
+relayer builds the CKB tx, yet the surviving cell can only land at the owner-signed, Mithril-certified
+recipient (RC keystone + actual-lock pin), and the consumed seal is nullified so it can never be replayed.
 
-Each leap step is one more certify-then-prove cycle (Mithril snapshot latency = the finality guarantee).
+Mithril snapshot latency IS the finality guarantee; on preview each leg certified in ≈5 min.
+
+What remains is breadth, not depth:
+- **Repeated toggles / a non-self recipient:** the first S5 used our own lock as recipient (round-trip).
+  A second toggle must read the CURRENT registry outpoint from `boundasset_v2_state.json::registry` (the
+  genesis singleton is now consumed) and, for a non-empty SMT, supply real (not empty-tree) siblings —
+  `reg_nullifier_witness.py` currently handles only the genesis-empty insert.
+- **The parked mint leg (Groth16/χCKB)** stays out of scope (see `docs/LEAP_BRIEF_V2.md`); the toggle is
+  the value-bearing path.
 
 ## On-chain orchestration (relayer/onchain/)
 deploy_cv_deploy_v2 · advance_1324 (+ adversarial/advance_check_1324.py) · refresh_checkpoint_v2 (44-byte
