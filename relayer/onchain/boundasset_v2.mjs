@@ -51,10 +51,51 @@ function guard(inputs) {
   for (const i of inputs) if (PROTECTED.has(`${i.previousOutput.txHash}:${Number(i.previousOutput.index)}`)) throw new Error(`would consume protected cell ${i.previousOutput.txHash}`);
 }
 
+// Dump the SIGNED tx + resolved cells as a ckb-debugger ReprMockTransaction (for `ckb-debugger --tx-file`).
+async function dumpMock(client, tx, outPath) {
+  const scr = (s) => s ? { code_hash: s.codeHash, hash_type: s.hashType, args: s.args } : null;
+  const opn = (o) => ({ tx_hash: o.txHash, index: "0x" + Number(o.index).toString(16) });
+  const resolve = async (op) => { const c = await client.getCell(op); return { output: { capacity: "0x" + BigInt(c.cellOutput.capacity).toString(16), lock: scr(c.cellOutput.lock), type: scr(c.cellOutput.type) }, data: c.outputData }; };
+  const inputs = [];
+  for (const i of tx.inputs) { const r = await resolve(i.previousOutput); inputs.push({ input: { since: "0x" + BigInt(i.since).toString(16), previous_output: opn(i.previousOutput) }, output: r.output, data: r.data, header: null }); }
+  // FAITHFUL deps: include every cellDep (incl. the secp256k1 dep_group ccc adds) + resolve the cells a
+  // dep_group references (its OutPointVec), so checkpoint_root scans exactly what the live node scans.
+  const cell_deps = [];
+  for (const d of tx.cellDeps) {
+    const r = await resolve(d.outPoint);
+    const dt = d.depType === "depGroup" ? "dep_group" : "code";
+    cell_deps.push({ cell_dep: { out_point: opn(d.outPoint), dep_type: dt }, output: r.output, data: r.data, header: null });
+    if (d.depType === "depGroup") {
+      const data = ccc.bytesFrom(r.data); const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      const count = dv.getUint32(0, true);
+      for (let k = 0; k < count; k++) {
+        const off = 4 + k * 36;
+        const refOp = { txHash: "0x" + Buffer.from(data.slice(off, off + 32)).toString("hex"), index: dv.getUint32(off + 32, true) };
+        const rr = await resolve(refOp);
+        cell_deps.push({ cell_dep: { out_point: opn(refOp), dep_type: "code" }, output: rr.output, data: rr.data, header: null });
+      }
+    }
+  }
+  const mock = {
+    mock_info: { inputs, cell_deps, header_deps: [] },
+    tx: {
+      version: "0x0",
+      cell_deps: tx.cellDeps.map((d) => ({ out_point: opn(d.outPoint), dep_type: d.depType === "depGroup" ? "dep_group" : "code" })),
+      header_deps: [],
+      inputs: tx.inputs.map((i) => ({ since: "0x" + BigInt(i.since).toString(16), previous_output: opn(i.previousOutput) })),
+      outputs: tx.outputs.map((o) => ({ capacity: "0x" + BigInt(o.capacity).toString(16), lock: scr(o.lock), type: scr(o.type) })),
+      outputs_data: tx.outputsData,
+      witnesses: tx.witnesses,
+    },
+  };
+  fs.writeFileSync(outPath, JSON.stringify(mock, null, 2));
+}
+
 async function main() {
-  const mode = process.argv[2];
-  const txid = process.argv[3] || SEAL.seal_mint_tx;
-  const state = process.argv[4] || Buffer.from(SEAL.S0_hex, "hex").toString("utf8");
+  const pos = process.argv.slice(2).filter((a) => !a.startsWith("--")); // flags (e.g. --dump) are not positionals
+  const mode = pos[0];
+  const txid = pos[1] || SEAL.seal_mint_tx;
+  const state = pos[2] || Buffer.from(SEAL.S0_hex, "hex").toString("utf8");
   if (mode !== "genesis") throw new Error("mode must be genesis (leap modes are separate)");
   const { client, signer } = signerOf();
   const lock = await myLock(signer);
@@ -86,7 +127,14 @@ async function main() {
   });
   guard(tx.inputs);
   tx.setWitnessArgsAt(0, ccc.WitnessArgs.from({ inputType: wit.witness }));
-  const h = await client.sendTransaction(await signer.signTransaction(tx));
+  const signed = await signer.signTransaction(tx);
+  if (process.argv.includes("--dump")) {
+    const out = path.join(HERE, "genesis_dump.json");
+    await dumpMock(client, signed, out);
+    console.log("dumped ckb-debugger mock tx ->", out);
+    process.exit(0);
+  }
+  const h = await client.sendTransaction(signed);
   console.log("GENESIS v2 CkbOwned bound cell:", h);
   await wait(client, h);
   st.bound = { txHash: h, index: 0, seal_txid: txid, seal_idx: 0, lock_slot: lockSlot, state }; saveState(st);

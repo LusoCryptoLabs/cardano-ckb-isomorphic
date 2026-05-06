@@ -10,8 +10,8 @@
   },
   "chiralRegTh": "0xdc18fd562bca1834536c926ce8c9d94f608318c3a79a43959c0c46a84265a24e",
   "boundCode": {
-    "txHash": "0x9a53b5fa677c553c32c1f424e1f15f691629398bfaa7131a1929684d30c8926e",
+    "txHash": "0xb33fc2005c920f908eda67b1842b0469d55f45f3bbef139ecd132cebbb12a5de",
     "index": 0,
-    "codeHash": "0x9e3cc70aef86193208f26de7e7102ba15e10b287a4f793a43926345933fc36b3"
+    "codeHash": "0x4cc7ae86c48944f145dbe3c0f6bd44dda7be623c382e4b31c98feef97c1020b7"
   }
 }
