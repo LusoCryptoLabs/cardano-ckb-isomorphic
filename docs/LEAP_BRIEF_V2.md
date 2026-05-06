@@ -533,6 +533,13 @@ disagree — a smuggled-in stale checkpoint can never make the verifier silently
 real CKB-VM (`v2vmtest/tests/v2_hardening.rs::rq4_conflicting_checkpoints_rejected_53`). Combined with the
 authenticated, monotonic finalized height (§7), M2 is fully closed.
 
+**Deploy finding (RESOLVED):** because `checkpoint_root()` scans ALL cell-deps, it must check each cell's cheap
+32-byte **type hash FIRST** and only `load_cell_data` for a cell that matches `LCKP_TYPE_HASH`. Loading every
+cell-dep's data is fatal in production: a lock `dep_group` expands into its referenced cells, and the
+`secp256k1_data` cell is **1 MiB** — `load_cell_data` on it aborts the script heap (script error `-1`). This is
+invisible to in-VM tests that fund with always-success locks (no secp `dep_group`); it only surfaced on the live
+genesis with a real secp-locked input. Caught with `ckb-debugger --tx-file` on the dumped tx (`docs/LEAP_V2_GOLIVE.md`).
+
 ---
 
 ## 8. Backward-compatibility proof

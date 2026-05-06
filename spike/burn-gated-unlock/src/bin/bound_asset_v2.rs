@@ -19,7 +19,7 @@ use ckb_std::ckb_types::prelude::*;   // RQ-8: Byte32/Byte::as_slice on Script.c
 // in-VM). Same authenticated checkpoint as v1 (cv_deploy type-hash 0x855231b3).
 // Deploy/test-time parameterization of the two "set at deploy" type hashes (default = production value).
 const fn hexv(c:u8)->u8{ match c { b'0'..=b'9'=>c-b'0', b'a'..=b'f'=>c-b'a'+10, b'A'..=b'F'=>c-b'A'+10, _=>0 } }
-const fn hex32(s:&str)->[u8;32]{ let b=s.as_bytes(); let mut o=[0u8;32]; let mut i=0; while i<32 { o[i]=(hexv(b[2*i])<<4)|hexv(b[2*i+1]); i+=1; } o }
+const fn hex32(s:&str)->[u8;32]{ let b=s.as_bytes(); let off=if b.len()>=2 && b[0]==b'0' && (b[1]==b'x'||b[1]==b'X') {2} else {0}; let mut o=[0u8;32]; let mut i=0; while i<32 { o[i]=(hexv(b[off+2*i])<<4)|hexv(b[off+2*i+1]); i+=1; } o }
 const LCKP_TYPE_HASH: [u8;32] = match option_env!("CHIRAL_LCKP_TH") {
     Some(h) => hex32(h),
     None => [133,82,49,179,57,175,212,62,166,215,227,196,181,212,68,27,38,60,90,54,42,71,159,85,234,239,130,153,203,135,121,185],
@@ -182,23 +182,25 @@ fn checkpoint_root()->Result<(Vec<u8>, u64), i8>{
     let mut found: Option<(Vec<u8>, u64)> = None;
     let mut i=0usize;
     loop {
-        match load_cell_data(i, Source::CellDep) {
-            Ok(d)=>{
-                if d.len()>=44 && &d[0..4]==b"LCKP" {
-                    if let Ok(Some(th))=load_cell_type_hash(i, Source::CellDep) {
-                        if th==LCKP_TYPE_HASH {
-                            let mut hb=[0u8;8]; hb.copy_from_slice(&d[36..44]);
-                            let cur=(d[4..36].to_vec(), u64::from_le_bytes(hb));
-                            match &found {
-                                Some(prev) if *prev != cur => return Err(53),   // RQ-4: conflicting checkpoints -> fail closed
-                                Some(_) => {}                                    // exact-duplicate dep -> harmless
-                                None => found = Some(cur),
-                            }
+        // Check the cheap 32-byte type hash FIRST and only load the cell's data when it is a trusted
+        // checkpoint. Loading every cell-dep's data here would OOM the script heap: a lock dep_group expands
+        // into its referenced cells, and the secp256k1_data cell is 1 MiB -- load_cell_data on it aborts.
+        match load_cell_type_hash(i, Source::CellDep) {
+            Ok(Some(th)) if th==LCKP_TYPE_HASH => {
+                if let Ok(d)=load_cell_data(i, Source::CellDep) {
+                    if d.len()>=44 && &d[0..4]==b"LCKP" {
+                        let mut hb=[0u8;8]; hb.copy_from_slice(&d[36..44]);
+                        let cur=(d[4..36].to_vec(), u64::from_le_bytes(hb));
+                        match &found {
+                            Some(prev) if *prev != cur => return Err(53),   // RQ-4: conflicting checkpoints -> fail closed
+                            Some(_) => {}                                    // exact-duplicate dep -> harmless
+                            None => found = Some(cur),
                         }
                     }
                 }
                 i+=1;
             }
+            Ok(_)=>{ i+=1; }            // no type / non-checkpoint type -> skip WITHOUT loading data
             Err(_)=>break,
         }
         if i>64 { break; }

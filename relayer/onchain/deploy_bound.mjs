@@ -8,7 +8,7 @@ import { signerOf, myLock, deployCodeCell } from "./_signer.mjs";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.resolve(HERE, "../../spike/burn-gated-unlock/target/riscv64imac-unknown-none-elf/release/bound_asset_v2.stripped");
 const REGPATH = path.join(HERE, "v2_registry.json");
-const EXPECT = "0x9e3cc70aef86193208f26de7e7102ba15e10b287a4f793a43926345933fc36b3"; // forced-atomics + consts baked, stripped
+const EXPECT = "0x4cc7ae86c48944f145dbe3c0f6bd44dda7be623c382e4b31c98feef97c1020b7"; // fixed: hex32 0x-strip + checkpoint OOM guard
 
 const { client, signer } = signerOf();
 const lock = await myLock(signer);
