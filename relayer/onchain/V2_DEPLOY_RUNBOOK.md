@@ -56,7 +56,10 @@ wsl: python3 leap_to_ckb_ours.py [recipient_lock_hash_hex]   # default recipient
     ckb-debugger --tx-file s5_dump.json --script-group-type type --cell-type input --cell-index 1  # registry SMT
 ```
 Note: the recipient must equal the CKB lock that will own the result (S5 pins the cell's ACTUAL lock to it).
-A SECOND toggle must read the live registry outpoint from `boundasset_v2_state.json::registry` (the genesis
-singleton is consumed) and supply real SMT siblings — `reg_nullifier_witness.py` only does the genesis-empty
-insert. Files: `leap_common_v2.mjs` (shared), `leap_to_cardano_v2.mjs`, `leap_to_ckb_v2.mjs`,
-`reg_nullifier_witness.py`. Full status + hashes: `docs/LEAP_V2_GOLIVE.md`.
+REPEATABLE: `leap_to_ckb_v2.mjs` reads the live registry outpoint from `boundasset_v2_state.json::registry`
+(the genesis singleton is consumed after leap 1) and `reg_nullifier_witness.py` is a full sparse-Merkle
+client over `registry_state.json` (the tracked nullifier set) — it builds real siblings for inserts into a
+NON-EMPTY tree and the builder appends the new key after each S5 confirms. Validated in
+`v2vmtest/tests/registry_smt.rs` (2-sequential-insert + replay-reject, anchored to the live root). Files:
+`leap_common_v2.mjs` (shared), `leap_to_cardano_v2.mjs`, `leap_to_ckb_v2.mjs`, `reg_nullifier_witness.py`,
+`registry_state.json`. Full status + hashes: `docs/LEAP_V2_GOLIVE.md`.
