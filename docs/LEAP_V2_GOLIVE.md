@@ -75,13 +75,23 @@ recipient (RC keystone + actual-lock pin), and the consumed seal is nullified so
 
 Mithril snapshot latency IS the finality guarantee; on preview each leg certified in ≈5 min.
 
-What remains is breadth, not depth:
-- **Repeated toggles / a non-self recipient:** the first S5 used our own lock as recipient (round-trip).
-  A second toggle must read the CURRENT registry outpoint from `boundasset_v2_state.json::registry` (the
-  genesis singleton is now consumed) and, for a non-empty SMT, supply real (not empty-tree) siblings —
-  `reg_nullifier_witness.py` currently handles only the genesis-empty insert.
+**Repeatable toggles — DONE (registry SMT generalized).** `reg_nullifier_witness.py` is now a full
+sparse-Merkle client over the tracked nullifier set (`registry_state.json`): it rebuilds the REAL siblings
+on each new key's path (not just the empty-tree case) and asserts its reconstructed root equals the live
+on-chain root. `leap_to_ckb_v2.mjs` reads the CURRENT registry outpoint from `boundasset_v2_state.json::
+registry` (the genesis singleton is consumed after the 1st leap) and appends each nullifier after the tx
+confirms. Validated in-VM (`v2vmtest/tests/registry_smt.rs`, 3 tests): the real `burn_nullifier_registry`
+binary accepts a 2nd insert into a NON-EMPTY tree, rejects a replay (err 12), and the client SMT reproduces
+the live anchor roots (`5b7ed70c…` empty, `f5a10236…` after the 1st insert) — so it provably matches
+on-chain semantics. (A non-self recipient just means passing a different `recipient_lock_hash` to
+`leap_to_ckb_ours.py`; the CKB side already pins the surviving cell's actual lock to it.)
+
+What remains is operational, not protocol:
+- **Relayer automation + monitoring** (the chosen testnet-repeatable scope): wrap the manual certify→prove→
+  submit steps + checkpoint refresh into a service loop with monitoring.
 - **The parked mint leg (Groth16/χCKB)** stays out of scope (see `docs/LEAP_BRIEF_V2.md`); the toggle is
-  the value-bearing path.
+  the value-bearing path. Mainnet-with-value (Mithril trust-root re-audit, mainnet deploy, key custody) is a
+  separate track, deferred.
 
 ## On-chain orchestration (relayer/onchain/)
 deploy_cv_deploy_v2 · advance_1324 (+ adversarial/advance_check_1324.py) · refresh_checkpoint_v2 (44-byte

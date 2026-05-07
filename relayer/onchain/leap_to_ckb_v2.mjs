@@ -16,6 +16,7 @@ import { SEAL, REG, baScript, baDep, regCodeDep, ckbOwnedData, alignCheckpointAn
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ST_PATH = path.join(HERE, "boundasset_v2_state.json");
+const REG_STATE = path.join(HERE, "registry_state.json");          // off-chain mirror of the nullifier SMT
 const strip = (h) => (h || "").replace(/^0x/, "");
 
 async function main() {
@@ -38,16 +39,19 @@ async function main() {
   const stateHex = inData.slice(142);                          // bytes 70.. (state)
   console.log("CardanoBound cell:", boundOp.txHash, "| src seal36:", srcSeal36.slice(0, 16) + "..", "| state:", Buffer.from(stateHex, "hex").toString("utf8"));
 
-  // LIVE registry genesis singleton — exact type script + current (empty) root + capacity.
-  const regOp = { txHash: REG.registryGenesis.txHash, index: REG.registryGenesis.index };
+  // LIVE registry cell — the CURRENT singleton outpoint (st.registry after the 1st leap, else the genesis
+  // singleton). Read its exact type script + current root + capacity straight from chain.
+  const regOp = st.registry ? { txHash: st.registry.txHash, index: st.registry.index }
+                            : { txHash: REG.registryGenesis.txHash, index: REG.registryGenesis.index };
   const regCell = await client.getCellLive(regOp, true);
-  if (!regCell) throw new Error("registry genesis singleton not live (already consumed?)");
+  if (!regCell) throw new Error(`registry cell ${regOp.txHash}:${regOp.index} not live (state out of sync?)`);
   const regScript = ccc.Script.from(regCell.cellOutput.type);
   const oldRoot = regCell.outputData;
 
-  // registry insert witness (nullifier key = blake2b256(src_seal36); siblings for the empty-tree insert).
-  const reg = JSON.parse(execSync(`python reg_nullifier_witness.py ${srcSeal36} ${oldRoot}`, { cwd: HERE, encoding: "utf8" }).trim());
-  console.log("nullifier key:", reg.key, "| registry root", oldRoot.slice(0, 14), "->", reg.new_root.slice(0, 14));
+  // registry insert witness over the CURRENT key set (registry_state.json). The helper rebuilds the real
+  // siblings on the new key's path and asserts its reconstructed root == the live on-chain root.
+  const reg = JSON.parse(execSync(`python reg_nullifier_witness.py ${srcSeal36} ${REG_STATE} ${oldRoot}`, { cwd: HERE, encoding: "utf8" }).trim());
+  console.log(`nullifier key: ${reg.key} | registry root ${oldRoot.slice(0, 14)} -> ${reg.new_root.slice(0, 14)} | set size ${reg.n_keys} -> ${reg.n_keys + 1}`);
 
   const { ckpt, wit, ckptDep } = await alignCheckpointAndWitness(s5txid);
 
@@ -89,6 +93,11 @@ async function main() {
   st.registry = { txHash: h, index: 1, root: reg.new_root };
   delete st.cardanoBound;                                            // back to CkbOwned; the toggle is complete
   fs.writeFileSync(ST_PATH, JSON.stringify(st, null, 2));
+  // append the new nullifier to the off-chain SMT mirror (only after the tx is confirmed on-chain).
+  const rs = JSON.parse(fs.readFileSync(REG_STATE, "utf8"));
+  if (!rs.keys.includes(reg.key)) rs.keys.push(reg.key);
+  rs.root = reg.new_root;
+  fs.writeFileSync(REG_STATE, JSON.stringify(rs, null, 2));
   console.log("  CkbOwned cell data:", outData);
   console.log("  ownership is back on CKB, recipient-bound + seal nullified. FULL TOGGLE COMPLETE.");
   process.exit(0);
