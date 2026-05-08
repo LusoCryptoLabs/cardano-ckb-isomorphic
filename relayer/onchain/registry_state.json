@@ -1,8 +1,9 @@
 {
-  "root": "0x91bbf07ad61f2a94aad54a5f9e76708687a3d2fdd56c88d52ab9eae091c6a44d",
+  "root": "0x0b49efae4e94e2b3aaa0d616f6f648b5e8adec708d446468189f730a4e6fe392",
   "keys": [
     "0xf30ff09b78286b647ffe53967f106698fe080b224b67ab5692d7b1e165a9b894",
-    "0x197029bc984bcdd062cd5e9430fab480d5aa4ed8155b5ef3b2a238e77656d500"
+    "0x197029bc984bcdd062cd5e9430fab480d5aa4ed8155b5ef3b2a238e77656d500",
+    "0xd269e6ccb41451bc65f4242880cb83b4470cf1b2af80ff1c46fbd83bf9f0a2ff"
   ],
   "note": "off-chain mirror of the burn_nullifier_registry SMT (the inserted leap-seal nullifier set). keys[] reconstructs root via reg_nullifier_witness.py. Seeded with the first toggle's insert (S5 tx 0xb45812da). leap_to_ckb_v2.mjs reads this for siblings and appends after each S5 confirms."
 }

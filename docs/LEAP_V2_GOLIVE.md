@@ -100,12 +100,19 @@ next leap's `cellDep` (`Unknown OutPoint`). No value lost — the binary is unch
 lock-only, non-protected cells, but a deployed CKB *code* cell IS lock-only — any consolidation must
 explicitly protect every live code cell by outpoint.
 
-What remains is operational, not protocol:
-- **Relayer automation + monitoring** (the chosen testnet-repeatable scope): wrap the manual certify→prove→
-  submit steps + checkpoint refresh into a service loop with monitoring.
+**Relayer automation + monitoring — DONE.** `relayer/onchain/leap_orchestrator.mjs` drives the whole toggle
+state machine end-to-end (picks the next leg from on-chain state → Cardano leg → poll Mithril cert → CKB leg
+→ `leap_log.jsonl`), with pre-flight code-cell-liveness + funding checks (safe auto-reclaim) and a both-chain
+`status` monitor (`node leap_orchestrator.mjs status|leg|toggle|run N`, `--verify` for in-loop ckb-debugger).
+`status` also surfaces the one slow operational bleed: each `refresh_checkpoint_v2` parks a ~167 CKB typed
+checkpoint cell that isn't auto-reclaimed (the witness cell IS recycled, so only checkpoints grow).
+
+What remains is out of the testnet-repeatable scope:
 - **The parked mint leg (Groth16/χCKB)** stays out of scope (see `docs/LEAP_BRIEF_V2.md`); the toggle is
-  the value-bearing path. Mainnet-with-value (Mithril trust-root re-audit, mainnet deploy, key custody) is a
-  separate track, deferred.
+  the value-bearing path.
+- **Mainnet-with-value** (Mithril trust-root re-audit, mainnet deploy, key custody) is a separate, deferred
+  track — the first thing it needs is confirming the on-chain cert-verify validates the Mithril STM multisig,
+  not just an MMR proof against a relayer-posted root.
 
 ## On-chain orchestration (relayer/onchain/)
 deploy_cv_deploy_v2 · advance_1324 (+ adversarial/advance_check_1324.py) · refresh_checkpoint_v2 (44-byte

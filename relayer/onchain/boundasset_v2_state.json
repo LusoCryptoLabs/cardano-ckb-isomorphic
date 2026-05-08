@@ -1,13 +1,13 @@
 {
   "registry": {
-    "txHash": "0xc36e1164473bcf256cbbb027686f852b4d6c9ec139e1a0ba3a80dc57faeaca92",
+    "txHash": "0x1e1b978c579c61df54ac6aadca074ea0652c9a687093977558d84c3c8bdce887",
     "index": 1,
-    "root": "0x91bbf07ad61f2a94aad54a5f9e76708687a3d2fdd56c88d52ab9eae091c6a44d"
+    "root": "0x0b49efae4e94e2b3aaa0d616f6f648b5e8adec708d446468189f730a4e6fe392"
   },
   "bound": {
-    "txHash": "0xc36e1164473bcf256cbbb027686f852b4d6c9ec139e1a0ba3a80dc57faeaca92",
+    "txHash": "0x1e1b978c579c61df54ac6aadca074ea0652c9a687093977558d84c3c8bdce887",
     "index": 0,
-    "seal_txid": "1daf5e380520bf330ecf17da8863fb09d6558d575f6ea337ecabb5be81aeb9f9",
+    "seal_txid": "177a0871ba4c9be4d4ea7901568d82c2148887bd7f5ee925166b5e33dc575a04",
     "seal_idx": 0,
     "lock_slot": "0x7a971a3b730d3e5b69f73ac7add6dcd2396cab9523176132ed23e17500c820c7",
     "state": "bound-asset:demo:v1"

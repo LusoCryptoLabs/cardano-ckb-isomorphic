@@ -40,7 +40,25 @@ would fail `seal_at_lock`).
 - S5 leap-to-ckb: Cardano LeapToCkb `f81a66bf…` (RC datum) → CKB `0xb45812da…` (CardanoBound→CkbOwned),
   recipient `0x7a971a3b…`; registry root `5b7ed70c…`→`f5a10236…` (seal nullified)
 
-### Re-run / extend the toggle
+### Automated: the orchestrator (preferred)
+`leap_orchestrator.mjs` drives the whole state machine end-to-end with monitoring — it picks the next leg
+from on-chain state, runs the Cardano leg, polls the Mithril cert, runs the CKB leg, and logs to
+`leap_log.jsonl`. Pre-flight it checks code-cell liveness (a swept code cell aborts before any spend) and
+funding (auto-reclaims orphaned lock-only cells if the largest plain cell is below ~1500 CKB).
+```
+node leap_orchestrator.mjs status                 # both-chain health snapshot (no tx): state, balances,
+                                                  #   registry size, parked-checkpoint count, code-cell liveness
+node leap_orchestrator.mjs leg    [recipientHex]  # run the ONE next leg (S4 or S5 per current state)
+node leap_orchestrator.mjs toggle [recipientHex]  # full round-trip back to CkbOwned
+node leap_orchestrator.mjs run N  [recipientHex]  # N consecutive toggles
+  --verify      dump + ckb-debugger each CKB leg (both groups) before the live send
+  --no-reclaim  never auto-consolidate (fail instead if funding is low)
+```
+Operational note surfaced by `status`: each `refresh_checkpoint_v2` parks a ~167 CKB typed checkpoint cell
+that is NOT auto-reclaimed (the cv_deploy_v2 type script gates spending); they accumulate slowly. The
+witness cell (~1.2k CKB) IS recycled each refresh, so only checkpoints grow. Monitor via `status`.
+
+### Re-run / extend the toggle (manual, low-level)
 ```
 # S4 (CkbOwned -> CardanoBound)
 wsl: cd cardano/binding && CHIRAL_PREVIEW_KEY=/mnt/c/Users/<u>/.chiral/preview_relayer.key AIKEN=~/.aiken/bin/aiken \
