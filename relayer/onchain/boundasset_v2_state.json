@@ -1,15 +1,15 @@
 {
+  "registry": {
+    "txHash": "0xc36e1164473bcf256cbbb027686f852b4d6c9ec139e1a0ba3a80dc57faeaca92",
+    "index": 1,
+    "root": "0x91bbf07ad61f2a94aad54a5f9e76708687a3d2fdd56c88d52ab9eae091c6a44d"
+  },
   "bound": {
-    "txHash": "0xb45812da24a0824de6cab1e38d18fef4e46a9adee57414018f2aa6a4201cf62f",
+    "txHash": "0xc36e1164473bcf256cbbb027686f852b4d6c9ec139e1a0ba3a80dc57faeaca92",
     "index": 0,
-    "seal_txid": "f81a66bf73c0ee3e4010d6a06a370092e7848c0f92d4ea4a7c5865d8fd799c14",
+    "seal_txid": "1daf5e380520bf330ecf17da8863fb09d6558d575f6ea337ecabb5be81aeb9f9",
     "seal_idx": 0,
     "lock_slot": "0x7a971a3b730d3e5b69f73ac7add6dcd2396cab9523176132ed23e17500c820c7",
     "state": "bound-asset:demo:v1"
-  },
-  "registry": {
-    "txHash": "0xb45812da24a0824de6cab1e38d18fef4e46a9adee57414018f2aa6a4201cf62f",
-    "index": 1,
-    "root": "0xf5a102362fde3a1acc37a92924a62658af0b83b269c51ea6c89bc6d483759d6b"
   }
 }
