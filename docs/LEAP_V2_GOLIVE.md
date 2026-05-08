@@ -13,6 +13,8 @@ against replay. The genesis (CkbOwned minted from a certified Cardano seal) succ
 | **Genesis** (∅→CkbOwned) | seal mint `08000078…` | `0x408d9c28…` | certified Cardano event validates on CKB |
 | **S4 leap-to-cardano** (CkbOwned→CardanoBound) | Transfer `5c60bfb3…` (state-only datum) | `0x838e39f2…` | owner leaves CKB; state preserved, CardanoBound names the cert, lock slot zeroed |
 | **S5 leap-to-ckb** (CardanoBound→CkbOwned) | LeapToCkb `f81a66bf…` (RC datum) | `0xb45812da…` | owner returns; **B1** recipient binding, **B3** actual-lock pin, **RC** keystone, **B4** seal nullifier insert |
+| **2nd toggle S4** (repeat) | Transfer `5e05899e…` | `0x021344ad…` | re-Transfer of the 3-field seal accepted |
+| **2nd toggle S5** (repeat) | LeapToCkb `1daf5e38…` | `0xc36e1164…` | **NON-EMPTY** registry insert (`f5a10236…`→`91bbf07a…`, set 1→2) |
 
 The toggle conserves ONE seal NFT under the deployed `bound_asset_v2`'s baked `seal_policy` (`ec8d2c74…`):
 S4/S5 spend+re-park the *same* seal at `binding_lock`, toggling its datum shape (2-field state-only ↔
@@ -48,7 +50,7 @@ the live `bound_asset_v2` against the M2 44-byte checkpoint — **succeeded on P
 | AVK epoch checkpoint advance 1323→1324 | `0x2519ee3c` | (also un-stuck live v1) |
 | 44-byte `LCKP‖root‖height` checkpoint | published `0xe5e61bdc` (re-published each leap) | type hash = CHIRAL_LCKP_TH |
 | burn_nullifier_registry | code `0x2b96f094`, genesis singleton `0x4e159851` | `CHIRAL_REG_TH 0xdc18fd56` |
-| bound_asset_v2 | code `0xb33fc200`, **`V2_BOUND_CODE_HASH 0x4cc7ae86`** | LCKP+REG baked |
+| bound_asset_v2 | code `0xf135e9ef` (was `0xb33fc200`, reclaimed+redeployed), **`V2_BOUND_CODE_HASH 0x4cc7ae86`** | LCKP+REG baked |
 | **GENESIS CkbOwned cell** | **`0x408d9c28…`** | seal=08000078, state="bound-asset:demo:v1" |
 
 **Cardano — preview:** v2 `binding_lock` `addr_test1wprutk2vjvuzgwlsvf956we9ssxqlyfl9jdeywrlv6tsyccz32l5e`,
@@ -75,16 +77,28 @@ recipient (RC keystone + actual-lock pin), and the consumed seal is nullified so
 
 Mithril snapshot latency IS the finality guarantee; on preview each leg certified in ≈5 min.
 
-**Repeatable toggles — DONE (registry SMT generalized).** `reg_nullifier_witness.py` is now a full
-sparse-Merkle client over the tracked nullifier set (`registry_state.json`): it rebuilds the REAL siblings
-on each new key's path (not just the empty-tree case) and asserts its reconstructed root equals the live
-on-chain root. `leap_to_ckb_v2.mjs` reads the CURRENT registry outpoint from `boundasset_v2_state.json::
-registry` (the genesis singleton is consumed after the 1st leap) and appends each nullifier after the tx
-confirms. Validated in-VM (`v2vmtest/tests/registry_smt.rs`, 3 tests): the real `burn_nullifier_registry`
-binary accepts a 2nd insert into a NON-EMPTY tree, rejects a replay (err 12), and the client SMT reproduces
-the live anchor roots (`5b7ed70c…` empty, `f5a10236…` after the 1st insert) — so it provably matches
-on-chain semantics. (A non-self recipient just means passing a different `recipient_lock_hash` to
+**Repeatable toggles — DONE and PROVEN LIVE.** A SECOND full round-trip ran end-to-end on testnet:
+S4 Cardano Transfer `5e05899e…` → CKB `0x021344ad` (CkbOwned→CardanoBound), then S5 Cardano LeapToCkb
+`1daf5e38…` → CKB `0xc36e1164` (CardanoBound→CkbOwned). It exercised the previously-untested paths: the
+Cardano node ACCEPTED the re-Transfer of the now-3-field `LeapSealDatum` seal, and the registry performed
+its first NON-EMPTY SMT insert live (root `f5a10236…`→`91bbf07a…`, set size 1→2).
+
+`reg_nullifier_witness.py` is now a full sparse-Merkle client over the tracked nullifier set
+(`registry_state.json`): it rebuilds the REAL siblings on each new key's path (not just the empty-tree case)
+and asserts its reconstructed root equals the live on-chain root. `leap_to_ckb_v2.mjs` reads the CURRENT
+registry outpoint from `boundasset_v2_state.json::registry` and appends each nullifier after the tx confirms.
+Also validated in-VM (`v2vmtest/tests/registry_smt.rs`, 3 tests): the real `burn_nullifier_registry` binary
+accepts a 2nd insert into a NON-EMPTY tree, rejects a replay (err 12), and the client SMT reproduces the live
+anchor roots. (A non-self recipient just means passing a different `recipient_lock_hash` to
 `leap_to_ckb_ours.py`; the CKB side already pins the surviving cell's actual lock to it.)
+
+**Operational lesson from the 2nd run:** `reclaim.mjs` (fund consolidation) did NOT protect the v2
+`bound_asset_v2` code cell (a lock-only data cell, easy to mistake for an orphan) and swept it, breaking the
+next leap's `cellDep` (`Unknown OutPoint`). No value lost — the binary is unchanged and cells reference it by
+`codeHash` — but it had to be redeployed (`v2_registry.json::boundCode` → `0xf135e9ef…`, same `codeHash
+0x4cc7ae86`). `reclaim.mjs`'s protected set now includes `reg.boundCode`. Reclaim only ever touches
+lock-only, non-protected cells, but a deployed CKB *code* cell IS lock-only — any consolidation must
+explicitly protect every live code cell by outpoint.
 
 What remains is operational, not protocol:
 - **Relayer automation + monitoring** (the chosen testnet-repeatable scope): wrap the manual certify→prove→
