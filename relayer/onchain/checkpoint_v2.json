@@ -1,13 +1,13 @@
 {
   "checkpoint": {
-    "txHash": "0x87aa379ecb56702dc01dfbc4ecb5399e02e5d4aa2ab986939ae64f67f3afaac5",
+    "txHash": "0x9b7c4c45dd08032fe741fcedb2180f03f514fcb524d18e81507f558b2b577a4f",
     "index": 0
   },
-  "root": "0xab939ad05d4aa665bb8c4da697ffecd31c3d68d291ade1710a16896287f0b29e",
-  "height": "4368749",
-  "data": "0x4c434b50ab939ad05d4aa665bb8c4da697ffecd31c3d68d291ade1710a16896287f0b29e6da9420000000000",
+  "root": "0x44c1462a7edfa312a893eb5e6383caa9bdab35c792967e4147cdb0e01515af44",
+  "height": "4368824",
+  "data": "0x4c434b5044c1462a7edfa312a893eb5e6383caa9bdab35c792967e4147cdb0e01515af44b8a9420000000000",
   "witnessCell": {
-    "txHash": "0x3d4c131b5456a7cbbba9bec3ac003a3be11a10e5c47af6144082d546aad87a80",
+    "txHash": "0xa3812a13bf22f8fdcf5fe7bca6902c071048457b7e7dfc6023a72ca1018d763d",
     "index": 0
   },
   "lckpTypeHash": "0xa055798e911a4f7ed074d5e1ee6273683e9a446c70d3e22adab680d70eea5b74"
