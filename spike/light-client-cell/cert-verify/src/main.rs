@@ -23,6 +23,14 @@ ckb_std::entry!(program_entry);
 ckb_std::default_alloc!();
 
 const C_NUM: i64 = -251237303637201; const C_DEN: i64 = 1125899906842624; const SHIFT: u32 = 768;
+// SEC (STM quorum hardening): the network STM protocol parameters are PINNED, not taken from the witness.
+// Without this, a forged MWIT witness can set k=1 and/or out-of-range lottery indices and pass `check_lottery`
+// with SUB-QUORUM stake — collapsing the security from "stake majority" to "a single compromised SPO key".
+// preview: k=1944, m=16948, phi_f=0.2 (phi_f IS the C_NUM/C_DEN ratio = ln(0.8)). Build-overridable per
+// network via CHIRAL_STM_K / CHIRAL_STM_M (mainnet has different k/m).
+const fn cdec(s:&str)->u64{ let b=s.as_bytes(); let mut v=0u64; let mut i=0; while i<b.len(){ v=v*10+(b[i]-b'0') as u64; i+=1; } v }
+const STM_K: usize = match option_env!("CHIRAL_STM_K"){ Some(s)=>cdec(s) as usize, None=>1944 };
+const STM_M: u64   = match option_env!("CHIRAL_STM_M"){ Some(s)=>cdec(s),          None=>16948 };
 
 struct Signer { sigma: Vec<u8>, mvk: Vec<u8>, stake: u64, idx: Vec<u32> }
 struct Cert {
@@ -78,6 +86,9 @@ fn check_bls(ct:&Cert,msgp:&[u8])->bool{
     pairing(&G1Affine::from(agg_sig),&G2Affine::generator())==pairing(&hm,&G2Affine::from(agg_mvk))
 }
 fn check_lottery(ct:&Cert,msgp:&[u8])->bool{
+    // SEC (quorum pin): the witness-declared k must equal the PINNED network k. A real cert always carries the
+    // network k (= STM_K); a forged witness that sets k=1 to pass a sub-quorum is rejected here, fast.
+    if ct.k != STM_K { return false; }
     // SEC A7: each signer's lottery indices MUST be STRICTLY INCREASING (hence unique). Otherwise a signer
     // repeats one winning index to inflate `count >= k` without genuinely controlling quorum stake — an STM
     // soundness break (a sub-quorum forges a "valid" cert).
@@ -87,8 +98,11 @@ fn check_lottery(ct:&Cert,msgp:&[u8])->bool{
         for &i in &s.idx{
             if (i as i64) <= prev { return false; }   // not strictly increasing => duplicate/disordered
             prev = i as i64;
+            // SEC (index bound): every lottery index MUST be within the m slots. Without this a low-stake
+            // signer farms wins by trying indices beyond m until it accumulates k — defeating the threshold.
+            if (i as u64) >= STM_M { return false; }
             if BigInt::from_bytes_le(Sign::Plus,&ev_le(msgp,i as u64,&s.sigma))>=t{ return false; } count+=1; } }
-    count>=ct.k
+    count>=STM_K   // PINNED network quorum, NOT the witness-supplied ct.k
 }
 fn npow2(n:usize)->usize{ let mut p=1; while p<n{p<<=1;} p }
 fn check_merkle(ct:&Cert)->bool{
@@ -120,13 +134,15 @@ fn witness_from_celldep()->Option<Vec<u8>>{
         Err(SysError::IndexOutOfBound)=>return None, Err(_)=>return None } }
 }
 #[cfg(all(not(feature="standalone"),not(feature="embedtest"),not(feature="advance")))]
-fn avk_checkpoint()->Option<[u8;32]>{
+fn avk_checkpoint()->Option<([u8;32],u64)>{
     let mut i=0usize;
     loop{ match load_cell_data(i,Source::CellDep){
         Ok(d)=>{ if d.len()==48 {
             // the 48-byte avk cell must be a real checkpoint: carry the canonical advance-verifier type
             if let Ok(Some(th))=ckb_std::high_level::load_cell_type_hash(i,Source::CellDep){
-                if th==ADV_TYPEHASH { let mut r=[0u8;32]; r.copy_from_slice(&d[8..40]); return Some(r); }
+                // return BOTH the avk root (d[8..40]) AND the authenticated total stake (d[40..48], LE) so the
+                // deploy path can anchor ct.total — else a forged witness deflates total to weaken the lottery.
+                if th==ADV_TYPEHASH { let mut r=[0u8;32]; r.copy_from_slice(&d[8..40]); let mut t=[0u8;8]; t.copy_from_slice(&d[40..48]); return Some((r, u64::from_le_bytes(t))); }
             }
         } i+=1; }
         Err(SysError::IndexOutOfBound)=>return None, Err(_)=>return None } }
@@ -200,9 +216,10 @@ fn program_entry()->i8{
 fn program_entry()->i8{
     let w=match witness_from_celldep(){Some(w)=>w,None=>return 1};
     let ct=match parse(&w){Some(c)=>c,None=>return 2};
-    // bind the witness avk to an authenticated AVK checkpoint cellDep
-    let avk=match avk_checkpoint(){Some(a)=>a,None=>return 3};
+    // bind the witness avk AND total stake to an authenticated AVK checkpoint cellDep
+    let (avk, ck_total)=match avk_checkpoint(){Some(a)=>a,None=>return 3};
     if ct.avk_root.as_slice()!=&avk[..]{ return 6; }
+    if ct.total != ck_total { return 17; }   // SEC: anchor total stake (deflating it weakens the lottery target)
     if !verify(&ct){ return 20; }
     // bind tx_root to the signed cardano_transactions_merkle_root part (so the published root is the cert's)
     match part_val(&ct, b"cardano_transactions_merkle_root") { Some(v) if v==hexlow(&ct.tx_root).as_slice() => {}, _ => return 14 }

@@ -110,9 +110,13 @@ checkpoint cell that isn't auto-reclaimed (the witness cell IS recycled, so only
 What remains is out of the testnet-repeatable scope:
 - **The parked mint leg (Groth16/χCKB)** stays out of scope (see `docs/LEAP_BRIEF_V2.md`); the toggle is
   the value-bearing path.
-- **Mainnet-with-value** (Mithril trust-root re-audit, mainnet deploy, key custody) is a separate, deferred
-  track — the first thing it needs is confirming the on-chain cert-verify validates the Mithril STM multisig,
-  not just an MMR proof against a relayer-posted root.
+- **Mainnet-with-value** (mainnet deploy, key custody, professional audit) is a separate, deferred track.
+  The trust-root question is now ANSWERED: the on-chain cert-verify DOES validate the Mithril STM multisig
+  (BLS aggregate + per-signer stake-Merkle membership + lottery + an AVK chain pinned to a hardcoded genesis)
+  — it is genuinely trust-minimized, not a relayer-posted root. An audit of that verifier found ONE critical
+  gap — the STM quorum `k` and the `total` stake were taken from the witness unanchored (a single compromised
+  SPO key could forge a checkpoint) — now FIXED (pin `k`/`m`, bound indices, anchor `total`) and validated
+  off-chain. See `docs/SEC_STM_QUORUM_PIN.md`. Deploying the fix is part of the mainnet redeployment cascade.
 
 ## On-chain orchestration (relayer/onchain/)
 deploy_cv_deploy_v2 · advance_1324 (+ adversarial/advance_check_1324.py) · refresh_checkpoint_v2 (44-byte
