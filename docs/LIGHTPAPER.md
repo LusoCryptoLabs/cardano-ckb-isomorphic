@@ -5,9 +5,16 @@
 *Light paper · 2026-06*
 
 > **Status: research-stage.** Both legs have run their full lifecycle on public testnet
-> (Cardano preview ↔ CKB Pudge). The protocol is **not audited and not production-ready**: the
-> CKB→Cardano leg's soundness currently rests on a Groth16 trusted setup produced by a
-> development ceremony, not a real multi-party one.
+> (Cardano preview ↔ CKB Pudge). The **Cardano-anchored (Mithril) leg** has since run its full
+> value-bearing **ownership toggle** (leap-in ⇄ leap-out) end-to-end and *repeatedly*, driven by an
+> **automated relayer**; its on-chain Mithril verifier has been internally audited — it performs the
+> full STM check on-chain (BLS aggregate + per-signer stake-Merkle membership + lottery, against an
+> epoch-advanced AVK chain pinned to a hardcoded genesis), i.e. it is genuinely trust-minimized, *not*
+> a relayer-posted root — and **hardened** (one critical fix: the quorum parameters were witness-
+> supplied and are now pinned). The protocol is still **not third-party-audited and not
+> production-ready**: the CKB→Cardano leg's soundness rests on a Groth16 trusted setup produced by a
+> development ceremony rather than a real multi-party one, and the hardened verifier is not yet
+> redeployed.
 
 > **On the name.** *Chirality* is the property of a structure whose mirror image cannot be
 > superimposed on it: two forms, oppositely handed, irreducibly distinct yet built from the same
@@ -293,9 +300,13 @@ snapshot" *without* replaying Ouroboros Praos.
 
 The CKB-VM oracle `cardano_tx_is_certified(tx_body) → bool` does two things:
 
-1. **Verify the Mithril certificate**: the threshold BLS signature over the certified
-   message, against the stake-key set, which is *advanced epoch to epoch* by a light-client
-   checkpoint cell (each cert carries the next epoch's verification key).
+1. **Verify the Mithril certificate**: the *full* STM check, on-chain — the **BLS12-381 aggregate
+   signature**, each signer's **(key, stake) membership** in the registered stake distribution (the
+   AVK Merkle root), and the per-signer **stake lottery** reaching the protocol quorum — against a
+   stake-key set *advanced epoch to epoch* by a light-client checkpoint cell (each cert carries and
+   signs the next epoch's AVK) and rooted at a hardcoded genesis. The STM quorum `k`/`m` and total
+   stake are **pinned / anchored, not read from the witness** (a hardening from internal audit), so a
+   forged certificate cannot lower the threshold to forge with sub-quorum stake.
 2. **Prove tx-membership**: a two-level Mithril proof showing `tx_hash = H(tx_body)` is in
    the certified transaction-set root.
 
@@ -305,7 +316,11 @@ re-processing the same spend.
 
 A full Mithril verify costs a **few percent of a CKB block**, comfortably within budget; the
 **bind → transition → leap-out** lifecycle, plus continuous epoch rotation of the light-client
-checkpoint, has run live on CKB Pudge against real Cardano preview certificates.
+checkpoint, has run live on CKB Pudge against real Cardano preview certificates. The full
+value-bearing **ownership toggle** (leap-in ⇄ leap-out, the asset's ownership flipping between a
+Cardano-bound seal and CKB-native) has since run end-to-end and *repeatedly* under an automated
+relayer — each leg a certify-then-prove cycle whose Mithril cert + tx-membership proof is checked
+on-chain, with a one-shot sparse-Merkle nullifier registry enforcing single-use.
 
 **Trust:** Cardano consensus (ownership/double-spend) + Mithril honest-stake-majority (the
 oracle). No committee. A *fully trustless* upgrade (a ZK proof of Ouroboros Praos behind the
@@ -397,7 +412,11 @@ SNARK soundness), not "trust these N operators." Beyond that reduction, four poi
 implementer must weigh honestly:
 
 - **Relayers cannot forge, only stall.** The authorizing commitment is inside the anchor
-  transaction the oracle certifies; anyone may relay, and a wrong `S'` fails check (4). Liveness
+  transaction the oracle certifies; anyone may relay, and a wrong `S'` fails check (4). When the
+  relayer *builds the follower transaction* (leap-in — the most dangerous direction, since the new
+  owner isn't present on the follower chain), the **recipient** of the resulting bound cell is itself
+  folded into that owner-signed, oracle-certified commitment, and the follower script pins the cell's
+  *actual* lock to it — so a relayer cannot redirect *ownership* either, not only state. Liveness
   degrades under a censored relay; safety does not.
 - **Genesis is a social checkpoint.** Each light client starts from an initial trusted anchor
   (the first Mithril verification key on CKB; the first CKB chain-root on Cardano), as every
