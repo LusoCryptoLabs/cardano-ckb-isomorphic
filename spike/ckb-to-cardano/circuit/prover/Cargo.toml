@@ -67,3 +67,7 @@ path = "src/bin/leap_windowed.rs"
 [[bin]]
 name = "finalize_windowed"
 path = "src/bin/finalize_windowed.rs"
+
+[[bin]]
+name = "value_bind_test"
+path = "src/bin/value_bind_test.rs"
