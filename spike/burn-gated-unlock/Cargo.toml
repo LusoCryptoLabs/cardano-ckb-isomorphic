@@ -32,6 +32,12 @@ path = "src/bin/bound_asset_unified_ours.rs"
 name = "bound_asset_v2"
 path = "src/bin/bound_asset_v2.rs"
 
+# CKB→Cardano leg: the bridge RECEIPT type script (spike/ckb-to-cardano/VALUE_BINDING_FIX.md §2). Pins the
+# canonical 49-byte receipt layout the leap circuit reads + enforces the value-lock per kind (CKB / xUDT).
+[[bin]]
+name = "bridge_lock_v1"
+path = "src/bin/bridge_lock_v1.rs"
+
 [dependencies]
 ckb-std = "0.16"
 blake2 = { version = "0.10", default-features = false }
