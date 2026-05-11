@@ -38,33 +38,39 @@ The expensive, error-prone surface is #2 (in-circuit molecule access). We minimi
 value-*correctness* to a cheap, auditable CKB type script and giving the circuit a **canonical** layout to
 read.
 
-## 2. The canonical bridge-lock tx (CKB side)
+## 2. The canonical bridge RECEIPT (CKB side) — BUILT + adversarially tested ✅
 
-A new CKB **type script** `bridge_lock_v1` makes a confirmed lock tx self-certifying. On the output it guards
-it enforces (CKB-VM, cheap):
+`bridge_lock_v1` (the CKB **type script** on a **RECEIPT cell**) makes a confirmed lock tx self-certifying.
+A cell can carry only one type script, so for **xUDT** the bridge can't *be* the token's type — instead the
+lock tx creates a separate receipt cell that *records the bridging intent* and ties it to the actually-locked
+value (the **both/configurable** model). The receipt is the canonical blob the circuit reads:
 
 ```
-BRIDGE OUTPUT  (the locked cell):
-  capacity   = amount                         (the full locked value = the bridged amount)
-  type       = bridge_lock_v1  (args = bridge instance id)
-  data       = MAGIC(4) ‖ amount(16 LE) ‖ recipient(28)        # fixed 48-byte layout
-  lock       = a release lock (spendable only by the burn→unlock proof; see §6)
-enforced by bridge_lock_v1 on creation:
-  - data.len == 48 && data[0..4] == MAGIC
-  - capacity == u128(data.amount)             (locked value == declared amount)
-  - exactly ONE bridge output in the tx       (no ambiguity for the circuit)
-  - (genesis/one-shot pinning as needed)
+RECEIPT cell:
+  type = bridge_lock_v1  (args = bridge instance id; for kind=xUDT, args = the pinned xUDT type hash)
+  data = MAGIC(4)="BRG1" ‖ kind(1) ‖ amount(16 LE) ‖ recipient(28)          # fixed 49-byte layout
+  lock = a release lock (spendable only by the burn→unlock proof; see §6)
+bridge_lock_v1 enforces on CREATE (receipt in GroupOutput):
+  - data.len == 49 && data[0..4] == "BRG1" && amount != 0
+  - exactly ONE receipt of this type in outputs, none in inputs (no create+consume mixing)
+  - kind == 0 (CKB):  the receipt cell's own capacity == amount   (the locked CKB is the receipt capacity)
+  - kind == 1 (xUDT): exactly one sibling OUTPUT with type-hash == args holds amount in data[0..16] LE
+CONSUME path (receipt in GroupInput, no output) = the burn→unlock return trip; allowed here, the release
+LOCK gates it on a Mithril-proven Cardano burn (§6).
+Tests: spike/dex-integration/relayer/validation/v2vmtest/tests/bridge_lock.rs (8/8: CKB+xUDT accept; bad
+magic/len/amount=0/capacity≠amount/two-receipts/xUDT-mismatch all rejected). Binary in burn-gated-unlock.
 ```
 
-`recipient` is the 28-byte Cardano payment credential. `seal` = this lock tx's own hash (unique, single-use;
-the Cardano side nullifies it — §5). The commitment is no longer needed as a separate binding (the circuit
-reads `amount`/`recipient` directly); we keep `commitment = blake2b256(new_state ‖ seal)` as the circuit's
-public input #3 purely to preserve the existing Plutus interface, now over a *constrained* `new_state`.
+`recipient` is the 28-byte Cardano payment credential (opaque to CKB; the circuit binds it). `seal` = this
+lock tx's own hash (unique, single-use; the Cardano side nullifies it — §5). The circuit reads `amount` and
+`recipient` directly from the receipt's fixed 49-byte data; we keep `commitment = blake2b256(new_state ‖
+seal)` as the circuit's public input #3 purely to preserve the existing Plutus interface, now over a
+*constrained* `new_state`.
 
-**Why a type script, not the lock:** type scripts validate cell data/creation and are the natural home for
-"this cell encodes `amount‖recipient` and capacity matches." It runs when the lock tx is included in a CKB
-block, so **any confirmed bridge tx already satisfies the binding** — the circuit only has to prove the tx is
-confirmed and *carries* the bridge type, not re-derive correctness.
+**Why a receipt type script:** it runs when the lock tx is included in a CKB block, so **any confirmed bridge
+tx already satisfies the binding** — the circuit only has to prove the tx is confirmed and *carries* this
+type at the canonical offset, not re-derive value correctness. The expensive ZK side stays minimal; the
+correctness lives in this cheap, tested CKB-VM script.
 
 ## 3. Circuit changes (`leap_windowed.rs`)
 
@@ -161,8 +167,9 @@ These don't block the value-binding fix but are on the critical path to "value-r
 1. **Prototype the reader (de-risk first).** In-circuit: `body → ckbhash → == seal`, then read
    `(capacity, type_hash, recipient)` at canonical offsets; differential-test vs native molecule decode on a
    **real Pudge lock tx**. Standalone, before touching the full circuit. *(≈ the riskiest 20%.)*
-2. **`bridge_lock_v1` CKB type script** — enforce the §2 invariants + canonical shape; unit + adversarial
-   tests (wrong capacity, two bridge outputs, bad data) in ckb-testtool.
+2. ✅ **`bridge_lock_v1` CKB type script** — DONE: enforces the §2 invariants for both kinds (CKB capacity /
+   xUDT sibling) + canonical 49-byte layout + singleton; adversarial tests 8/8 in ckb-testtool
+   (`bridge_lock.rs`). Binary in `burn-gated-unlock`.
 3. **Wire the binding into `leap_windowed.rs`** — add the §3 constraints; re-prove on a real block; confirm
    the Aiken verifier still accepts; add the **negative test** (lock 1 / mint big → unsatisfiable / rejected).
 4. **Prover/relayer** — `ckb_lock.py` emits the canonical bridge cell; `relayer.py`/`relay_prove.rs` feed the
