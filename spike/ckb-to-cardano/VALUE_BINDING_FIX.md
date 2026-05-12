@@ -151,12 +151,43 @@ type script — i.e., actually lock `X`. The recipient is likewise pinned to the
 recipient, owner-chosen at lock time. The relayer remains pure liveness: it can stall, not inflate or
 redirect.
 
+## 7.5 Reorg & full security model (same standard as the Mithril leg)
+
+CKB is PoW, so the bridge's headline threat is a **reorg double-spend**: lock `N`, prove the lock K-deep,
+mint `N` χCKB on Cardano, then reorg CKB to orphan the lock (refund `N`) while keeping the χCKB. The value
+binding makes `N` *real* (the actual locked amount), so the reorg defenses must hold to the same standard as
+the Mithril leg's finality/replay guarantees. Layered:
+
+- **L1 — per-leap depth bound (in-circuit, present).** The proven header sits at `diff = tip − height ≥ K`
+  (SEC D6, `leap_windowed.rs`). The value binding *inherits* this: the receipt is read from the tx body that
+  hashes to the leaf in a K-deep block, so the bound amount is K-confirmed.
+- **L1b — K FLOOR, pinned (in-circuit, NEW — fixes GOV-1).** `K` is now `≥ K_MIN`, a constant baked into the
+  circuit (⇒ the VK), not a witness/governance value. This is the exact analogue of the Mithril quorum pin:
+  a security parameter must be pinned, not supplied. Validated: `K=0` is now **unprovable**
+  (`is_satisfied=false`); `K=12,kmin=12` proves. `K_MIN` is a deployment parameter (`CHIRAL_K_MIN`, default
+  12) set to CKB's settlement guarantee.
+- **L2 — aggregate reorg cap (on-chain Plutus, REQUIRED — currently DISABLED).** Even a rare K-deep reorg must
+  not let unbounded value be stolen: the mint guard must cap the *total* χCKB mintable within a sliding reorg
+  window. The audit found it ships `cap=0`/`max_amount=0` (off) in `d6_deploy.py` (RATELIMIT-1). **Enabling +
+  deriving this cap is on the critical path to value-ready** (see §8); the cap bounds worst-case reorg loss
+  to a governable amount.
+- **L3 — heaviest-chain + genesis pin (checkpoint advance, present).** The window root advances only on
+  `new_total > old_total` from the one pinned CKB genesis (`AdvanceCKBCert` + `ckbcert_thread.ak`), so the
+  circuit's "confirmed" view follows the canonical chain and a fake-genesis fork is rejected.
+
+Beyond reorgs, the value-binding fix preserves the leg's other guarantees:
+- **Replay** — the seal (lock tx hash) is nullified on Cardano (`seal_consumed`); one mint per lock.
+- **Recipient binding (B1-equivalent)** — the recipient is read from the owner-chosen receipt data and bound
+  in-circuit; a permissionless relayer cannot redirect the mint. Validated by the gadget's redirect-reject.
+- **Type binding** — the receipt output must carry `bridge_lock_v1` (its type code hash == the pinned
+  constant), so the confirmed tx provably ran the bridge script (which enforced amount==locked value).
+
 ## 8. Other audit items on this leg (separate from value binding, needed for production)
 
 - **Reorg aggregate cap ships disabled** (`d6_deploy.py`: `cap=0`/`max_amount=0`) — re-enable + make it
   governable, not compile-time-off (RATELIMIT-1).
-- **Rate-limiter genesis not address-pinned**; `rate_ticked` address-blind (RLT-1). **`K=0` allowed** in the
-  sane-K band (GOV-1).
+- **Rate-limiter genesis not address-pinned**; `rate_ticked` address-blind (RLT-1). ~~`K=0` allowed (GOV-1)~~
+  **FIXED** — the K floor `K ≥ K_MIN` is pinned in-circuit (§7.5 L1b); `K=0` is now unprovable.
 - **`authz` (no-mint-without-leap) and `doublemint` (replay) dimensions are UNAUDITED** (finders died on
   socket errors) — re-run those adversarial dimensions.
 
@@ -170,8 +201,15 @@ These don't block the value-binding fix but are on the critical path to "value-r
 2. ✅ **`bridge_lock_v1` CKB type script** — DONE: enforces the §2 invariants for both kinds (CKB capacity /
    xUDT sibling) + canonical 49-byte layout + singleton; adversarial tests 8/8 in ckb-testtool
    (`bridge_lock.rs`). Binary in `burn-gated-unlock`.
-3. **Wire the binding into `leap_windowed.rs`** — add the §3 constraints; re-prove on a real block; confirm
-   the Aiken verifier still accepts; add the **negative test** (lock 1 / mint big → unsatisfiable / rejected).
+3. **Wire the binding into `leap_windowed.rs`** — IN PROGRESS:
+   - ✅ The value-binding GADGET is validated (`value_bind_test`, full receipt): real ACCEPT; inflate /
+     recipient-redirect / non-bridge-type / tampered-body all **REJECT**. (offsets: type@246, amount@332,
+     recipient@348 in the canonical template.)
+   - ✅ The **K floor** (§7.5 L1b) is wired into `leap_windowed.rs` + validated: `K=0` is now `is_satisfied=false`,
+     `K≥K_MIN` proves (1.23M constraints).
+   - ⏳ Thread the gadget into `leap_windowed.rs`'s FULL proof (tx_body witness + the §3 constraints) and
+     re-prove **end-to-end** — needs a LIVE canonical bridge-receipt lock tx in a real K-deep CKB block (a
+     real-PoW demo block can't contain a synthetic bridge tx), i.e. step 4.
 4. **Prover/relayer** — `ckb_lock.py` emits the canonical bridge cell; `relayer.py`/`relay_prove.rs` feed the
    real `tx_body` + read `amount/recipient` from the locked cell (drop the hardcodes).
 5. **Re-audit** the value binding (the 2 confirmed lenses) + the unaudited `authz`/`doublemint` dimensions.

@@ -32,86 +32,102 @@ fn table(fields: &[Vec<u8>]) -> Vec<u8> { dynvec(fields) }
 fn molbytes(b: &[u8]) -> Vec<u8> { let mut o = u32(b.len() as u32); o.extend_from_slice(b); o }
 fn outpoint(txh: &[u8; 32], idx: u32) -> Vec<u8> { let mut o = txh.to_vec(); o.extend_from_slice(&u32(idx)); o }
 
-/// Build the canonical bridge-lock RawTransaction. amount = locked capacity; recipient(28) in cell data.
-fn build_canonical_tx(amount: u64, recipient: &[u8; 28]) -> Vec<u8> {
-    let dep_tx = [0xDEu8; 32];
-    let in_tx = [0xABu8; 32];
-    let code = [0x9Bu8; 32];            // bridge release-lock code hash (placeholder)
-    let arg = [0x11u8; 20];             // lock arg
-    let bridge_code = [0xB1u8; 32];     // bridge_lock_v1 type code hash (placeholder)
-    let bridge_arg = [0x22u8; 32];      // bridge instance id
+// bridge_lock_v1 type code hash the circuit pins (placeholder; the real deploy hash is baked at build).
+const BRIDGE_CODE_HASH: [u8; 32] = [0xB1u8; 32];
 
+/// Build the canonical bridge-RECEIPT RawTransaction (the rigid template bridge_lock_v1 enforces): 1 cell_dep,
+/// 1 input, receipt at output[0] with lock(20-byte arg) + type=bridge_lock_v1(32-byte arg), and outputs_data[0]
+/// = the 49-byte receipt MAGIC‖kind‖amount‖recipient.
+fn build_canonical_tx(amount: u128, recipient: &[u8; 28], bridge_code: &[u8; 32]) -> Vec<u8> {
+    let dep_tx = [0xDEu8; 32]; let in_tx = [0xABu8; 32];
+    let lock_code = [0x9Bu8; 32]; let lock_arg = [0x11u8; 20]; let bridge_arg = [0x22u8; 32];
     let version = u32(0);
-    let mut dep = outpoint(&dep_tx, 0); dep.push(1u8);             // CellDep = OutPoint(36)+dep_type(1)
+    let mut dep = outpoint(&dep_tx, 0); dep.push(1u8);
     let cell_deps = fixvec(&[dep]);
     let header_deps = fixvec(&[]);
     let cell_input = { let mut c = u64(0); c.extend_from_slice(&outpoint(&in_tx, 0)); c };
     let inputs = fixvec(&[cell_input]);
-    let lock = table(&[code.to_vec(), vec![1u8], molbytes(&arg)]);          // Script{code, hash_type, args}
-    let typ = table(&[bridge_code.to_vec(), vec![1u8], molbytes(&bridge_arg)]); // bridge_lock_v1 type
-    let cell_output = table(&[u64(amount), lock, typ]);                     // CellOutput{capacity, lock, type}
+    let lock = table(&[lock_code.to_vec(), vec![1u8], molbytes(&lock_arg)]);       // Script (20-byte args)
+    let typ = table(&[bridge_code.to_vec(), vec![1u8], molbytes(&bridge_arg)]);    // bridge_lock_v1 (32-byte args)
+    let cell_output = table(&[u64(amount as u64), lock, typ]);
     let outputs = dynvec(&[cell_output]);
-    // canonical cell data = MAGIC(4) ‖ amount(16 LE) ‖ recipient(28)  = 48 bytes
-    let mut data = b"BRG1".to_vec(); let mut amt16 = u64(amount); amt16.extend_from_slice(&[0u8; 8]); data.extend_from_slice(&amt16); data.extend_from_slice(recipient);
+    let mut data = b"BRG1".to_vec(); data.push(0u8); data.extend_from_slice(&amount.to_le_bytes()); data.extend_from_slice(recipient); // 49 B
     let outputs_data = dynvec(&[molbytes(&data)]);
     table(&[version, cell_deps, header_deps, inputs, outputs, outputs_data])
 }
 
 /// Read RawTransaction field offset i from the molecule header (total(4) ‖ offsets[..]).
 fn field_off(body: &[u8], i: usize) -> usize { u32::from_le_bytes(body[4 + 4 * i..8 + 4 * i].try_into().unwrap()) as usize }
-/// Absolute offset of outputs[0].capacity (CellOutput is dynvec item 0 at +8; capacity is table field 0 at +16).
-fn capacity_off(body: &[u8]) -> usize { field_off(body, 4) + 8 + 16 }
+fn cellout_off(body: &[u8]) -> usize { field_off(body, 4) + 8 }            // outputs[0] (CellOutput) absolute offset
+fn type_off(body: &[u8]) -> usize { let co = cellout_off(body); co + field_off(&body[co..], 2) } // CellOutput.type
+fn type_code_off(body: &[u8]) -> usize { let t = type_off(body); t + field_off(&body[t..], 0) } // type Script.code_hash
+fn data_off(body: &[u8]) -> usize { field_off(body, 5) + 8 + 4 }           // outputs_data[0] content (after dynvec hdr + molbytes len)
 
-struct ValueBind { body: Vec<u8>, tx_hash: [u8; 32], amount: u64, cap_off: usize }
-impl ConstraintSynthesizer<Fr> for ValueBind {
+// the FULL receipt reader: body authenticity + type==BRIDGE + amount/recipient bound from the receipt data.
+struct ReceiptBind { body: Vec<u8>, tx_hash: [u8; 32], amount: u128, recipient: [u8; 28],
+                     type_code_off: usize, amount_off: usize, recip_off: usize }
+impl ConstraintSynthesizer<Fr> for ReceiptBind {
     fn generate_constraints(self, cs: ConstraintSystemRef<Fr>) -> Result<(), SynthesisError> {
         let body: Vec<UInt8<Fr>> = self.body.iter().map(|b| UInt8::new_witness(cs.clone(), || Ok(*b))).collect::<Result<_, _>>()?;
-        // (1) body authenticity: ckbhash(full body) == the proven-confirmed tx hash (here: enforced vs constant)
+        // (1) body authenticity: ckbhash(full body) == the proven-confirmed tx hash
         let h = blake2b256(&body, b"ckb-default-hash")?;
         for i in 0..32 { h[i].enforce_equal(&UInt8::constant(self.tx_hash[i]))?; }
-        // (2) VALUE BINDING: capacity@offset (8 LE) == the committed amount (the fix). amount is the witnessed
-        //     `new_state.amount`; here we enforce body[cap..cap+8] == amount bytes.
+        // (2) the receipt output carries bridge_lock_v1 (its type Script code_hash == the pinned constant)
+        for i in 0..32 { body[self.type_code_off + i].enforce_equal(&UInt8::constant(BRIDGE_CODE_HASH[i]))?; }
+        // (3) VALUE BINDING: new_state.amount/recipient == the receipt's declared amount(16 LE)/recipient(28)
         let amt = self.amount.to_le_bytes();
-        for i in 0..8 { body[self.cap_off + i].enforce_equal(&UInt8::constant(amt[i]))?; }
+        for i in 0..16 { body[self.amount_off + i].enforce_equal(&UInt8::constant(amt[i]))?; }
+        for i in 0..28 { body[self.recip_off + i].enforce_equal(&UInt8::constant(self.recipient[i]))?; }
         Ok(())
     }
 }
-
-fn run(body: Vec<u8>, tx_hash: [u8; 32], amount: u64, cap_off: usize) -> bool {
+fn run(body: Vec<u8>, tx_hash: [u8; 32], amount: u128, recipient: [u8; 28], toff: usize, aoff: usize, roff: usize) -> bool {
     let cs = ConstraintSystem::<Fr>::new_ref();
-    ValueBind { body, tx_hash, amount, cap_off }.generate_constraints(cs.clone()).unwrap();
+    ReceiptBind { body, tx_hash, amount, recipient, type_code_off: toff, amount_off: aoff, recip_off: roff }.generate_constraints(cs.clone()).unwrap();
     cs.is_satisfied().unwrap()
 }
 
 fn main() {
     let recipient = [0x33u8; 28];
-    let amount: u64 = 100_000 * 100_000_000;          // 100,000 CKB (shannons)
-    let body = build_canonical_tx(amount, &recipient);
+    let amount: u128 = 100_000 * 100_000_000;
+    let body = build_canonical_tx(amount, &recipient, &BRIDGE_CODE_HASH);
     let tx_hash = ckbhash(&body);
-    let cap_off = capacity_off(&body);
+    let (toff, aoff, roff) = (type_code_off(&body), data_off(&body) + 5, data_off(&body) + 21);  // amount after MAGIC(4)+kind(1); recipient after +16
+    println!("body {} bytes | tx_hash {} | type_code_off {} amount_off {} recip_off {}", body.len(), hex(&tx_hash), toff, aoff, roff);
+    // native cross-checks
+    assert_eq!(&body[toff..toff + 32], &BRIDGE_CODE_HASH[..], "type code_hash offset wrong");
+    assert_eq!(u128::from_le_bytes(body[aoff..aoff + 16].try_into().unwrap()), amount, "amount offset wrong");
+    assert_eq!(&body[roff..roff + 28], &recipient[..], "recipient offset wrong");
 
-    // native cross-check: the capacity bytes really sit at cap_off
-    let native_cap = u64::from_le_bytes(body[cap_off..cap_off + 8].try_into().unwrap());
-    println!("body {} bytes | tx_hash {} | capacity_off {} | native capacity {}", body.len(), hex(&tx_hash), cap_off, native_cap);
-    assert_eq!(native_cap, amount, "molecule capacity offset wrong");
+    // (A) real receipt: type==bridge + amount/recipient match -> SATISFIED
+    let ok = run(body.clone(), tx_hash, amount, recipient, toff, aoff, roff);
+    println!("[A] real receipt, correct amount+recipient -> satisfied = {}  (expect true)", ok);
+    assert!(ok, "circuit rejected a valid canonical receipt tx");
 
-    // (A) real body + correct amount -> circuit MUST be satisfied (proves in-circuit hash + capacity read)
-    let ok = run(body.clone(), tx_hash, amount, cap_off);
-    println!("[A] real body, correct amount  -> satisfied = {}  (expect true)", ok);
-    assert!(ok, "circuit rejected a valid canonical tx");
+    // (B) the inflate attack: claim a huge amount the receipt doesn't carry -> UNSATISFIED (the fix)
+    let bad = run(body.clone(), tx_hash, 1_000_000_000u128 * 100_000_000, recipient, toff, aoff, roff);
+    println!("[B] INFLATED amount                        -> satisfied = {}  (expect false)", bad);
+    assert!(!bad, "VALUE-BINDING BROKEN: accepted an inflated amount");
 
-    // (B) attack: same minimal lock, claim a huge amount -> circuit MUST be UNSATISFIED (the fix)
-    let bad = run(body.clone(), tx_hash, 1_000_000_000u64 * 100_000_000, cap_off);
-    println!("[B] real body, INFLATED amount -> satisfied = {}  (expect false)", bad);
-    assert!(!bad, "VALUE-BINDING BROKEN: circuit accepted an inflated amount");
+    // (C) the redirect attack: claim a different recipient -> UNSATISFIED (recipient binding, B1-equivalent)
+    let badr = run(body.clone(), tx_hash, amount, [0x44u8; 28], toff, aoff, roff);
+    println!("[C] REDIRECTED recipient                   -> satisfied = {}  (expect false)", badr);
+    assert!(!badr, "RECIPIENT-BINDING BROKEN: accepted a substituted recipient");
 
-    // (C) tampered body (flip a capacity byte) but real tx_hash -> hash mismatch -> UNSATISFIED
-    let mut tb = body.clone(); tb[cap_off] ^= 0xFF;
-    let badc = run(tb, tx_hash, amount, cap_off);
-    println!("[C] tampered body, real hash   -> satisfied = {}  (expect false)", badc);
-    assert!(!badc, "body authenticity BROKEN: circuit accepted a body that doesn't hash to tx_hash");
+    // (D) wrong type: a receipt whose type isn't bridge_lock_v1 -> UNSATISFIED (didn't run the bridge script)
+    let body2 = build_canonical_tx(amount, &recipient, &[0xCCu8; 32]);    // non-bridge type code hash
+    let tx_hash2 = ckbhash(&body2);
+    let badt = run(body2, tx_hash2, amount, recipient, toff, aoff, roff);
+    println!("[D] non-bridge type code hash              -> satisfied = {}  (expect false)", badt);
+    assert!(!badt, "TYPE-BINDING BROKEN: accepted a non-bridge receipt");
 
-    println!("\nVALUE-BINDING PROTOTYPE: all checks passed (real ACCEPT, inflate REJECT, tamper REJECT).");
+    // (E) tampered body but real tx_hash -> body authenticity rejects
+    let mut tb = body.clone(); tb[aoff] ^= 0xFF;
+    let bade = run(tb, tx_hash, amount, recipient, toff, aoff, roff);
+    println!("[E] tampered body, real hash               -> satisfied = {}  (expect false)", bade);
+    assert!(!bade, "body authenticity BROKEN");
+
+    println!("\nVALUE-BINDING GADGET (full receipt): all checks passed — real ACCEPT; inflate/redirect/wrong-type/tamper all REJECT.");
 }
 
 fn hex(b: &[u8]) -> String { b.iter().map(|x| format!("{:02x}", x)).collect() }
