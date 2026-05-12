@@ -63,7 +63,7 @@ fn window_root_path(leaves:&[[u8;32]], idx:usize)->([u8;32], Vec<([u8;32],bool)>
 
 #[derive(Clone)]
 struct WindowedLeap { raw:[u8;192], nonce:[u8;16], leaf:[u8;32], path:Vec<([u8;32],bool)>, wit:[u8;32],
-    new_state:Vec<u8>, seal:[u8;32], window_root:[u8;32], siblings:Vec<[u8;32]>, tip_height:u64, k:u64 }
+    new_state:Vec<u8>, seal:[u8;32], window_root:[u8;32], siblings:Vec<[u8;32]>, tip_height:u64, k:u64, kmin:u64 }
 fn bytes_to_fp<F:PrimeField>(b:&[UInt8<F>])->Result<FpVar<F>,SynthesisError>{
     let mut acc=FpVar::<F>::zero(); let mut c=F::one();
     for byte in b { for bit in byte.to_bits_le()? { acc += FpVar::from(bit)*c; c.double_in_place(); } }
@@ -134,6 +134,12 @@ impl ConstraintSynthesizer<Fr> for WindowedLeap {
         for j in 0..depth { let bit=Boolean::new_witness(cs.clone(),||Ok((self.k>>j)&1==1))?; k_fp += FpVar::from(bit.clone())*ck; ck = ck + ck; k_bits.push(bit); }
         k_fp.enforce_equal(&pi_k)?;                                        // bind K to its depth bits => K in [0,W)
         merkle_gadget::enforce_geq_bits(&diff_bits, &k_bits)?;             // diff >= K
+        // SEC (reorg floor, fixes GOV-1): K must be >= a PINNED minimum confirmation depth, NOT a
+        // witness/governance-chosen 0. Without this the depth bound is vacuous (K=0 accepts the tip), so a
+        // 1-block reorg could mint. Mirrors the Mithril-side quorum pin: the security parameter is baked into
+        // the circuit (=> the VK), not supplied. kmin is a circuit constant for this build.
+        let kmin_bits: Vec<Boolean<Fr>> = (0..depth).map(|j| Boolean::constant((self.kmin>>j)&1==1)).collect();
+        merkle_gadget::enforce_geq_bits(&k_bits, &kmin_bits)?;             // K >= K_MIN  (no K=0)
         Ok(())
     }
 }
@@ -151,7 +157,7 @@ fn main(){
     let slot = (height % wsize as u64) as usize;                       // ring-buffer slot = height mod W
     // TIP_OFFSET (test only): place the checkpoint tip `offset` blocks above this header so diff=offset,
     // exercising the SEC D6 depth-K bound (diff must be >= K). Default 0 = legacy (header IS the tip).
-    let tip_height = height + std::env::var("TIP_OFFSET").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+    let tip_height = height + std::env::var("TIP_OFFSET").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(12);
     let mut leaves=vec![[0u8;32]; wsize];
     for k in 0..wsize { leaves[k]=ckbhash(&((k as u64)+1).to_le_bytes()); } // stand-in recent header hashes
     leaves[slot]=block_hash;                                           // this header sits at its slot
@@ -161,8 +167,11 @@ fn main(){
     // The real proof against a live checkpoint sets K = the governance min_confirmations and proves a
     // header at depth >= K. The fixture uses diff=0 (tip==height), so a real K>0 here would be unprovable
     // for THIS demo header; K is exercised by the relayer against a genuinely K-deep checkpoint.
-    let k: u64 = std::env::var("K").ok().and_then(|s| s.parse().ok()).unwrap_or(0);
-    let circ=WindowedLeap{raw,nonce,leaf,path,wit,new_state:new_state.clone(),seal,window_root,siblings,tip_height,k};
+    let k: u64 = std::env::var("K").ok().and_then(|s| s.parse().ok()).unwrap_or(12);
+    // SEC reorg floor (GOV-1): the PINNED minimum confirmation depth, baked into the circuit (=> the VK).
+    // Deployment parameter set to CKB's settlement guarantee; default 12. K=0 is no longer provable.
+    let kmin: u64 = std::env::var("CHIRAL_K_MIN").ok().and_then(|s| s.parse().ok()).unwrap_or(12);
+    let circ=WindowedLeap{raw,nonce,leaf,path,wit,new_state:new_state.clone(),seal,window_root,siblings,tip_height,k,kmin};
     {
         let cs=ConstraintSystem::<Fr>::new_ref();
         circ.clone().generate_constraints(cs.clone()).unwrap();
