@@ -210,8 +210,15 @@ These don't block the value-binding fix but are on the critical path to "value-r
    - ⏳ Thread the gadget into `leap_windowed.rs`'s FULL proof (tx_body witness + the §3 constraints) and
      re-prove **end-to-end** — needs a LIVE canonical bridge-receipt lock tx in a real K-deep CKB block (a
      real-PoW demo block can't contain a synthetic bridge tx), i.e. step 4.
-4. **Prover/relayer** — `ckb_lock.py` emits the canonical bridge cell; `relayer.py`/`relay_prove.rs` feed the
-   real `tx_body` + read `amount/recipient` from the locked cell (drop the hardcodes).
+4. **Prover/relayer** — IN PROGRESS (live):
+   - ✅ `bridge_lock_v1` deployed on Pudge (`BRIDGE_CODE_HASH 0x1c2589e8…`); a canonical bridge-RECEIPT lock
+     tx is **mined live**: `0xcfaaf177…` (200 CKB, recipient `2df44c71…`). Its exact RawTransaction body (522 B)
+     is reconstructed + verified (`ckbhash(body)==tx_hash`) and the receipt offsets confirmed on the REAL tx
+     (`type_code@287`, `amount@474`, `recipient@490`) — `relayer/onchain/bridge_deploy_lock.mjs` →
+     `bridge_lock_live.json`.
+   - ⏳ Prove end-to-end on its block (#21388341) once K_MIN(12)-deep: feed the real header + CBMT proof for
+     `0xcfaaf177…` + the captured body into the value-bound leap circuit (bake `BRIDGE_CODE_HASH`), prove, and
+     confirm the Aiken verifier accepts. (Window/checkpoint synthetic, as in the existing consensus demo.)
 5. **Re-audit** the value binding (the 2 confirmed lenses) + the unaudited `authz`/`doublemint` dimensions.
 6. (Then) the §6 burn→unlock release lock, and the §8 reorg-cap/rate-limiter hardening.
 
