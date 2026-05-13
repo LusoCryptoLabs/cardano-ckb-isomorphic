@@ -216,9 +216,16 @@ These don't block the value-binding fix but are on the critical path to "value-r
      is reconstructed + verified (`ckbhash(body)==tx_hash`) and the receipt offsets confirmed on the REAL tx
      (`type_code@287`, `amount@474`, `recipient@490`) — `relayer/onchain/bridge_deploy_lock.mjs` →
      `bridge_lock_live.json`.
-   - ⏳ Prove end-to-end on its block (#21388341) once K_MIN(12)-deep: feed the real header + CBMT proof for
-     `0xcfaaf177…` + the captured body into the value-bound leap circuit (bake `BRIDGE_CODE_HASH`), prove, and
-     confirm the Aiken verifier accepts. (Window/checkpoint synthetic, as in the existing consensus demo.)
+   - ✅ **PROVEN END-TO-END LIVE.** `circuit/prover/src/bin/relay_bind.rs` (relay_prove + the value binding):
+     reads the real header + CBMT proof for `0xcfaaf177…` (relayer.py, `TARGET_BLOCK`/`TARGET_TX`) + the
+     captured body, proves R1 PoW + R2 MMR + R3 CBMT (+ seal==tx) AND the value binding — the commitment is
+     **derived in-circuit** from the receipt's own amount(16)+recipient(28) read out of the in-circuit-hashed
+     body, with the type code-hash pinned to `bridge_lock_v1`. On block #21388341: `is_satisfied`, 1.49M
+     constraints, arkworks verify=true (amount 200 CKB, recipient `2df44c71…`). The **on-chain Aiken verifier
+     ACCEPTS it** (`groth16/lib/g16/bridge_bind_test.ak` via `inject_vk.py`, test `live_relayer_leap_verifies`
+     PASS, cpu 2.27B ≈ 22.7% of a tx). Redeemer: `relayer/bridge_redeemer.json`.
+     Note: relay_bind is on the MMR prover (no in-circuit depth bound); the reorg K-floor (§7.5 L1b) is wired +
+     validated in the windowed circuit. Production combines both (value binding + windowed K-floor).
 5. **Re-audit** the value binding (the 2 confirmed lenses) + the unaudited `authz`/`doublemint` dimensions.
 6. (Then) the §6 burn→unlock release lock, and the §8 reorg-cap/rate-limiter hardening.
 
