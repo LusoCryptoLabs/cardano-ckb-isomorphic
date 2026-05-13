@@ -4,7 +4,7 @@ Fetches a recent confirmed block T + its 3 predecessors (to build a small checkp
 tx's CBMT proof in T. The Rust prover (relay_prove) derives the digests/paths and produces the Groth16
 proof + the broadcast-ready Cardano redeemer. No light-client needed for the demo: the checkpoint MMR is
 built from the fetched headers (in production the relayer fetches the canonical light-client MMR proof)."""
-import urllib.request, json, sys, time
+import urllib.request, json, sys, time, os
 RPC = sys.argv[1] if len(sys.argv) > 1 else "https://testnet.ckb.dev"
 def rpc(m, p):
     for a in range(5):
@@ -22,13 +22,18 @@ def hdr_fields(h):
             "transactions_root","proposals_hash","extra_hash","dao","nonce","hash"]}
 
 tip = int(rpc("get_tip_header", [])["number"], 16)
-T = tip - 20                                  # a comfortably-confirmed block
-# find a block at/just below T that has a non-cellbase tx (>=2 txs) for a meaningful CBMT path
-for n in range(T, T-200, -1):
-    b = rpc("get_block_by_number", [hex(n)])
-    if len(b["transactions"]) >= 2: T = n; block = b; break
+TARGET_TX = os.environ.get("TARGET_TX"); TARGET_BLOCK = os.environ.get("TARGET_BLOCK")
+if TARGET_TX and TARGET_BLOCK:
+    # LIVE value-binding proof: prove on a SPECIFIC bridge-receipt tx in its block.
+    T = int(TARGET_BLOCK); block = rpc("get_block_by_number", [hex(T)])
+    txs = block["transactions"]; tx_idx = next(i for i, t in enumerate(txs) if t["hash"] == TARGET_TX)
+else:
+    T = tip - 20                                  # a comfortably-confirmed block
+    for n in range(T, T-200, -1):                 # find a block with a non-cellbase tx (>=2 txs)
+        b = rpc("get_block_by_number", [hex(n)])
+        if len(b["transactions"]) >= 2: T = n; block = b; break
+    txs = block["transactions"]; tx_idx = 1
 hdrs = [hdr_fields(rpc("get_header_by_number", [hex(T-3+i)])) for i in range(4)]   # MMR leaves T-3..T
-txs = block["transactions"]; tx_idx = 1                                            # a real non-cellbase tx
 tx = txs[tx_idx]
 proof = rpc("get_transaction_proof", [[tx["hash"]]])
 seal = tx["inputs"][0]["previous_output"]      # a REAL single-use outpoint = the seal
