@@ -254,3 +254,25 @@ test seal_consumed_rejects_wrong_key() {
   !seal_consumed(base(True, red(#"dead0000000000000000000000000000000000000000000000000000000000ff", 100)), m_null, m_seal)
 }
 
+// SEC D6 (RATELIMIT-1 / per-leap cap ENABLED): the policy reference input now carries a REAL max_amount.
+// These exercise the cap through the FULL mint validator (not enforce_policy in isolation): a leap above the
+// per-leap cap is rejected even with a valid seal + tick, and a leap exactly AT the cap still mints.
+fn pol_ref_capped(max_amount: Int) -> Input {
+  let st = PolicyState {
+    governor: #"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    policy: GuardPolicy { paused_global: False, paused_in: False, paused_out: False, min_amount: 0, max_amount: max_amount, min_confirmations: 12 },
+  }
+  Input { output_reference: m_pol_oref, output: mk_out(m_pol_addr, from_asset(m_polnft, m_polname, 1), InlineDatum(st)) }
+}
+
+// leap amount is 100 (m_state[0..16] LE). cap 50 < 100 -> rejected by the real guard.
+test leapin_rejects_over_per_leap_cap() {
+  let tx = Transaction { ..base(True, red(m_seal, 100)), reference_inputs: [pol_ref_capped(50)] }
+  !leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_null, m_rl, LeapInMint, m_policy, tx)
+}
+// exactly at the cap (100 == 100) still mints.
+test leapin_accepts_at_per_leap_cap() {
+  let tx = Transaction { ..base(True, red(m_seal, 100)), reference_inputs: [pol_ref_capped(100)] }
+  leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_null, m_rl, LeapInMint, m_policy, tx)
+}
+
