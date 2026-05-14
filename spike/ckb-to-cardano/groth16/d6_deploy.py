@@ -30,8 +30,21 @@ THREAD_NAME = "636b62636572742d746872656164"      # shared thread asset name "ck
 POLICY_NAME = THREAD_NAME                          # the policy NFT asset name (cardano_bound.policy_name)
 FT_NAME     = "cf87434b42"                         # "χCKB" (U+03C7 chi 'cf87' ++ "CKB") — the leaped-CKB token on Cardano
 K_DEFAULT   = 12                                   # genesis min_confirmations (sane: 0..32)
-CAP         = 0                                    # 0 = aggregate cap disabled at genesis; governor sets real cap
 WINDOW_LEN  = 3600                                 # rate-limiter window (slots)
+
+# ---- SEC D6 reorg caps — NOW ENABLED (were 0/disabled => RATELIMIT-1). Units: CKB shannons (1 CKB = 1e8).
+# The AGGREGATE cap is a compile-time parameter to leap_ratelimit (baked into its script hash => immutable
+# post-deploy: a captured governor key cannot lift the global safety cap). The PER-LEAP caps live in the
+# governable PolicyState datum (governor-tunable on-chain). Governance invariant (leap_ratelimit.ak header):
+#   window_len >= wall-clock of a depth-K reorg  AND  CAP < cost-to-rent-CKB-majority-for-window_len.
+# Throughput ceiling = CAP/window_len. Tune all three via env at deploy; defaults are conservative testnet
+# values (NOT economic advice for mainnet — re-derive CAP against the live rent cost before go-live).
+CKB         = 100_000_000                                                  # 1 CKB in shannons
+CAP         = int(os.environ.get("CHIRAL_CAP_CKB",  "1000000")) * CKB      # aggregate per-window cap (1,000,000 CKB)
+MAX_AMOUNT  = int(os.environ.get("CHIRAL_MAX_CKB",  "100000"))  * CKB      # per-leap cap (100,000 CKB; 0 = none)
+MIN_AMOUNT  = int(os.environ.get("CHIRAL_MIN_CKB",  "0"))       * CKB      # per-leap floor (0 = none)
+assert CAP > 0, "RATELIMIT-1: aggregate cap must ship ENABLED (CAP>0)"
+assert MAX_AMOUNT == 0 or MIN_AMOUNT <= MAX_AMOUNT, "sane-caps: min_amount <= max_amount (chiral_policy invariant)"
 
 # ---- PLACEHOLDER inputs (swap at real deploy) ----
 GREF_A = ("aa"*32, 0)                              # PLACEHOLDER policy-thread genesis outpoint
@@ -97,7 +110,10 @@ def main():
                  "finalize_vk (run the finalize ceremony) + a funded deployer key + the deployed checkpoint "
                  "+ seal_nullifier, then submit the two genesis-mint txs (mint 1 thread token each, output "
                  "the datums below to chiral_policy_script / leap_ratelimit_script).",
-        "params": {"policy_name": POLICY_NAME, "ft_name": FT_NAME, "K_genesis": K_DEFAULT, "cap": CAP, "window_len": WINDOW_LEN},
+        "params": {"policy_name": POLICY_NAME, "ft_name": FT_NAME, "K_genesis": K_DEFAULT,
+                   "cap": CAP, "min_amount": MIN_AMOUNT, "max_amount": MAX_AMOUNT, "window_len": WINDOW_LEN,
+                   "_caps_note": "SEC D6 reorg caps ENABLED (aggregate CAP compile-time/immutable; per-leap "
+                                 "min/max in the governable PolicyState datum). Units: CKB shannons."},
         "policy_nft_minter": policy_nft,
         "ratelimit_thread_minter": ratelimit_thread,
         "chiral_policy_script": policy_script,
@@ -106,7 +122,7 @@ def main():
         "leap_mint_guard_policy": mint_guard,
         "genesis_mint_datums": {
             "chiral_policy_cell": {"type": "PolicyState", "governor": "<deployer vkh>", "policy": {
-                "paused_global": False, "paused_in": False, "paused_out": False, "min_amount": 0, "max_amount": 0, "min_confirmations": K_DEFAULT}},
+                "paused_global": False, "paused_in": False, "paused_out": False, "min_amount": MIN_AMOUNT, "max_amount": MAX_AMOUNT, "min_confirmations": K_DEFAULT}},
             "leap_ratelimit_cell": {"type": "RateState", "window_start": 0, "minted_in_window": 0},
         },
     }
