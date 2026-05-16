@@ -305,3 +305,116 @@ fn replay_same_burn_rejected() {
     let (ctx, tx) = build(Cfg { registry_old_root: Some(new_root), ..Cfg::ok() });
     assert!(ctx.verify_tx(&tx, MAX_CYCLES).is_err(), "replaying the same certified burn must be rejected");
 }
+
+// ===================================================================================================
+// FULL χCKB BRIDGE-CELL ROUND-TRIP (Phase 4): the return leg with the SAME cell carrying BOTH the
+// bridge_lock_v1 RECEIPT type AND the burn_gated_unlock_v2 release lock, bound to the REAL χCKB asset.
+// v2.rs above tests the release lock in isolation (dummy lock cell, generic asset); these prove the two
+// scripts COMPOSE on one cell and that release is bound to the χCKB asset IDENTITY (policy AND name).
+// ===================================================================================================
+const BRIDGE_BIN: &str = "../target/riscv64imac-unknown-none-elf/release/bridge_lock_v1";
+const CKCKB_POLICY: [u8; 28] = [0x9c; 28];                 // representative leap_mint_guard χCKB policy id
+const CKCKB_NAME: &[u8] = &[0xcf, 0x87, 0x43, 0x4b, 0x42]; // "χCKB" (cf87434b42), the real d6_deploy FT_NAME
+
+struct RT { amount: u128, burn_amount: u128, burn_name: Vec<u8>, burn_policy: [u8; 28] }
+impl RT {
+    // 200 CKB (20e9 shannons), like the live forward receipt 0xcfaaf177.
+    fn ok() -> Self { RT { amount: 20_000_000_000, burn_amount: 20_000_000_000, burn_name: CKCKB_NAME.to_vec(), burn_policy: CKCKB_POLICY } }
+}
+
+fn build_roundtrip(rt: RT) -> (Context, ckb_testtool::ckb_types::core::TransactionView) {
+    let mut ctx = Context::default();
+    let lock_bin: Bytes = std::fs::read(LOCK_BIN).expect("build burn_gated_unlock_v2 first").into();
+    let reg_bin: Bytes = std::fs::read(REG_BIN).expect("build burn_nullifier_registry first").into();
+    let bridge_bin: Bytes = std::fs::read(BRIDGE_BIN).expect("build bridge_lock_v1 first").into();
+    let lock_op = ctx.deploy_cell(lock_bin);
+    let reg_op = ctx.deploy_cell(reg_bin);
+    let bridge_op = ctx.deploy_cell(bridge_bin);
+    let as_op = ctx.deploy_cell(ALWAYS_SUCCESS.clone());
+
+    let ckpt_type = ctx.build_script(&as_op, Bytes::from(b"txsetcert".to_vec())).unwrap();
+    let ckpt_type_hash: [u8; 32] = ckpt_type.calc_script_hash().unpack();
+    let reg_type = ctx.build_script(&reg_op, Bytes::from([0x11u8; 32].to_vec())).unwrap();
+    let reg_type_hash: [u8; 32] = reg_type.calc_script_hash().unpack();
+    let bridge_type = ctx.build_script(&bridge_op, Bytes::new()).unwrap(); // kind=0 ignores args
+
+    // the certified Cardano χCKB burn (real asset name) of `burn_amount`.
+    let tx_body = build_txbody(&rt.burn_policy, &rt.burn_name, rt.burn_amount);
+    let (lock_witness, cert_root) = make_proof(&tx_body, false);
+    let key = b2b256(&tx_body);
+    let (empty_root, _sib, new_root, reg_witness) = empty_insert(&key);
+
+    // the release lock is bound to the χCKB asset identity (CKCKB_POLICY ‖ CKCKB_NAME) + the bound amount.
+    let mut args = Vec::new();
+    args.extend_from_slice(&ckpt_type_hash);
+    args.extend_from_slice(&rt.amount.to_le_bytes());
+    args.extend_from_slice(&CKCKB_POLICY);
+    args.extend_from_slice(&reg_type_hash);
+    args.extend_from_slice(CKCKB_NAME);
+    let lock_script = ctx.build_script(&lock_op, Bytes::from(args)).unwrap();
+
+    // the forward-locked bridge cell: capacity == amount (kind=0 CKB), LOCK = release lock, TYPE = receipt.
+    // 49-byte receipt = MAGIC("BRG1") ‖ kind(0) ‖ amount(16 LE) ‖ recipient(28).
+    let mut receipt = b"BRG1".to_vec();
+    receipt.push(0u8);
+    receipt.extend_from_slice(&rt.amount.to_le_bytes());
+    receipt.extend_from_slice(&[0x2du8; 28]);
+    let locked = ctx.create_cell(
+        CellOutput::new_builder().capacity((rt.amount as u64).pack()).lock(lock_script).type_(Some(bridge_type).pack()).build(),
+        Bytes::from(receipt),
+    );
+
+    let dummy = ctx.build_script(&as_op, Bytes::from(b"d".to_vec())).unwrap();
+    let reg_in = ctx.create_cell(
+        CellOutput::new_builder().capacity(2000u64.pack()).lock(dummy.clone()).type_(Some(reg_type.clone()).pack()).build(),
+        Bytes::from(empty_root.to_vec()),
+    );
+    let mut ckpt_data = b"LCKP".to_vec();
+    ckpt_data.extend_from_slice(&cert_root);
+    let ckpt_cell = ctx.create_cell(
+        CellOutput::new_builder().capacity(3000u64.pack()).lock(dummy.clone()).type_(Some(ckpt_type).pack()).build(),
+        Bytes::from(ckpt_data),
+    );
+
+    // full unlock: the released CKB goes to a plain output (NO bridge receipt output -> bridge_lock_v1 CONSUME).
+    let tx = TransactionBuilder::default()
+        .input(CellInput::new_builder().previous_output(locked).build())
+        .output(CellOutput::new_builder().capacity((rt.amount as u64 - 1000).pack()).lock(dummy.clone()).build())
+        .output_data(Bytes::new().pack())
+        .input(CellInput::new_builder().previous_output(reg_in).build())
+        .output(CellOutput::new_builder().capacity(2000u64.pack()).lock(dummy.clone()).type_(Some(reg_type.clone()).pack()).build())
+        .output_data(Bytes::from(new_root.to_vec()).pack())
+        .cell_dep(CellDep::new_builder().out_point(lock_op).build())
+        .cell_dep(CellDep::new_builder().out_point(reg_op).build())
+        .cell_dep(CellDep::new_builder().out_point(bridge_op).build())
+        .cell_dep(CellDep::new_builder().out_point(as_op).build())
+        .cell_dep(CellDep::new_builder().out_point(ckpt_cell).build())
+        .witness(WitnessArgs::new_builder().lock(Some(Bytes::from(lock_witness)).pack()).build().as_bytes().pack())
+        .witness(WitnessArgs::new_builder().input_type(Some(Bytes::from(reg_witness)).pack()).build().as_bytes().pack())
+        .build();
+    let tx = ctx.complete_tx(tx);
+    (ctx, tx)
+}
+
+#[test]
+fn chckb_bridge_cell_roundtrip_unlocks() {
+    // The same cell carrying bridge_lock_v1 (receipt) + burn_gated_unlock_v2 (release lock) is released by a
+    // certified χCKB burn of the bound amount: bridge_lock_v1 CONSUME allows + the lock gates on the cert.
+    let (ctx, tx) = build_roundtrip(RT::ok());
+    ctx.verify_tx(&tx, MAX_CYCLES).expect("a certified χCKB burn of the bound amount must release the bridge cell");
+}
+
+#[test]
+fn chckb_wrong_asset_name_rejected() {
+    // ASSET-IDENTITY binding (new vs v2.rs, which only varied the amount): a burn of a DIFFERENT asset name
+    // (same policy, same amount) does not satisfy the lock's (policy, χCKB-name) lookup -> burned == 0 -> reject.
+    let (ctx, tx) = build_roundtrip(RT { burn_name: b"NOTCKB".to_vec(), ..RT::ok() });
+    assert!(ctx.verify_tx(&tx, MAX_CYCLES).is_err(), "a burn of a different asset NAME must not release the χCKB cell");
+}
+
+#[test]
+fn chckb_wrong_policy_rejected() {
+    // ASSET-IDENTITY binding: a burn under a DIFFERENT policy id (same name, same amount) -> burned == 0 -> reject.
+    let (ctx, tx) = build_roundtrip(RT { burn_policy: [0xee; 28], ..RT::ok() });
+    assert!(ctx.verify_tx(&tx, MAX_CYCLES).is_err(), "a burn under a different POLICY must not release the χCKB cell");
+}
