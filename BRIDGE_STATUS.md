@@ -27,7 +27,7 @@ A native-token round-trip (path B) uses BOTH: forward = Groth16 (mint χCKB), re
 | burn-nullifier registry (replay-once, genesis-pinned) | `burn_nullifier_registry.rs` | DEPLOYED | code `0x9d2fc246`:0 (`0x2b96f094`), genesis `0x4e159851`:0, **REG type `0xdc18fd56`** |
 | bound_asset_v2 (RGB++ seal lock, Mithril-gated) | `bound_asset_v2.rs` | DEPLOYED | code `0xf135e9ef`:0, **hash `0x4cc7ae86`** (LCKP+REG baked) |
 | ownership toggle (CkbOwned↔CardanoBound) | `leap_to_cardano_v2.mjs`, `leap_to_ckb_v2.mjs`, `leap_orchestrator.mjs` | LIVE round-trip | genesis `0x408d9c28`; S4 `0x838e39f2`; S5 `0xb45812da` |
-| **burn→unlock release lock** | `burn_gated_unlock_v2.rs` | **BUILT + VM-TESTED (13 tests), NOT yet deployed** | — (see §3, go-live B) |
+| **burn→unlock release lock** | `burn_gated_unlock_v2.rs` | **BUILT + VM-TESTED (15 tests incl. full χCKB round-trip), NOT yet deployed** | — (see §3, go-live B) |
 
 Detail: `relayer/onchain/LIVE.md`, `relayer/onchain/V2_DEPLOY_RUNBOOK.md`, `docs/LEAP_V2_GOLIVE.md`,
 `spike/ckb-to-cardano/RETURN_TRIP.md`.
@@ -35,7 +35,7 @@ Detail: `relayer/onchain/LIVE.md`, `relayer/onchain/V2_DEPLOY_RUNBOOK.md`, `docs
 ### Groth16 leg (Cardano-verifies-CKB) — value binding PROVEN live; full deploy CEREMONY-GATED
 | component | file | status | id |
 |---|---|---|---|
-| leap prover: value-binding **+ reorg K-floor in ONE proof** | `circuit/prover/src/bin/leap_bound_windowed.rs` | BUILT + PROVEN live; **Aiken verifier ACCEPTS** | proof on block 21,388,341, cpu 2.54B |
+| leap prover: value-binding **+ reorg K-floor in ONE proof** | `circuit/prover/src/bin/leap_bound_windowed.rs` | BUILT + PROVEN live (REAL 64-header window via `CHIRAL_WINDOW`); **Aiken verifier ACCEPTS** | proof on block 21,388,341, cpu 2.54B |
 | on-chain leg verifier | `groth16/validators/cardano_bound.ak` | BUILT + TESTED | expects 5 PI `(window_root,seal,commitment,tip,K)` |
 | mint guard (no-inflation/replay/caps) | `groth16/validators/leap_mint_guard.ak` | BUILT + TESTED + RE-AUDITED | — |
 | seal-nullifier (Cardano replay-once) + genesis pin | `seal_nullifier.ak` / `seal_thread.ak` | BUILT + TESTED | — |
@@ -77,37 +77,42 @@ owner vkh           2df44c71a4312463ba31315c5aa7725b6ad44cd544a055a3dde915a6
 
 ## 3. Remaining go-live work (categorized; each item says exactly what's done vs left)
 
-### A. Real CKB-header window root for `leap_bound_windowed` — PARTIALLY GATED
-- DONE: the combined prover + the on-chain `cardano_bound` expect a real `window_root`.
-- The prover's window membership currently uses **stand-in window leaves in the demo**.
-- Achievable now (prover/relayer): build the window root from REAL recent CKB headers the AdvanceCKBCert way.
-- GATED: the on-chain `ckbcert` checkpoint that PUBLISHES the window root lives on Cardano and is **not deployed**
-  (placeholder `CHECKPOINT_NFT` in `d6_deploy.py`); it deploys with the Groth16 leg (ceremony-gated).
+### A. Real CKB-header window root for `leap_bound_windowed` — ✅ DONE at prover level (on-chain publish gated)
+- ✅ DONE (2026-06-11): the relayer now builds a **real window root over 64 real CKB header hashes**
+  (`relayer/relayer_window.py` → ring buffer `leaves[h%W]=blockhash(h)`, tip=receipt+K_MIN), and
+  `leap_bound_windowed` proves against it when `CHIRAL_WINDOW` is set (the stand-in leaves are demo-only now).
+  Verified: real window for block 21,388,341 (slot 53, diff=12) → differential 1 accept + 4 reject, full Groth16
+  `verify=true`, **on-chain Aiken verifier ACCEPTS** the real-window proof. The stand-in-leaves fidelity gap is
+  removed at the prover/relayer level.
+- GATED (with the Groth16-leg deploy): the on-chain `ckbcert` checkpoint that PUBLISHES this window root lives on
+  Cardano and is not deployed (placeholder `CHECKPOINT_NFT` in `d6_deploy.py`) — ceremony-gated.
 
-### B. Forward funds locked UNDER `burn_gated_unlock_v2` — PARTIALLY GATED
-- DONE: the receipt type (`bridge_lock_v1`) + the release lock (`burn_gated_unlock_v2`) compose on one cell —
-  proven by `chckb_bridge_cell_roundtrip_unlocks` (VM). The release lock binds amount + **asset identity**
-  (policy AND name) + replay-once.
-- The live forward demo (`0xcfaaf177`) locked under the **deployer secp lock as a placeholder**.
-- Achievable now: construct the forward lock UNDER `burn_gated_unlock_v2` (deployed registry `0xdc18fd56` +
-  checkpoint `0xa055798e` + the χCKB policy/name) and a creation→release VM round-trip.
-- GATED: the **real χCKB policy id** comes from a live Groth16-leg deploy (`leap_mint_guard`), which is
-  ceremony-gated; until then the policy is representative.
+### B. Forward funds locked UNDER `burn_gated_unlock_v2` — ✅ loop proven in VM (live broadcast gated + unsafe now)
+- ✅ DONE (2026-06-11): the full loop is proven on CKB-VM (`integration/tests/v2.rs`, 15 tests):
+  `chckb_forward_lock_create_valid` (the 200-CKB χCKB cell is a VALID `bridge_lock_v1` CREATE under the release
+  lock; `chckb_forward_lock_undercapitalized_rejected` proves capacity==amount), and
+  `chckb_bridge_cell_roundtrip_unlocks` (the same cell spec is released by a certified χCKB burn) +
+  asset-identity negatives. So forward-create and return-release are proven on the identical cell spec.
+- INTENTIONALLY NOT BROADCAST: a LIVE forward lock under `burn_gated_unlock_v2` would strand funds — there is no
+  live χCKB to burn until the Groth16 leg (`leap_mint_guard`) is deployed (ceremony-gated). The relayer change
+  is a one-line lock swap (deployer secp → `burn_gated_unlock_v2(checkpoint 0xa055798e, amount, χCKB policy,
+  registry 0xdc18fd56, χCKB name)`) to apply WHEN the χCKB policy exists.
 
-### C. STM-quorum-pin redeploy (`cert-verify`) — DEFERRED ON PURPOSE (mainnet-prep, AUDIT-GATED)
+### C. STM-quorum-pin redeploy (`cert-verify`) — ✅ build-ready & staged; live cascade DEFERRED (audit-gated)
 - **VERIFIED FACT (corrects any prior assumption): the deployed verifiers `cv_advance` (0xe877a802) and
   `cv_deploy_v2` (0x75b288f3) DO NOT contain the STM pin.** The pin is commit `86ed321` (2026-06-10 23:58),
   AFTER the deploy commits (`8a89ad9` 14:53 / `b537e91` 16:41); `git merge-base --is-ancestor` confirms the
   deploy predates the pin, and the deployed `cv_deploy_v2.bin` was last built in the pre-pin commit.
-- The fix IS in source + validated off-chain (real epoch-1324 cert: k=1944, 2345 wins, max idx 16941 → accepts;
-  4 forged variants → reject). See `docs/SEC_STM_QUORUM_PIN.md`.
+- ✅ build-ready (2026-06-11): the STM-pinned source compiles clean for BOTH `cv_deploy` (default) and
+  `cv_advance` (`--features advance`) for `riscv64imac`. Validated off-chain (real epoch-1324 cert: k=1944,
+  2345 wins, max idx 16941 → accepts; 4 forged variants → reject — `docs/SEC_STM_QUORUM_PIN.md`).
 - Putting it on-chain is a **destructive cascade**: new binary → new `cv_*` hashes → re-genesis the AVK chain
   from `PINNED_GENESIS` → re-bake the new LCKP hash into `bound_asset_v2` → redeploy → re-genesis the seal. It
   **resets the live testnet toggle for zero testnet benefit** (no value at risk on testnet) and the project doc
-  explicitly says it should follow a **professional cryptographic audit**. So it is correctly deferred.
-- **What is safe to do now (and is being staged):** rebuild the STM-pinned binaries, record their new code
-  hashes, update `deploy_cv_deploy_v2.mjs::EXPECT`, and keep the cascade runbook ready — WITHOUT executing the
-  live re-genesis. Do not tear down the live stack without an explicit go + the audit.
+  explicitly says it should follow a **professional cryptographic audit**. So it is correctly DEFERRED — NOT
+  executed (executing it would tear down the live toggle). Runbook: rebuild via `cert-verify/adversarial/build.sh`
+  → update `deploy_cv_deploy_v2.mjs::EXPECT` to the new hash → deploy code cell → re-establish AVK chain →
+  rebuild+redeploy `bound_asset_v2` with the new LCKP hash → re-genesis the seal.
 
 ### Other mainnet gates (not testnet blockers)
 - Finalize trusted-setup ceremony for the Groth16 leg (`finalize_vk` is a placeholder = leap vk in `d6_deploy`).

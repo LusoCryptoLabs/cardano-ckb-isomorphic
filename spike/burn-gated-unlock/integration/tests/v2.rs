@@ -418,3 +418,63 @@ fn chckb_wrong_policy_rejected() {
     let (ctx, tx) = build_roundtrip(RT { burn_policy: [0xee; 28], ..RT::ok() });
     assert!(ctx.verify_tx(&tx, MAX_CYCLES).is_err(), "a burn under a different POLICY must not release the χCKB cell");
 }
+
+// FORWARD CREATE (the other half of the loop): the bridge cell the return trip releases is a VALID
+// bridge_lock_v1 CREATE output — value-locked (kind=0: capacity == amount) under the burn_gated_unlock_v2
+// release lock bound to the χCKB asset. So the exact cell spec the return tests release is one a real forward
+// lock produces. (The lock doesn't run on create; bridge_lock_v1 enforces the value-lock + receipt layout.)
+fn build_forward_lock(amount: u128, bad_capacity: bool) -> (Context, ckb_testtool::ckb_types::core::TransactionView) {
+    let mut ctx = Context::default();
+    let lock_bin: Bytes = std::fs::read(LOCK_BIN).expect("build burn_gated_unlock_v2 first").into();
+    let reg_bin: Bytes = std::fs::read(REG_BIN).expect("build burn_nullifier_registry first").into();
+    let bridge_bin: Bytes = std::fs::read(BRIDGE_BIN).expect("build bridge_lock_v1 first").into();
+    let lock_op = ctx.deploy_cell(lock_bin);
+    let reg_op = ctx.deploy_cell(reg_bin);
+    let bridge_op = ctx.deploy_cell(bridge_bin);
+    let as_op = ctx.deploy_cell(ALWAYS_SUCCESS.clone());
+    let dummy = ctx.build_script(&as_op, Bytes::from(b"d".to_vec())).unwrap();
+    let reg_type = ctx.build_script(&reg_op, Bytes::from([0x11u8; 32].to_vec())).unwrap();
+    let reg_type_hash: [u8; 32] = reg_type.calc_script_hash().unpack();
+    let ckpt_type = ctx.build_script(&as_op, Bytes::from(b"txsetcert".to_vec())).unwrap();
+    let ckpt_type_hash: [u8; 32] = ckpt_type.calc_script_hash().unpack();
+    // the release lock the forward lock parks the funds under (bound to χCKB identity + amount).
+    let mut args = Vec::new();
+    args.extend_from_slice(&ckpt_type_hash);
+    args.extend_from_slice(&amount.to_le_bytes());
+    args.extend_from_slice(&CKCKB_POLICY);
+    args.extend_from_slice(&reg_type_hash);
+    args.extend_from_slice(CKCKB_NAME);
+    let release_lock = ctx.build_script(&lock_op, Bytes::from(args)).unwrap();
+    let bridge_type = ctx.build_script(&bridge_op, Bytes::new()).unwrap();
+    // 49-byte receipt: MAGIC ‖ kind=0 ‖ amount(16 LE) ‖ recipient(28).
+    let mut receipt = b"BRG1".to_vec();
+    receipt.push(0u8);
+    receipt.extend_from_slice(&amount.to_le_bytes());
+    receipt.extend_from_slice(&[0x2du8; 28]);
+    let funding = ctx.create_cell(CellOutput::new_builder().capacity((amount as u64 + 100_000).pack()).lock(dummy.clone()).build(), Bytes::new());
+    // kind=0 requires the receipt cell's capacity == amount; bad_capacity perturbs it to prove enforcement.
+    let out_cap = if bad_capacity { amount as u64 - 1 } else { amount as u64 };
+    let tx = TransactionBuilder::default()
+        .input(CellInput::new_builder().previous_output(funding).build())
+        .output(CellOutput::new_builder().capacity(out_cap.pack()).lock(release_lock).type_(Some(bridge_type).pack()).build())
+        .output_data(Bytes::from(receipt).pack())
+        .cell_dep(CellDep::new_builder().out_point(bridge_op).build())
+        .cell_dep(CellDep::new_builder().out_point(as_op).build())
+        .build();
+    let tx = ctx.complete_tx(tx);
+    (ctx, tx)
+}
+
+#[test]
+fn chckb_forward_lock_create_valid() {
+    // 200 CKB locked under burn_gated_unlock_v2(χCKB) with a value-locked bridge_lock_v1 receipt -> CREATE ok.
+    let (ctx, tx) = build_forward_lock(20_000_000_000, false);
+    ctx.verify_tx(&tx, MAX_CYCLES).expect("a value-locked χCKB bridge receipt under the release lock must create");
+}
+
+#[test]
+fn chckb_forward_lock_undercapitalized_rejected() {
+    // the receipt declares 200 CKB but the cell holds 1 shannon less -> bridge_lock_v1 kind=0 rejects (code 4).
+    let (ctx, tx) = build_forward_lock(20_000_000_000, true);
+    assert!(ctx.verify_tx(&tx, MAX_CYCLES).is_err(), "capacity < declared amount must not create the receipt");
+}
