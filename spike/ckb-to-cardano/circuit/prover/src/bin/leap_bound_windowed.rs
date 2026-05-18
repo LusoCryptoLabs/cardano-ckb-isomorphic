@@ -184,11 +184,30 @@ fn main(){
     let height: u64 = u64::from_le_bytes(raw[16..24].try_into().unwrap());
     let slot = (height % wsize as u64) as usize;
     let kmin: u64 = std::env::var("CHIRAL_K_MIN").ok().and_then(|s| s.parse().ok()).unwrap_or(12);
-    let tip_height = height + std::env::var("TIP_OFFSET").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(kmin);
+    // Window leaves + tip: REAL (relayer_window.py via CHIRAL_WINDOW = W real recent CKB header hashes placed
+    // at ring slot h%W) or stand-in (demo). The circuit is identical; only the leaf SOURCE differs. In
+    // production AdvanceCKBCert maintains this window root on the Cardano ckbcert checkpoint.
+    let real_window = std::env::var("CHIRAL_WINDOW").ok();
+    let (mut leaves, tip_height) = if let Some(wp) = real_window.clone() {
+        let wj: Value = serde_json::from_reader(std::fs::File::open(&wp).unwrap()).unwrap();
+        assert_eq!(wj["window_depth"].as_u64().unwrap() as usize, depth, "CHIRAL_WINDOW depth != WINDOW_DEPTH");
+        assert_eq!(wj["receipt_height"].as_u64().unwrap(), height, "CHIRAL_WINDOW receipt height != proven header");
+        let lv: Vec<[u8;32]> = wj["leaves"].as_array().unwrap().iter().map(|x| hx32(x.as_str().unwrap())).collect();
+        assert_eq!(lv.len(), wsize, "CHIRAL_WINDOW leaf count != W");
+        (lv, wj["tip_height"].as_u64().unwrap())
+    } else {
+        let mut lv = vec![[0u8;32]; wsize];
+        for kk in 0..wsize { lv[kk]=ckbhash(&((kk as u64)+1).to_le_bytes()); }
+        (lv, height + std::env::var("TIP_OFFSET").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(kmin))
+    };
+    if real_window.is_some() {
+        assert_eq!(leaves[slot], block_hash, "real window leaf at slot != the proven block hash");
+    } else {
+        leaves[slot] = block_hash;
+    }
+    eprintln!("[window] {} W={wsize} slot={slot} tip={tip_height} diff={}",
+        if real_window.is_some() {"REAL CKB headers"} else {"stand-in (demo)"}, tip_height - height);
     let k: u64 = std::env::var("K").ok().and_then(|s| s.parse().ok()).unwrap_or(kmin);
-    let mut leaves=vec![[0u8;32]; wsize];
-    for kk in 0..wsize { leaves[kk]=ckbhash(&((kk as u64)+1).to_le_bytes()); }
-    leaves[slot]=block_hash;
     let (window_root, wpath_off)=window_root_path(&leaves, slot);
     let siblings:Vec<[u8;32]>=wpath_off.iter().map(|(s,_)|*s).collect();
     let mk=|k:u64,kmin:u64,tip:u64,body:Vec<u8>,bridge:[u8;32]| BoundWindowedLeap{
