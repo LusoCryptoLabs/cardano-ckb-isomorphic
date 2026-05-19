@@ -127,6 +127,27 @@ owner vkh           2df44c71a4312463ba31315c5aa7725b6ad44cd544a055a3dde915a6
   what remains is the deploy EXECUTION (funded key, `ckbcert` window checkpoint, the two genesis mints), not the
   setup.
 
+### E. Value-leg deploy execution — pre-flight done (2026-06-11); one architectural wrinkle to resolve
+Careful pre-flight (no live tx fired) of the live Groth16-leg deploy on Cardano preview:
+- ✅ Funding/infra OK: preview key `addr_test1vqklgnr…` has ~9,993 tADA / 4 UTxOs; tx path = `cardano/binding/
+  cardano_net.py` (pycardano + Koios, manual ExUnits — Koios has no tx-eval).
+- ✅ Genesis datum is proof-consistent: `relayer/validate_window_binding.py` confirms the 32-byte
+  `window_root 0x6f01df31…` satisfies `cardano_bound.field_of(window_root) == proof PI[0]` and
+  `tip_height 21388353 == PI[3]`. So the pinned `Checkpoint` datum binds the ceremony proof — genesis won't
+  brick the leg.
+- ✅ The leap tx FITS budget: it runs FOUR scripts (cardano_bound verify + leap_mint_guard mint +
+  seal_nullifier 256-SMT insert + leap_ratelimit), summing to ~6.9 B cpu (**69%**) and ~13.7 M mem (**83%** of
+  the real 16.5 M preview limit — NOT 14 M). Deployable with ~17% mem headroom; the seal_nullifier 256-SMT
+  insert (12.9 M mem) is the dominant cost.
+- ⚠️ ARCHITECTURAL WRINKLE (blocks an *operable* checkpoint): `advance_ckbcert(vk, thread_policy)` and
+  `ckbcert_thread(genesis_ref, pinned, cp_script = advance_ckbcert hash)` are **mutually parameterized** (a
+  cycle). The 18/18 ckbcert tests use placeholder constants, so the cycle is unresolved for deployment. A
+  one-shot **frozen-checkpoint** mint demo can side-step it (placeholder `thread_policy` ⇒ a non-advanceable
+  checkpoint, referenced-only by the leap), but a real advanceable checkpoint needs `advance_ckbcert` to find
+  the thread token WITHOUT a compile-time policy param (a small code change).
+- TODO (glue, not built): the genesis-mint SUBMISSION scripts (pattern = `cardano/binding/mint_seal_ours.py`)
+  + a `GROTH16_LIVE.md` runbook.
+
 ### Other mainnet gates (not testnet blockers)
 - Professional cryptographic audit (STM pin, PINNED_GENESIS vs Mithril genesis cert, BLS domain separation).
 - Hosted, monitored relayer daemon.
