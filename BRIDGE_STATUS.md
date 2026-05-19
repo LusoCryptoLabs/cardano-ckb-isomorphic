@@ -41,7 +41,8 @@ Detail: `relayer/onchain/LIVE.md`, `relayer/onchain/V2_DEPLOY_RUNBOOK.md`, `docs
 | seal-nullifier (Cardano replay-once) + genesis pin | `seal_nullifier.ak` / `seal_thread.ak` | BUILT + TESTED | — |
 | reorg caps (aggregate + per-leap) | `leap_ratelimit.ak` / `chiral_policy.ak` | BUILT + TESTED + **ENABLED in derivation** | cap 1,000,000 CKB/window |
 | bridge receipt (forward lock, value-locked) | `bridge_lock_v1.rs` | DEPLOYED (code) + live receipt | code `0x1c2589e8`, live lock `0xcfaaf177` (200 CKB) |
-| deploy derivation (acyclic apply chain) | `groth16/d6_deploy.py` | DERIVATION DEMO (placeholders) | gated on finalize ceremony + funded key |
+| deploy derivation (acyclic apply chain) | `groth16/d6_deploy.py` | wired to REAL ceremony VKs; derives `cardano_bound` `206873ab…` | gated on funded key + ckbcert checkpoint |
+| trusted-setup ceremonies (transition + finalize) | `circuit/ceremony/` | ✅ DONE 2026-06-11 (2^21, 3+3); on-chain-accepted | vk_blake2b: transition `b73bd298…`, finalize `d26e679f…` |
 | CKB-header window checkpoint on Cardano (ckbcert) | `advance_ckbcert.ak`, `advance_windowed.rs` | BUILT; **NOT deployed** (placeholder NFT) | gated with the leg deploy |
 
 Detail: `spike/ckb-to-cardano/VALUE_BINDING_FIX.md`, `AUTHZ_DOUBLEMINT_AUDIT.md`,
@@ -114,8 +115,19 @@ owner vkh           2df44c71a4312463ba31315c5aa7725b6ad44cd544a055a3dde915a6
   → update `deploy_cv_deploy_v2.mjs::EXPECT` to the new hash → deploy code cell → re-establish AVK chain →
   rebuild+redeploy `bound_asset_v2` with the new LCKP hash → re-genesis the seal.
 
+### D. Groth16-leg trusted setup — ✅ DONE (the deploy keystone is cleared)
+- ✅ DONE (2026-06-11): real two-phase MPC ceremonies (Powers-of-Tau ×3 + delta ×3, 2^21 domain) over the
+  **transition** circuit (`leap_bound_windowed`, vk_blake2b `b73bd298…`) AND the **finalize** circuit
+  (`finalize_windowed`, vk_blake2b `d26e679f…`, previously an empty placeholder). Both VKs are **on-chain
+  accepted** by `cardano_bound`'s verifier (`bound_windowed_test` + `finalize_test`, recorded in git) and
+  **wired into `d6_deploy.py`** — which now derives the full leg (`cardano_bound 206873ab…`, `leap_mint_guard
+  4a7903f2…`) against them. Full Aiken suite 208/0.
+- The ~440/393 MB `pk.bin` proving keys are local (gitignored, regenerable via `CEREMONY_OUT=...`); the VKs
+  themselves are version-controlled inside the two `*_test.ak` files. So the value leg is now **deployable** —
+  what remains is the deploy EXECUTION (funded key, `ckbcert` window checkpoint, the two genesis mints), not the
+  setup.
+
 ### Other mainnet gates (not testnet blockers)
-- Finalize trusted-setup ceremony for the Groth16 leg (`finalize_vk` is a placeholder = leap vk in `d6_deploy`).
 - Professional cryptographic audit (STM pin, PINNED_GENESIS vs Mithril genesis cert, BLS domain separation).
 - Hosted, monitored relayer daemon.
 

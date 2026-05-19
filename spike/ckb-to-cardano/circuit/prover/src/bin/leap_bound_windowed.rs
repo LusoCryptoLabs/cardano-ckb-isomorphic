@@ -236,10 +236,21 @@ fn main(){
     eprintln!("[audit] ALL 5 CASES OK: 1 accept + 4 reject (inflate/redirect, non-bridge, K=0, shallow)");
 
     if std::env::var("PROVE").is_err() { return; }
-    // ---- FULL GROTH16 (gated; the ceremony/VK refresh is a separate deploy step) ----
+    // ---- FULL GROTH16: MPC ceremony (CEREMONY_OUT => production VK) / load (CEREMONY_PK) / test setup ----
+    // This is the production VK source for d6_deploy's `vk` param (the value-bound transition circuit).
     let mut rng=ark_std::rand::rngs::StdRng::seed_from_u64(7);
-    eprintln!("Groth16 setup over the BOUND WINDOWED leap circuit...");
-    let (pk,vk)=Groth16::<Bls12_381>::circuit_specific_setup(real.clone(),&mut rng).unwrap();
+    let (pk,vk) = if let Ok(dir)=std::env::var("CEREMONY_OUT") {
+        eprintln!("running the MPC trusted-setup ceremony over the BOUND WINDOWED leap circuit -> {dir} ...");
+        let (pk,transcript)=ckb_consensus_circuit::setup_mpc::run_ceremony(real.clone(), 3, 3, "leap_bound_windowed");
+        ckb_consensus_circuit::setup_mpc::save_pk(&pk, &format!("{dir}/leap_bound_windowed_pk.bin"));
+        let _ = std::fs::write(format!("{dir}/leap_bound_windowed_transcript.json"), serde_json::to_string_pretty(&transcript).unwrap());
+        let vk=pk.vk.clone(); (pk,vk)
+    } else if let Ok(p)=std::env::var("CEREMONY_PK") {
+        eprintln!("loading ceremony key from {p}"); let pk=ckb_consensus_circuit::setup_mpc::load_pk(&p); let vk=pk.vk.clone(); (pk,vk)
+    } else {
+        eprintln!("Groth16 (test) setup over the BOUND WINDOWED leap circuit...");
+        Groth16::<Bls12_381>::circuit_specific_setup(real.clone(),&mut rng).unwrap()
+    };
     let proof=Groth16::<Bls12_381>::prove(&pk,real.clone(),&mut rng).unwrap();
     let amt=&body[amount_off..amount_off+16]; let rcp=&body[recip_off..recip_off+28];
     let mut ns=amt.to_vec(); ns.extend_from_slice(rcp); let mut cc=ns.clone(); cc.extend_from_slice(&seal); let commitment=b2b(&cc);
