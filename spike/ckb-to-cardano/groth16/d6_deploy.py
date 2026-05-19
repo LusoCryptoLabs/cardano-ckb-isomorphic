@@ -83,8 +83,13 @@ def apply_chain(module, validator, params, label):
     return h
 
 def main():
-    vk = json.load(open(os.path.join(HERE, "..", "circuit", "ceremony", "leap_windowed_redeemer.json")))["vk"]
-    finalize_vk = vk  # PLACEHOLDER until the finalize ceremony key exists
+    # PRODUCTION VKs from the MPC trusted-setup ceremonies (circuit/ceremony/). The transition leg is the
+    # VALUE-BOUND combined circuit (leap_bound_windowed: value binding + reorg K-floor in one proof); the
+    # finalize leg is finalize_windowed. Both are 5-public-input (window_root, seal, commitment, tip, K),
+    # matching cardano_bound.inputs_bind_w. (Was: leap_windowed vk + a finalize_vk=vk PLACEHOLDER.)
+    CER = os.path.join(HERE, "..", "circuit", "ceremony")
+    vk = json.load(open(os.path.join(CER, "leap_bound_windowed_redeemer.json")))["vk"]
+    finalize_vk = json.load(open(os.path.join(CER, "finalize_windowed_redeemer.json")))["vk"]
 
     # ACYCLIC ORDER (leap_ratelimit's own hash is a param to NOTHING — its cell is found by thread token — so
     # it derives LAST, and its ft_policy is the leap_mint_guard minting policy):
