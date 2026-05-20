@@ -9,7 +9,7 @@ use cardano/transaction.{Input, Output, OutputReference, InlineDatum, NoDatum}
 use aiken/builtin
 use g16/ckbcert.{
   Checkpoint, thread_name, has_thread, mints_one_thread, is_thread_burn,
-  is_pinned_genesis_output, genesis_mint_ok,
+  is_pinned_genesis_output, genesis_mint_ok, lineage_token,
 }
 
 const c_policy = #"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
@@ -73,6 +73,33 @@ test t_has_thread_true() {
 
 test t_has_thread_false_when_absent() {
   !has_thread(from_lovelace(2_000_000), c_policy)
+}
+
+// ---- lineage_token: the continuity-based thread-token id that breaks the advance<->thread cycle ----
+// the sole non-ADA qty-1 token is the lineage token.
+test t_lineage_token_single() {
+  lineage_token(thread_val()) == Some((c_policy, thread_name))
+}
+// no non-ADA token -> None (a checkpoint with no lineage token cannot advance).
+test t_lineage_token_none_when_absent() {
+  lineage_token(from_lovelace(2_000_000)) == None
+}
+// TWO non-ADA tokens -> None: blocks a token-bloat grief (an advancer stuffing a 2nd token to freeze the line).
+test t_lineage_token_none_when_two() {
+  lineage_token(merge(thread_val(), from_asset(c_other, thread_name, 1))) == None
+}
+// qty != 1 -> None (the thread token is a one-shot singleton).
+test t_lineage_token_none_when_qty_two() {
+  lineage_token(merge(from_lovelace(2_000_000), from_asset(c_policy, thread_name, 2))) == None
+}
+// CONTINUITY: input lineage token preserved on the output -> Some == Some (the advance keeps the line).
+test t_lineage_continuity_preserved() {
+  let t = lineage_token(thread_val())
+  t == lineage_token(merge(from_lovelace(3_000_000), from_asset(c_policy, thread_name, 1))) && t != None
+}
+// CONTINUITY broken: the output drops/changes the token -> mismatch -> advance must fail.
+test t_lineage_continuity_broken_rejected() {
+  lineage_token(thread_val()) != lineage_token(merge(from_lovelace(2_000_000), from_asset(c_other, thread_name, 1)))
 }
 
 test t_mints_one_thread_true() {
