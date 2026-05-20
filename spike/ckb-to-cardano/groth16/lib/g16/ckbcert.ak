@@ -10,7 +10,7 @@ use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
 use cardano/address.{Address, Script}
-use cardano/assets.{PolicyId, Value, AssetName, tokens, quantity_of}
+use cardano/assets.{PolicyId, Value, AssetName, tokens, quantity_of, flatten, without_lovelace}
 use cardano/transaction.{Input, Output, OutputReference, InlineDatum}
 
 pub type Checkpoint {
@@ -26,6 +26,21 @@ pub const thread_name: AssetName = #"636b62636572742d746872656164"
 /// A value carries the (single) checkpoint thread token.
 pub fn has_thread(v: Value, policy: PolicyId) -> Bool {
   quantity_of(v, policy, thread_name) == 1
+}
+
+/// The lineage thread token of a checkpoint value: the SINGLE non-ADA asset, and only if its quantity is
+/// exactly 1 (None for zero, two-or-more, or qty != 1). This lets advance_ckbcert preserve the genesis token
+/// by CONTINUITY (input lineage token == output lineage token) WITHOUT a compile-time thread-policy parameter,
+/// which removes the advance_ckbcert <-> ckbcert_thread parameterization CYCLE (each was a compile-time param
+/// of the other, an unsolvable hash fixpoint). Soundness is unchanged: the leap (cardano_bound) still reads
+/// the checkpoint by the REAL genesis thread NFT (checkpoint_nft), so a fake-token lineage is invisible to it;
+/// requiring EXACTLY one non-ADA token on BOTH input and output also blocks a token-bloat grief (an advancer
+/// stuffing an extra token to freeze future advances).
+pub fn lineage_token(v: Value) -> Option<(PolicyId, AssetName)> {
+  when flatten(without_lovelace(v)) is {
+    [(p, n, 1)] -> Some((p, n))
+    _ -> None
+  }
 }
 
 /// The mint moves EXACTLY one thread token (qty == 1) and nothing else under this policy.

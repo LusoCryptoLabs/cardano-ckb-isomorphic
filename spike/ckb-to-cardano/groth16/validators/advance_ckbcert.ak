@@ -10,10 +10,10 @@
 //// genesis, no token) cannot be advanced. R2 membership (cardano_bound.ak) then reads this root.
 use aiken/builtin
 use aiken/collection/list
-use cardano/assets.{PolicyId, Value}
+use cardano/assets.{Value}
 use cardano/transaction.{Transaction, OutputReference, Output, InlineDatum}
 use g16/verifier.{VerifyingKey, Proof, verify}
-use g16/ckbcert.{Checkpoint, field_of, has_thread}
+use g16/ckbcert.{Checkpoint, field_of, lineage_token}
 
 pub type Advance {
   proof: Proof,
@@ -24,7 +24,7 @@ pub type Advance {
   public_inputs: List<Int>,       // = (old_root, old_diff, new_root, new_diff, old_wroot, new_wroot, new_tip_height)
 }
 
-validator advance_ckbcert(vk: VerifyingKey, thread_policy: PolicyId) {
+validator advance_ckbcert(vk: VerifyingKey) {
   spend(datum: Option<Checkpoint>, redeemer: Advance, own: OutputReference, tx: Transaction) {
     expect Some(cp) = datum
     let Advance { proof, new_chain_root, new_total_difficulty, new_window_root, new_tip_height, public_inputs } = redeemer
@@ -35,11 +35,13 @@ validator advance_ckbcert(vk: VerifyingKey, thread_policy: PolicyId) {
     expect builtin.length_of_bytearray(new_chain_root) == 32
     expect builtin.length_of_bytearray(cp.total_difficulty) == 32
     expect builtin.length_of_bytearray(new_window_root) == 32
-    // 0) GENESIS PIN: the checkpoint being advanced must carry the one-shot thread token. Only the
-    //    lineage seeded by ckbcert_thread at the pinned genesis has it, so attacker-seeded checkpoints
-    //    (fake genesis) are unspendable as a checkpoint here.
+    // 0) GENESIS PIN (continuity form): the checkpoint being advanced must carry exactly one lineage thread
+    //    token, and the continuing output must keep the SAME token (see cont_ok). Only the lineage seeded by
+    //    ckbcert_thread at the pinned genesis has the canonical token, and cardano_bound reads the checkpoint
+    //    by THAT NFT — so an attacker-seeded checkpoint (fake/other token) is invisible to the leap. Pinning
+    //    the token by CONTINUITY instead of a compile-time policy param removes the advance_ckbcert <->
+    //    ckbcert_thread parameterization cycle (each was a param of the other — an unsolvable hash fixpoint).
     expect Some(self_in) = list.find(tx.inputs, fn(i) { i.output_reference == own })
-    let thread_in = has_thread(self_in.output.value, thread_policy)
     // 1) the SNARK proves: new_chain_root extends old via a valid PoW chain with the claimed work delta.
     let snark_ok = verify(vk, proof, public_inputs)
     // 2) the public inputs bind THIS advance (old + new state) — anti-replay / anti-forgery.
@@ -52,17 +54,18 @@ validator advance_ckbcert(vk: VerifyingKey, thread_policy: PolicyId) {
       ]
     // 3) HEAVIEST CHAIN: only advance to strictly more cumulative work (32B big-endian compare).
     let heavier = builtin.less_than_bytearray(cp.total_difficulty, new_total_difficulty)
-    // 4) exactly one continuing checkpoint output carries the advanced state AND keeps the thread token.
+    // 4) exactly one continuing checkpoint output carries the advanced state AND PRESERVES THE LINEAGE TOKEN
+    //    (input lineage token == output lineage token; each EXACTLY one non-ADA qty-1 asset — the qty-1 + sole
+    //    token rule also blocks a token-bloat grief that could freeze future advances).
     let cont_ok =
-      when continuing(tx, self_in.output) is {
-        Some((out_value, Checkpoint { chain_root, total_difficulty, window_root, tip_height })) ->
-          chain_root == new_chain_root && total_difficulty == new_total_difficulty && window_root == new_window_root && tip_height == new_tip_height && new_tip_height > cp.tip_height && has_thread(
+      when (lineage_token(self_in.output.value), continuing(tx, self_in.output)) is {
+        (Some((tp, tn)), Some((out_value, Checkpoint { chain_root, total_difficulty, window_root, tip_height }))) ->
+          chain_root == new_chain_root && total_difficulty == new_total_difficulty && window_root == new_window_root && tip_height == new_tip_height && new_tip_height > cp.tip_height && lineage_token(
             out_value,
-            thread_policy,
-          )
-        None -> False
+          ) == Some((tp, tn))
+        _ -> False
       }
-    thread_in && snark_ok && bound_ok && heavier && cont_ok
+    snark_ok && bound_ok && heavier && cont_ok
   }
 
   else(_) {
