@@ -58,13 +58,14 @@ accepts).
 how the bound UTxO is transitioned.
 
 Trace:
-1. Every `LeapInMint` requires `seal_consumed(self, nullifier_hash, bs.ckb_seal)` — the leap's seal must be
-   **inserted into the global seal-nullifier registry** with `Insert.key == bs.ckb_seal`
-   (`leap_mint_guard.ak:53,144`).
+1. Every `LeapInMint` requires `seal_consumed(self, seal_registry_nft, bs.ckb_seal)` — the leap's seal must be
+   **inserted into the global seal-nullifier registry** with `Insert.key == bs.ckb_seal`. The registry is found
+   by its **genesis NFT** (exactly-one, fail-closed), NOT by script hash (`leap_mint_guard.ak:53,144`).
 2. `seal_nullifier.spend` forces `seal_set.inserts(old_root, new_root, key, sibs)` — a **non-membership** proof
-   under the old root → membership under the new root, 32-byte key, full 256-depth siblings, singleton pinned
-   by the thread token, exactly-one continuing output (`seal_nullifier.ak:19`). ⇒ a seal can be inserted **at
-   most once, ever**.
+   under the old root → membership under the new root, 32-byte key, full 256-depth siblings, with the lineage
+   token preserved by **continuity** (`lineage_token` in == out; `seal_nullifier` dropped its `thread_policy`
+   param to break the `seal_nullifier`↔`seal_thread` cycle), exactly-one continuing output. ⇒ a seal can be
+   inserted into the canonical (NFT-pinned) registry **at most once, ever**.
 3. The registry is **genesis-pinned** by `seal_thread` (`seal_thread.ak:17`): the thread token mints only if a
    unique `genesis_ref` is consumed (one-shot), exactly one token is minted, and it lands on a registry output
    whose datum is the **empty-tree root**. No pre-loaded root, no second lineage.
@@ -78,15 +79,17 @@ cannot create supply. So total mints for `S` ≤ 1.
 - *Two leaps in one mint tx.* `expect [bound_in]` (exactly one) + one FT name. ✓
 - *Finalize-mint as a second mint.* `Finalize` requires **no** continuing output (`cardano_bound.ak:151`), so
   `leap_mint_guard`'s `expect [bound_out]` finds zero → reject. Finalize cannot mint. ✓
-- *Stand up a parallel registry to re-insert a consumed seal.* The insert must satisfy `seal_consumed`, which
-  matches the **canonical** `nullifier_hash`; a second `seal_nullifier` instance parameterized with a different
-  thread policy has a **different script hash** (so `seal_consumed` can't find it), and a second lineage under
-  the same script needs the **canonical** thread token — but a different `genesis_ref` yields a **different
-  policy id** so `has_thread(canonical)` fails. Closed both ways. ✓
+- *Stand up a decoy registry (same script hash, different token) to absorb the seal-insert.* Since
+  `seal_nullifier` is now continuity-pinned (no `thread_policy`), such a decoy CAN be spent (it inserts into its
+  OWN tree) — but `seal_consumed` finds the registry by the **canonical genesis NFT**, exactly-one, so the decoy
+  (a different token, hence a different `seal_thread` policy id) is never matched. The canonical NFT exists
+  exactly once (one-shot `genesis_ref`). So the decoy cannot be the registry the mint reads, and replay-once
+  holds. ✓ (test `seal_consumed_rejects_decoy_registry_nft`)
 - *Replay at the registry directly.* Re-inserting a present key folds to the wrong root → reject. ✓ (test
   `replay_rejected_at_registry`)
 
-**Pinned by:** `replay_rejected_at_registry`, `missing_thread_token_rejected`, `genesis_mint_ok`,
+**Pinned by:** `replay_rejected_at_registry`, `no_lineage_token_rejected`, `continuity_broken_rejected`,
+`seal_consumed_rejects_decoy_registry_nft`, `genesis_mint_ok`,
 `genesis_without_unique_ref_rejected`, `genesis_nonempty_root_rejected`, `seal_consumed_rejects_wrong_key`,
 and the live SMT soundness checks (`registry_smt.rs`: `general_smt_matches_live_anchor`,
 `registry_accepts_two_sequential_inserts`, `registry_rejects_replay`).

@@ -10,35 +10,38 @@
 use aiken/builtin
 use aiken/collection/list
 use cardano/address.{Address, Script}
-use cardano/assets.{PolicyId, from_asset}
+use cardano/assets.{PolicyId, Value, from_asset, from_lovelace, merge}
 use cardano/transaction.{Transaction, OutputReference, Output, Input, InlineDatum, placeholder}
-use g16/ckbcert.{has_thread}
+use g16/ckbcert.{lineage_token}
 use g16/seal_set.{SealSet, Insert}
 
-validator seal_nullifier(thread_policy: PolicyId) {
+validator seal_nullifier() {
   spend(datum: Option<SealSet>, redeemer: Insert, own: OutputReference, tx: Transaction) {
     expect Some(ss) = datum
     let Insert { key, sibs } = redeemer
     expect builtin.length_of_bytearray(key) == 32
     expect list.length(sibs) == 256
-    // the registry being spent must carry the singleton thread token (pins the one canonical lineage).
+    // CONTINUITY pin (no compile-time thread_policy → breaks the seal_nullifier <-> seal_thread parameterization
+    // cycle, just like advance_ckbcert): the spent registry must carry exactly ONE non-ADA lineage token and the
+    // continuing output must keep the SAME one. The CANONICAL registry is selected by leap_mint_guard via its
+    // genesis NFT (find-by-NFT, not by script hash) — so a decoy lineage at this same script hash with a
+    // DIFFERENT token can only insert into ITS OWN tree and is never the registry the mint reads. Replay-once
+    // therefore still holds: the one NFT-pinned lineage admits each seal at most once.
     expect Some(self_in) = list.find(tx.inputs, fn(i) { i.output_reference == own })
-    let thread_in = has_thread(self_in.output.value, thread_policy)
-    // exactly one continuing registry output at the same address, keeping the thread token + the new root.
     let addr = self_in.output.address
     let cont =
-      when list.filter(tx.outputs, fn(o: Output) { o.address == addr }) is {
-        [o] ->
+      when (lineage_token(self_in.output.value), list.filter(tx.outputs, fn(o: Output) { o.address == addr })) is {
+        (Some(tok), [o]) ->
           when o.datum is {
             InlineDatum(d) -> {
               expect new: SealSet = d
-              has_thread(o.value, thread_policy) && seal_set.inserts(ss.root, new.root, key, sibs)
+              lineage_token(o.value) == Some(tok) && seal_set.inserts(ss.root, new.root, key, sibs)
             }
             _ -> False
           }
         _ -> False
       }
-    thread_in && cont
+    cont
   }
 
   else(_) {
@@ -52,8 +55,8 @@ test insert_accepted() {
   let sibs = seal_set.empty_sibs()
   let old_root = seal_set.empty_root()
   let new_root = seal_set.fold(seal_set.present, key, sibs)
-  let tx = mk_tx(old_root, new_root)
-  seal_nullifier.spend(test_policy, Some(SealSet { root: old_root }), Insert { key, sibs }, test_oref, tx)
+  let tx = mk_io(old_root, new_root, tok_val, tok_val)
+  seal_nullifier.spend(Some(SealSet { root: old_root }), Insert { key, sibs }, test_oref, tx)
 }
 
 test replay_rejected_at_registry() {
@@ -63,18 +66,29 @@ test replay_rejected_at_registry() {
   let sibs = seal_set.empty_sibs()
   let inserted = seal_set.fold(seal_set.present, key, sibs)
   // attacker tries to "insert" the same key again, claiming some new root, against the post-insert root.
-  let tx = mk_tx(inserted, seal_set.fold(seal_set.present, key, sibs))
-  !seal_nullifier.spend(test_policy, Some(SealSet { root: inserted }), Insert { key, sibs }, test_oref, tx)
+  let tx = mk_io(inserted, seal_set.fold(seal_set.present, key, sibs), tok_val, tok_val)
+  !seal_nullifier.spend(Some(SealSet { root: inserted }), Insert { key, sibs }, test_oref, tx)
 }
 
-test missing_thread_token_rejected() {
+// CONTINUITY: a registry input that carries NO lineage token cannot insert (no line to preserve).
+test no_lineage_token_rejected() {
   let key = #"2fc594f3bec38a6874decd1155e65ba97e87c536a60be70304683d6bbea2d21c"
   let sibs = seal_set.empty_sibs()
   let old_root = seal_set.empty_root()
   let new_root = seal_set.fold(seal_set.present, key, sibs)
-  // a registry input WITHOUT the thread token (a decoy lineage) must be rejected.
-  let tx = mk_tx_no_thread(old_root, new_root)
-  !seal_nullifier.spend(test_policy, Some(SealSet { root: old_root }), Insert { key, sibs }, test_oref, tx)
+  let tx = mk_io(old_root, new_root, ada_only, ada_only)
+  !seal_nullifier.spend(Some(SealSet { root: old_root }), Insert { key, sibs }, test_oref, tx)
+}
+
+// CONTINUITY: the continuing output must keep the SAME lineage token — dropping/changing it is rejected
+// (this is the token-bloat / lineage-swap grief defense; the canonical registry is NFT-pinned by the mint).
+test continuity_broken_rejected() {
+  let key = #"2fc594f3bec38a6874decd1155e65ba97e87c536a60be70304683d6bbea2d21c"
+  let sibs = seal_set.empty_sibs()
+  let old_root = seal_set.empty_root()
+  let new_root = seal_set.fold(seal_set.present, key, sibs)
+  let tx = mk_io(old_root, new_root, tok_val, tok_val2)
+  !seal_nullifier.spend(Some(SealSet { root: old_root }), Insert { key, sibs }, test_oref, tx)
 }
 
 // ---- test fixtures ----
@@ -91,25 +105,15 @@ fn reg_addr() -> Address {
   Address { payment_credential: Script(script_hash), stake_credential: None }
 }
 
-fn mk_tx_v(old_root: ByteArray, new_root: ByteArray, with_thread: Bool) -> Transaction {
-  let val =
-    if with_thread {
-      from_asset(test_policy, thread_name, 1)
-    } else {
-      from_asset(test_policy, #"6465636f79", 1)
-    }
-  let in_out =
-    Output { address: reg_addr(), value: val, datum: InlineDatum(SealSet { root: old_root }), reference_script: None }
-  let self_in = Input { output_reference: test_oref, output: in_out }
+// the canonical lineage token (+ADA), a DIFFERENT lineage token, and an ADA-only (no-token) value.
+const tok_val: Value = merge(from_lovelace(2_000_000), from_asset(test_policy, thread_name, 1))
+const tok_val2: Value = merge(from_lovelace(2_000_000), from_asset(test_policy, #"6465636f79", 1))
+const ada_only: Value = from_lovelace(2_000_000)
+
+fn mk_io(old_root: ByteArray, new_root: ByteArray, in_val: Value, out_val: Value) -> Transaction {
+  let self_in =
+    Input { output_reference: test_oref, output: Output { address: reg_addr(), value: in_val, datum: InlineDatum(SealSet { root: old_root }), reference_script: None } }
   let cont =
-    Output { address: reg_addr(), value: val, datum: InlineDatum(SealSet { root: new_root }), reference_script: None }
+    Output { address: reg_addr(), value: out_val, datum: InlineDatum(SealSet { root: new_root }), reference_script: None }
   Transaction { ..placeholder, inputs: [self_in], outputs: [cont] }
-}
-
-fn mk_tx(old_root: ByteArray, new_root: ByteArray) -> Transaction {
-  mk_tx_v(old_root, new_root, True)
-}
-
-fn mk_tx_no_thread(old_root: ByteArray, new_root: ByteArray) -> Transaction {
-  mk_tx_v(old_root, new_root, False)
 }

@@ -45,24 +45,17 @@ fn read_policy(self: Transaction, policy_nft: PolicyId, policy_name: ByteArray) 
 }
 
 // SEC N-FIN-1 (one mint per leap): the leap's CKB seal must be CONSUMED in the global seal-nullifier
-// registry in this tx — find the registry input by its script hash, read its Insert redeemer, and require
-// the inserted key == this leap's `ckb_seal`. The seal_nullifier validator independently proves the insert
-// is sound (non-membership ⇒ the seal was never consumed before). Since the genesis-pinned registry admits
-// each seal at most once, a given CKB anchor can authorize at most ONE Cardano mint, across all txs — two
-// BoundState UTxOs sharing a seal cannot both mint.
-fn seal_consumed(self: Transaction, nullifier_hash: ByteArray, seal: ByteArray) -> Bool {
-  when
-    list.find(
-      self.inputs,
-      fn(i: Input) {
-        when i.output.address.payment_credential is {
-          Script(h) -> h == nullifier_hash
-          _ -> False
-        }
-      },
-    )
-  is {
-    Some(reg_in) ->
+// registry in this tx. We find the registry by its GENESIS THREAD NFT (one-shot, unique) and require EXACTLY
+// ONE — NOT by script hash. This is load-bearing now that seal_nullifier is CONTINUITY-pinned (it dropped its
+// thread_policy param to break the seal_nullifier <-> seal_thread cycle): a decoy registry at the same script
+// hash carrying a DIFFERENT token can still be spent (it inserts into its own tree), so identifying the
+// canonical registry by SCRIPT HASH would let that decoy absorb the seal-insert and break replay-once. By the
+// NFT, only the one genesis-pinned lineage qualifies. Its Insert redeemer's key must == this leap's ckb_seal;
+// seal_nullifier independently proves the insert is sound (non-membership ⇒ never consumed before). So a given
+// CKB anchor authorizes at most ONE Cardano mint across all txs.
+fn seal_consumed(self: Transaction, registry_nft: PolicyId, seal: ByteArray) -> Bool {
+  when list.filter(self.inputs, fn(i: Input) { has_thread(i.output.value, registry_nft) }) is {
+    [reg_in] ->
       when pairs.get_first(self.redeemers, Spend(reg_in.output_reference)) is {
         Some(rd) -> {
           expect ins: Insert = rd
@@ -70,7 +63,7 @@ fn seal_consumed(self: Transaction, nullifier_hash: ByteArray, seal: ByteArray) 
         }
         None -> False
       }
-    None -> False
+    _ -> False
   }
 }
 
@@ -97,7 +90,7 @@ validator leap_mint_guard(
   bound_script_hash: ByteArray,
   policy_nft: PolicyId,
   policy_name: ByteArray,
-  seal_nullifier_hash: ByteArray,
+  seal_registry_nft: PolicyId,
   ratelimit_thread: PolicyId,
 ) {
   mint(redeemer: LeapRedeemer, policy_id: ByteArray, self: Transaction) {
@@ -141,7 +134,7 @@ validator leap_mint_guard(
           })
         // fact_consumed = True is now JUSTIFIED: the unique cardano_bound UTxO was spent in this tx.
         // SEC N-FIN-1: and the leap's seal must be nullified once in the registry (one mint per seal).
-        only_one_name && enforce_policy(policy, LeapIn, fact.amount) && authorize_mint(fact, minted, 0, to_recipient, True) && seal_consumed(self, seal_nullifier_hash, bs.ckb_seal) && rate_ticked(self, ratelimit_thread, fact.amount)
+        only_one_name && enforce_policy(policy, LeapIn, fact.amount) && authorize_mint(fact, minted, 0, to_recipient, True) && seal_consumed(self, seal_registry_nft, bs.ckb_seal) && rate_ticked(self, ratelimit_thread, fact.amount)
       }
       // LeapOutBurn is a pure burn (negative mint) — non-inflationary; the authoritative event is the CKB
       // release gated by burn_gated_unlock on the CKB side. The bound amount it must match is read from the
@@ -177,6 +170,9 @@ const m_policy: ByteArray = #"8f11f2b176c143f1aaba0e48662052b0b8c3830161c73194eb
 const m_ft: ByteArray = #"cf87434b42"  // "χCKB"
 const m_bound: ByteArray = #"11111111111111111111111111111111111111111111111111111111"
 const m_null: ByteArray = #"22222222222222222222222222222222222222222222222222222222"
+// the seal-registry GENESIS NFT (seal_thread policy id) — leap_mint_guard now finds the registry by THIS, not
+// by script hash (continuity-pinned seal_nullifier; see seal_consumed).
+const m_reg_nft: PolicyId = #"88888888888888888888888888888888888888888888888888888888"
 const m_recip: ByteArray = #"33333333333333333333333333333333333333333333333333333333"
 const m_seal: ByteArray = #"2fc594f3bec38a6874decd1155e65ba97e87c536a60be70304683d6bbea2d21c"
 const m_state: ByteArray = #"6400000000000000000000000000000033333333333333333333333333333333333333333333333333333333"
@@ -213,7 +209,8 @@ fn pol_ref() -> Input {
 fn base(with_nullifier: Bool, reds: Pairs<ScriptPurpose, Data>) -> Transaction {
   let bs = BoundState { ckb_seal: m_seal, state: m_state }
   let bound_in = Input { output_reference: m_bound_oref, output: mk_out(m_bound, from_lovelace(2), InlineDatum(bs)) }
-  let reg_in = Input { output_reference: m_null_oref, output: mk_out(m_null, from_lovelace(2), NoDatum) }
+  // the singleton registry input, carrying its GENESIS NFT (found by seal_consumed via has_thread, not by hash).
+  let reg_in = Input { output_reference: m_null_oref, output: mk_out(m_null, from_asset(m_reg_nft, thread_name, 1), NoDatum) }
   // the singleton rate-limiter input, carrying the thread token (found by rate_ticked via has_thread).
   let rl_in = Input { output_reference: m_rl_oref, output: mk_out(m_rl_addr, from_asset(m_rl, thread_name, 1), NoDatum) }
   let bound_out = mk_out(m_bound, from_lovelace(2), InlineDatum(bs))
@@ -223,7 +220,7 @@ fn base(with_nullifier: Bool, reds: Pairs<ScriptPurpose, Data>) -> Transaction {
 }
 
 test leapin_rejects_without_nullifier() {
-  !leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_null, m_rl, LeapInMint, m_policy, base(False, []))
+  !leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_reg_nft, m_rl, LeapInMint, m_policy, base(False, []))
 }
 
 // redeemers: the nullifier Insert + the rate-limiter Tick (amount must equal the leap fact amount = 100).
@@ -234,24 +231,32 @@ fn red(key: ByteArray, tick_amount: Int) -> Pairs<ScriptPurpose, Data> {
 }
 
 test leapin_accepts_when_seal_consumed_and_ticked() {
-  leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_null, m_rl, LeapInMint, m_policy, base(True, red(m_seal, 100)))
+  leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_reg_nft, m_rl, LeapInMint, m_policy, base(True, red(m_seal, 100)))
 }
 
 test leapin_rejects_wrong_seal_key() {
-  !leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_null, m_rl, LeapInMint, m_policy, base(True, red(#"dead0000000000000000000000000000000000000000000000000000000000ff", 100)))
+  !leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_reg_nft, m_rl, LeapInMint, m_policy, base(True, red(#"dead0000000000000000000000000000000000000000000000000000000000ff", 100)))
 }
 
 // SEC D6: a leap whose rate-limiter Tick under-reports the amount (99 != fact 100) must be rejected, so the
 // accumulator can never be fed a smaller value than what is actually minted.
 test leapin_rejects_when_rate_underreported() {
-  !leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_null, m_rl, LeapInMint, m_policy, base(True, red(m_seal, 99)))
+  !leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_reg_nft, m_rl, LeapInMint, m_policy, base(True, red(m_seal, 99)))
 }
 
 test seal_consumed_reads_redeemer() {
-  seal_consumed(base(True, red(m_seal, 100)), m_null, m_seal)
+  seal_consumed(base(True, red(m_seal, 100)), m_reg_nft, m_seal)
 }
 test seal_consumed_rejects_wrong_key() {
-  !seal_consumed(base(True, red(#"dead0000000000000000000000000000000000000000000000000000000000ff", 100)), m_null, m_seal)
+  !seal_consumed(base(True, red(#"dead0000000000000000000000000000000000000000000000000000000000ff", 100)), m_reg_nft, m_seal)
+}
+
+// SEC N-FIN-1 (continuity defense): the registry is found by its GENESIS NFT — querying by an NFT that no input
+// carries finds nothing and rejects. So a decoy registry at the SAME script hash but a DIFFERENT token (which a
+// continuity-pinned seal_nullifier would still let spend) cannot be mistaken for the canonical registry, and
+// cannot absorb the seal-insert to enable a double-mint.
+test seal_consumed_rejects_decoy_registry_nft() {
+  !seal_consumed(base(True, red(m_seal, 100)), #"99999999999999999999999999999999999999999999999999999999", m_seal)
 }
 
 // SEC D6 (RATELIMIT-1 / per-leap cap ENABLED): the policy reference input now carries a REAL max_amount.
@@ -268,11 +273,11 @@ fn pol_ref_capped(max_amount: Int) -> Input {
 // leap amount is 100 (m_state[0..16] LE). cap 50 < 100 -> rejected by the real guard.
 test leapin_rejects_over_per_leap_cap() {
   let tx = Transaction { ..base(True, red(m_seal, 100)), reference_inputs: [pol_ref_capped(50)] }
-  !leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_null, m_rl, LeapInMint, m_policy, tx)
+  !leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_reg_nft, m_rl, LeapInMint, m_policy, tx)
 }
 // exactly at the cap (100 == 100) still mints.
 test leapin_accepts_at_per_leap_cap() {
   let tx = Transaction { ..base(True, red(m_seal, 100)), reference_inputs: [pol_ref_capped(100)] }
-  leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_null, m_rl, LeapInMint, m_policy, tx)
+  leap_mint_guard.mint(m_ft, m_bound, m_polnft, m_polname, m_reg_nft, m_rl, LeapInMint, m_policy, tx)
 }
 

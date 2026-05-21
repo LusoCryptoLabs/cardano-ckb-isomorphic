@@ -50,7 +50,7 @@ assert MAX_AMOUNT == 0 or MIN_AMOUNT <= MAX_AMOUNT, "sane-caps: min_amount <= ma
 GREF_A = ("aa"*32, 0)                              # PLACEHOLDER policy-thread genesis outpoint
 GREF_B = ("bb"*32, 1)                              # PLACEHOLDER ratelimit-thread genesis outpoint
 CHECKPOINT_NFT = "cc"*28                           # PLACEHOLDER ckbcert_thread policy id
-SEAL_NULLIFIER_HASH = "dd"*28                      # PLACEHOLDER seal_nullifier script hash
+SEAL_REGISTRY_NFT = "dd"*28                        # PLACEHOLDER seal registry NFT (seal_thread policy id; leap_mint_guard finds the registry by THIS)
 
 def constr(i, fields): return cbor2.CBORTag(121 + i, fields)
 def C_oref(txid, idx): return cbor2.dumps(constr(0, [bytes.fromhex(txid), idx])).hex()
@@ -103,7 +103,7 @@ def main():
                         [C_vk(vk), C_vk(finalize_vk), C_bytes(CHECKPOINT_NFT), C_bytes(policy_nft), C_bytes(POLICY_NAME), C_bytes(policy_script)], "bound")
     # 4) leap_mint_guard (the wrapped-FT minting policy) — needs bound + ratelimit_thread
     mint_guard = apply_chain("leap_mint_guard", "leap_mint_guard",
-                             [C_bytes(FT_NAME), C_bytes(bound), C_bytes(policy_nft), C_bytes(POLICY_NAME), C_bytes(SEAL_NULLIFIER_HASH), C_bytes(ratelimit_thread)], "mg")
+                             [C_bytes(FT_NAME), C_bytes(bound), C_bytes(policy_nft), C_bytes(POLICY_NAME), C_bytes(SEAL_REGISTRY_NFT), C_bytes(ratelimit_thread)], "mg")
     # 5) leap_ratelimit spend — LAST; its ft_policy == the leap_mint_guard policy id
     ratelimit_script = apply_chain("leap_ratelimit", "leap_ratelimit",
                                    [C_bytes(ratelimit_thread), C_bytes(mint_guard), C_bytes(FT_NAME), C_int(CAP), C_int(WINDOW_LEN)], "rl")
