@@ -139,12 +139,24 @@ Careful pre-flight (no live tx fired) of the live Groth16-leg deploy on Cardano 
   seal_nullifier 256-SMT insert + leap_ratelimit), summing to ~6.9 B cpu (**69%**) and ~13.7 M mem (**83%** of
   the real 16.5 M preview limit — NOT 14 M). Deployable with ~17% mem headroom; the seal_nullifier 256-SMT
   insert (12.9 M mem) is the dominant cost.
-- ⚠️ ARCHITECTURAL WRINKLE (blocks an *operable* checkpoint): `advance_ckbcert(vk, thread_policy)` and
-  `ckbcert_thread(genesis_ref, pinned, cp_script = advance_ckbcert hash)` are **mutually parameterized** (a
-  cycle). The 18/18 ckbcert tests use placeholder constants, so the cycle is unresolved for deployment. A
-  one-shot **frozen-checkpoint** mint demo can side-step it (placeholder `thread_policy` ⇒ a non-advanceable
-  checkpoint, referenced-only by the leap), but a real advanceable checkpoint needs `advance_ckbcert` to find
-  the thread token WITHOUT a compile-time policy param (a small code change).
+- ✅ RESOLVED (commit `4ab48b8`): the `advance_ckbcert(vk, thread_policy)` ↔ `ckbcert_thread(…, cp_script =
+  advance_ckbcert hash)` mutual-parameterization cycle. `advance_ckbcert` drops `thread_policy` and pins the
+  lineage by CONTINUITY (`g16/ckbcert.lineage_token`: the sole non-ADA qty-1 token on the input must continue
+  on the output). Sound because `cardano_bound` reads the checkpoint by the REAL genesis NFT; +6 adversarial
+  tests; suite 220/0. Derivation is now acyclic: `advance_ckbcert(vk) → cp_script → ckbcert_thread(gref,
+  pinned, cp_script) → CHECKPOINT_NFT`.
+- ⚠️ SECOND cycle, NOT a clean copy: `seal_nullifier(thread_policy)` ↔ `seal_thread(genesis_ref, reg_script =
+  seal_nullifier hash)` (the Cardano replay-once seal registry). Unlike ckbcert, the consumer
+  `leap_mint_guard.seal_consumed` finds the registry by **script hash**, not NFT — so a naive continuity fix
+  would let a decoy registry at the same hash absorb the seal-insert and break replay-once (a DOUBLE-MINT
+  regression in the re-audited mint guard). Safe fix = continuity on `seal_nullifier` AND change
+  `leap_mint_guard` to find the registry by its genesis NFT (add the registry-NFT param), preserving
+  replay-once. Alternative = drop `reg_script` from `seal_thread` (weaker genesis pin). This is a
+  soundness-sensitive design choice, pending.
+- ckbcert demo deploy note: the *advance* circuit ceremony (`advance_windowed`) is not done, so a live deploy
+  would use the leap VK as a placeholder `advance_ckbcert.vk` (checkpoint pinned at the real window state +
+  referenced by the leap; advancing needs the advance ceremony + redeploy — a documented follow-up). The CYCLE
+  (the structural blocker) is resolved regardless.
 - TODO (glue, not built): the genesis-mint SUBMISSION scripts (pattern = `cardano/binding/mint_seal_ours.py`)
   + a `GROTH16_LIVE.md` runbook.
 
