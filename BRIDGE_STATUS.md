@@ -145,14 +145,20 @@ Careful pre-flight (no live tx fired) of the live Groth16-leg deploy on Cardano 
   on the output). Sound because `cardano_bound` reads the checkpoint by the REAL genesis NFT; +6 adversarial
   tests; suite 220/0. Derivation is now acyclic: `advance_ckbcert(vk) → cp_script → ckbcert_thread(gref,
   pinned, cp_script) → CHECKPOINT_NFT`.
-- ⚠️ SECOND cycle, NOT a clean copy: `seal_nullifier(thread_policy)` ↔ `seal_thread(genesis_ref, reg_script =
-  seal_nullifier hash)` (the Cardano replay-once seal registry). Unlike ckbcert, the consumer
-  `leap_mint_guard.seal_consumed` finds the registry by **script hash**, not NFT — so a naive continuity fix
-  would let a decoy registry at the same hash absorb the seal-insert and break replay-once (a DOUBLE-MINT
-  regression in the re-audited mint guard). Safe fix = continuity on `seal_nullifier` AND change
-  `leap_mint_guard` to find the registry by its genesis NFT (add the registry-NFT param), preserving
-  replay-once. Alternative = drop `reg_script` from `seal_thread` (weaker genesis pin). This is a
-  soundness-sensitive design choice, pending.
+- ✅ RESOLVED (commit `10bca58`): the SECOND cycle `seal_nullifier(thread_policy)` ↔ `seal_thread(genesis_ref,
+  reg_script)`. `seal_nullifier` is now continuity-pinned (no `thread_policy`), AND `leap_mint_guard.seal_consumed`
+  finds the registry by its **genesis NFT** (exactly-one, fail-closed) instead of by script hash — so a decoy
+  registry at the same hash (different token) is never matched and replay-once holds. +adversarial tests
+  (`no_lineage_token_rejected`, `continuity_broken_rejected`, `seal_consumed_rejects_decoy_registry_nft`);
+  AUTHZ_DOUBLEMINT_AUDIT updated; suite 224/0.
+- ✅ FULL ACYCLIC DERIVATION validated (`deploy_groth16_leg.py`, dry): with the real ceremony VKs (ic=6 each)
+  the whole leg derives end-to-end — `advance_ckbcert(vk) 255db00f → ckbcert_thread → checkpoint_nft fa03ff57`;
+  `seal_nullifier() → seal_thread → seal_registry_nft 491d493d`; `cardano_bound d299c074`; `leap_mint_guard
+  c78c3bf5`. The structural blockers are gone; the leg is now deployable.
+- REMAINING (live submission, no code blockers): 4 genesis-mint txs (ckbcert checkpoint @ pinned window state,
+  seal registry @ empty root, policy, ratelimit) + the leap tx (cardano_bound Transition + mint). Built via
+  `cardano/binding/cardano_net.py` (manual ExUnits). The advance ceremony (advance_windowed) is a separate
+  follow-up for an advanceable (vs pinned) checkpoint.
 - ckbcert demo deploy note: the *advance* circuit ceremony (`advance_windowed`) is not done, so a live deploy
   would use the leap VK as a placeholder `advance_ckbcert.vk` (checkpoint pinned at the real window state +
   referenced by the leap; advancing needs the advance ceremony + redeploy — a documented follow-up). The CYCLE
