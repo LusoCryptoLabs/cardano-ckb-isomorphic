@@ -155,10 +155,17 @@ Careful pre-flight (no live tx fired) of the live Groth16-leg deploy on Cardano 
   the whole leg derives end-to-end — `advance_ckbcert(vk) 255db00f → ckbcert_thread → checkpoint_nft fa03ff57`;
   `seal_nullifier() → seal_thread → seal_registry_nft 491d493d`; `cardano_bound d299c074`; `leap_mint_guard
   c78c3bf5`. The structural blockers are gone; the leg is now deployable.
-- REMAINING (live submission, no code blockers): 4 genesis-mint txs (ckbcert checkpoint @ pinned window state,
-  seal registry @ empty root, policy, ratelimit) + the leap tx (cardano_bound Transition + mint). Built via
-  `cardano/binding/cardano_net.py` (manual ExUnits). The advance ceremony (advance_windowed) is a separate
-  follow-up for an advanceable (vs pinned) checkpoint.
+- ✅ FIRST LIVE GENESIS ON-CHAIN: the **CKB-light-client checkpoint** is deployed on Cardano preview
+  (`genesis_ckbcert.py --live`, tx `d80bc0ac…`, confirmed). Mints the one-shot `ckbcert_thread` NFT
+  `CHECKPOINT_NFT e66554ae` onto a checkpoint cell at the `advance_ckbcert` address `255db00f`, carrying the
+  pinned datum (window_root `6f01df31`, tip `21388353`) that binds the ceremony proof. State →
+  `deployed/cardano/preview/ckbcert-genesis.json`. (A pycardano `script_hash == derived policy id` assert now
+  guards consistency. The earlier apparent "encoding mismatch" was a reader bug — `compiled()` was grabbing the
+  first `.mint` validator in the multi-validator plutus.json instead of `ckbcert_thread`; once filtered by name,
+  pycardano == aiken == ledger == `e66554ae`. `d6.val_hash` was correct all along.)
+- REMAINING (live submission): 3 more genesis-mint txs (seal registry @ empty root, policy, ratelimit — same
+  proven pattern) + the leap tx (cardano_bound Transition + mint χCKB). The advance ceremony (advance_windowed)
+  is a separate follow-up for an advanceable (vs pinned) checkpoint.
 - ckbcert demo deploy note: the *advance* circuit ceremony (`advance_windowed`) is not done, so a live deploy
   would use the leap VK as a placeholder `advance_ckbcert.vk` (checkpoint pinned at the real window state +
   referenced by the leap; advancing needs the advance ceremony + redeploy — a documented follow-up). The CYCLE
