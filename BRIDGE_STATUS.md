@@ -163,9 +163,15 @@ Careful pre-flight (no live tx fired) of the live Groth16-leg deploy on Cardano 
   guards consistency. The earlier apparent "encoding mismatch" was a reader bug — `compiled()` was grabbing the
   first `.mint` validator in the multi-validator plutus.json instead of `ckbcert_thread`; once filtered by name,
   pycardano == aiken == ledger == `e66554ae`. `d6.val_hash` was correct all along.)
-- REMAINING (live submission): 3 more genesis-mint txs (seal registry @ empty root, policy, ratelimit — same
-  proven pattern) + the leap tx (cardano_bound Transition + mint χCKB). The advance ceremony (advance_windowed)
-  is a separate follow-up for an advanceable (vs pinned) checkpoint.
+- ✅ FULL GROTH16-LEG INFRASTRUCTURE LIVE on preview (`genesis_threads.py --live`): all 4 genesis singletons
+  deployed — ckbcert checkpoint `d80bc0ac` (NFT `e66554ae`), seal registry `08619eda` (`4f234265`), policy cell
+  `d49c21b0` (`94bfde5b`, K=12 + sane caps), ratelimit cell `779f747f` (`2ac3ce79`). Derived against them:
+  `cardano_bound 3f5b0b74`, `leap_mint_guard b6112ba2`. Manifest → `deployed/cardano/preview/groth16-deploy.json`.
+- REMAINING (the value transfer itself): the leap tx — create a BoundState UTxO (ckb_seal = the proof's seal),
+  then spend it via `cardano_bound` Transition (verify the ceremony Groth16 proof) while `leap_mint_guard` mints
+  χCKB, `seal_nullifier` inserts the seal (256-sibling SMT witness), and `leap_ratelimit` ticks. The
+  ~13.7 M-mem 4-script tx; ExUnits from the Aiken-measured per-validator costs. The advance ceremony
+  (advance_windowed) is a separate follow-up for an advanceable (vs pinned) checkpoint.
 - ckbcert demo deploy note: the *advance* circuit ceremony (`advance_windowed`) is not done, so a live deploy
   would use the leap VK as a placeholder `advance_ckbcert.vk` (checkpoint pinned at the real window state +
   referenced by the leap; advancing needs the advance ceremony + redeploy — a documented follow-up). The CYCLE
