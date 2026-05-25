@@ -36,14 +36,15 @@ def constr(i, fs): return cbor2.CBORTag(121 + i, fs)
 
 # ---- SMT: empty siblings + the new root after inserting `seal` ----
 def h2(l, r): return blake2b(l + r, digest_size=32).digest()
+DEPTH = 128                                     # SMT depth (low 128 bits of the 32B seal key); see g16/seal_set
 def empty_sibs():
     e = bytes(32); out = []
-    for _ in range(256): out.append(e); e = h2(e, e)
-    return out                                  # [E0..E255] leaf-first
+    for _ in range(DEPTH): out.append(e); e = h2(e, e)
+    return out                                  # [E0..E127] leaf-first
 PRESENT = bytes([1]) * 32
 def fold(value, key, sibs):
     cur = value
-    for d in range(256):
+    for d in range(len(sibs)):
         bi = 255 - d
         bit = (key[bi // 8] >> (7 - bi % 8)) & 1
         cur = h2(sibs[d], cur) if bit == 1 else h2(cur, sibs[d])
