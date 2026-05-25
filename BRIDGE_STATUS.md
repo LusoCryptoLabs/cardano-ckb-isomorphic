@@ -167,11 +167,19 @@ Careful pre-flight (no live tx fired) of the live Groth16-leg deploy on Cardano 
   deployed — ckbcert checkpoint `d80bc0ac` (NFT `e66554ae`), seal registry `08619eda` (`4f234265`), policy cell
   `d49c21b0` (`94bfde5b`, K=12 + sane caps), ratelimit cell `779f747f` (`2ac3ce79`). Derived against them:
   `cardano_bound 3f5b0b74`, `leap_mint_guard b6112ba2`. Manifest → `deployed/cardano/preview/groth16-deploy.json`.
-- REMAINING (the value transfer itself): the leap tx — create a BoundState UTxO (ckb_seal = the proof's seal),
-  then spend it via `cardano_bound` Transition (verify the ceremony Groth16 proof) while `leap_mint_guard` mints
-  χCKB, `seal_nullifier` inserts the seal (256-sibling SMT witness), and `leap_ratelimit` ticks. The
-  ~13.7 M-mem 4-script tx; ExUnits from the Aiken-measured per-validator costs. The advance ceremony
-  (advance_windowed) is a separate follow-up for an advanceable (vs pinned) checkpoint.
+- ⚠️ THE LEAP TX HITS THE PER-TX MEM CEILING (a real architectural finding; NO funds lost — every attempt was
+  node-rejected pre-inclusion). The leap (`leap_mint.py`) was built + fired live, and ALL the hard parts work:
+  `validate_leap_binding.py` confirms seal/commitment bind the proof; the BoundState UTxO + the 4 reference
+  scripts are deployed; the Groth16 `proof.b` (96B) is indefinite-CBOR chunked; and across the live evaluations
+  **`cardano_bound` (the on-chain Groth16 verify of the value-bound proof) and `leap_ratelimit` PASSED** — only
+  the budgets failed. But the 4-script tx's REAL mem is ~16.62 M > the **16.5 M** Conway per-tx limit: bound
+  ~230K + **seal_nullifier 256-deep SMT insert ~15.6 M** + ratelimit ~220K + mint_guard ~570K. The SMT insert
+  in the full TxInfo is far heavier than its isolated Aiken test (12.9 M) and dominates.
+- FIX (focused, next step): shrink the seal-nullifier SMT — depth 256→128 (truncate the 32-byte seal key to
+  16 bytes; 128-bit collision resistance is ample for a nullifier set) ≈ halves the insert to ~8 M, giving
+  comfortable headroom — OR decouple the seal-insert into a prior tx. Either is a `seal_set`/`seal_nullifier`
+  change + a seal-registry re-deploy + re-derive of `leap_mint_guard`/`leap_ratelimit`. Then re-fire `leap_mint.py`.
+- The advance ceremony (advance_windowed) remains a separate follow-up for an advanceable (vs pinned) checkpoint.
 - ckbcert demo deploy note: the *advance* circuit ceremony (`advance_windowed`) is not done, so a live deploy
   would use the leap VK as a placeholder `advance_ckbcert.vk` (checkpoint pinned at the real window state +
   referenced by the leap; advancing needs the advance ceremony + redeploy — a documented follow-up). The CYCLE
