@@ -1,11 +1,19 @@
-//// seal_set.ak — a self-contained, fixed-depth (256-bit) SPARSE MERKLE TREE over consumed CKB seals, the
+//// seal_set.ak — a self-contained, fixed-depth (128-bit) SPARSE MERKLE TREE over consumed CKB seals, the
 //// Cardano mirror of the CKB-side `burn_nullifier_registry`'s SMT (SEC N-FIN-1 / the forward-leg replay
-//// class). A key (a 32-byte CKB seal = the anchor tx hash, D2) is "present" (consumed) or "absent". An
-//// insertion is authenticated by a single set of 256 sibling hashes that must take the key from value 0
-//// (ABSENT, under the old root = NON-MEMBERSHIP) to `present` (under the new root). Because the live old
-//// root pins the siblings (collision-resistance of blake2b-256), the only satisfying new root is the genuine
-//// single-leaf update — so a seal can be inserted at most once, ever. That is what makes "one seal ⇒ one
-//// Cardano lineage/outcome" enforceable rather than conventional.
+//// class). A key (a 32-byte CKB seal = the anchor tx hash, D2) is "present" (consumed) or "absent"; the tree
+//// path is the key's LOW 128 bits (the last 16 bytes). An insertion is authenticated by a single set of 128
+//// sibling hashes that must take the key from value 0 (ABSENT, under the old root = NON-MEMBERSHIP) to
+//// `present` (under the new root). Because the live old root pins the siblings (collision-resistance of
+//// blake2b-256), the only satisfying new root is the genuine single-leaf update — so a seal can be inserted
+//// at most once, ever. That is what makes "one seal ⇒ one Cardano lineage/outcome" enforceable.
+////
+//// DEPTH = 128 (was 256): a 256-deep insert costs ~15.6M Plutus mem in the full leap TxInfo, which (with the
+//// other 3 scripts) exceeds the Conway 16.5M per-tx limit; 128 halves the blake2b chain to ~8M and fits.
+//// SECURITY: a 128-bit path keeps REPLAY-ONCE intact (each path admits one insert, ever — the soundness this
+//// enforces). The only effect of the truncation is a LIVENESS edge: two distinct seals sharing their low 128
+//// bits map to one path, so the second's leap is blocked (never a double-mint). A collision needs a ~2^64
+//// birthday grind over REAL CKB lock-tx hashes (each attempt costs a real on-chain lock) — infeasible to
+//// weaponise; for mainnet, re-evaluate vs. the budget (or split the insert into a prior tx to keep 256).
 use aiken/builtin
 use aiken/collection/list
 
@@ -14,7 +22,7 @@ pub type SealSet {
   root: ByteArray,
 }
 
-/// The seal-nullifier registry spend redeemer: the seal `key` (32B) to consume + its 256 merkle siblings.
+/// The seal-nullifier registry spend redeemer: the seal `key` (32B) to consume + its 128 merkle siblings.
 pub type Insert {
   key: ByteArray,
   sibs: List<ByteArray>,
@@ -69,9 +77,9 @@ pub fn fold(value: ByteArray, key: ByteArray, sibs: List<ByteArray>) -> ByteArra
   fold_go(value, key, sibs, 0)
 }
 
-/// The root of the EMPTY 256-deep tree (all leaves absent) = E[256].
+/// The root of the EMPTY 128-deep tree (all leaves absent) = E[128].
 fn empty_up(e: ByteArray, d: Int) -> ByteArray {
-  if d == 256 {
+  if d == 128 {
     e
   } else {
     empty_up(h2(e, e), d + 1)
@@ -83,7 +91,7 @@ pub fn empty_root() -> ByteArray {
 }
 
 /// A sound single-key insertion: `key` was ABSENT under `old_root` (non-membership) and is PRESENT under
-/// `new_root`, witnessed by exactly 256 siblings. Caller must also enforce `list.length(sibs) == 256`.
+/// `new_root`, witnessed by exactly 128 siblings. Caller must also enforce `list.length(sibs) == 128`.
 pub fn inserts(
   old_root: ByteArray,
   new_root: ByteArray,
@@ -98,7 +106,7 @@ pub fn inserts(
 /// build the empty-subtree sibling list [E[0], E[1], ..., E[255]] (leaf-first) — the siblings for inserting
 /// the first key into an empty tree.
 fn empties_go(e: ByteArray, d: Int, acc: List<ByteArray>) -> List<ByteArray> {
-  if d == 256 {
+  if d == 128 {
     acc
   } else {
     empties_go(h2(e, e), d + 1, [e, ..acc])
@@ -136,6 +144,6 @@ test replay_rejected() {
   !inserts(new_root, fold(present, key_a, sibs), key_a, sibs)
 }
 
-test empty_sibs_has_256() {
-  list.length(empty_sibs()) == 256
+test empty_sibs_has_128() {
+  list.length(empty_sibs()) == 128
 }

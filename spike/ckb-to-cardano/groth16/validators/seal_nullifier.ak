@@ -20,7 +20,7 @@ validator seal_nullifier() {
     expect Some(ss) = datum
     let Insert { key, sibs } = redeemer
     expect builtin.length_of_bytearray(key) == 32
-    expect list.length(sibs) == 256
+    expect list.length(sibs) == 128                   // SMT depth 128 (low 128 bits of the 32B key); see g16/seal_set
     // CONTINUITY pin (no compile-time thread_policy → breaks the seal_nullifier <-> seal_thread parameterization
     // cycle, just like advance_ckbcert): the spent registry must carry exactly ONE non-ADA lineage token and the
     // continuing output must keep the SAME one. The CANONICAL registry is selected by leap_mint_guard via its
