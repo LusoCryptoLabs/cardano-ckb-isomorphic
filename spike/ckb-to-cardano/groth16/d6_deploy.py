@@ -30,7 +30,7 @@ THREAD_NAME = "636b62636572742d746872656164"      # shared thread asset name "ck
 POLICY_NAME = THREAD_NAME                          # the policy NFT asset name (cardano_bound.policy_name)
 FT_NAME     = "cf87434b42"                         # "χCKB" (U+03C7 chi 'cf87' ++ "CKB") — the leaped-CKB token on Cardano
 K_DEFAULT   = 12                                   # genesis min_confirmations (sane: 0..32)
-WINDOW_LEN  = 3600                                 # rate-limiter window (slots)
+WINDOW_LEN  = 3600_000                             # rate-limiter window in POSIXTime MS (Plutus V3 validity unit); 3,600,000 ms = 1h. >= max_width 600_000
 
 # ---- SEC D6 reorg caps — NOW ENABLED (were 0/disabled => RATELIMIT-1). Units: CKB shannons (1 CKB = 1e8).
 # The AGGREGATE cap is a compile-time parameter to leap_ratelimit (baked into its script hash => immutable
