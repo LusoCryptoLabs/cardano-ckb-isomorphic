@@ -37,8 +37,10 @@ pub type Tick {
   amount: Int,
 }
 
-/// Max validity-interval width (slots) — bounds future-dating of the lower bound. ~10 min at 1s slots.
-pub const max_width: Int = 600
+/// Max validity-interval width in POSIXTime MILLISECONDS (the unit Plutus V3 reports `tx.validity_range` in
+/// — NOT slots) — bounds future-dating of the lower bound. 600_000 ms = 10 min (at 1s slots that is 600 slots).
+/// (Was 600, which would reject every real tx: the smallest non-empty interval is one slot = 1000 ms > 600.)
+pub const max_width: Int = 600_000
 
 validator leap_ratelimit(thread_policy: PolicyId, ft_policy: PolicyId, ft_name: ByteArray, cap: Int, window_len: Int) {
   spend(datum: Option<RateState>, r: Tick, own: OutputReference, tx: Transaction) {
@@ -155,9 +157,10 @@ test rl_premature_reset_rejected() {
 // NOTE: the LOAD-BEARING early-reset defense is now=lo + the ledger rule (tx unminable until slot>=lo), which
 // is a ledger property not expressible in a unit test; this only exercises the width bound.
 test rl_wide_interval_rejected() {
+  // width = 700_000 ms > max_width 600_000 -> rejected (ns matches a reset at now=lo so ONLY the width bound bites).
   let st = RateState { window_start: 1000, minted_in_window: 950 }
-  let ns = RateState { window_start: 100000, minted_in_window: 400 }
-  !rl(1000, 3600, st, 400, mk(True, True, st, ns, 100000, 200000, 400))
+  let ns = RateState { window_start: 1000000, minted_in_window: 400 }
+  !rl(1000, 3600, st, 400, mk(True, True, st, ns, 1000000, 1700000, 400))
 }
 
 // decoy input without the thread token must fail (the real singleton is what carries the accumulator).
