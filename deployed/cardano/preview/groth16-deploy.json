@@ -1,18 +1,20 @@
 {
   "checkpoint_nft": "e66554ae9bdce8d88eb4540b1caad014610216e4e827e1ca47fc6845",
-  "seal_nullifier_script": "6f07a56c31c3a87269bf8b8206649ed182858a7d6cf9168bd6ebfbef",
+  "seal_nullifier_script": "4973978bf574be3b7f0529963d9e41b466d6886762b97749a032d531",
   "governor_vkh": "2df44c71a4312463ba31315c5aa7725b6ad44cd544a055a3dde915a6",
-  "seal_registry_nft": "4f2342659f07aa3ad54afa723752b03ee340b778c41530fc97d6a7b0",
-  "seal_gref": "d80bc0acb3bf998af7d66a89b45475bac0fdfc4c3f5af8521e81ba94493d0950#1",
+  "seal_registry_nft": "19651f8050f32eb8f03227574710b9007f71c197a61be0ff27b58fac",
+  "seal_gref": "f0bef73e514b28b0bcb6f99fac794f8ce2eb2aeb810659c5aaf8f301cc57cf69#4",
   "seal_genesis_tx": "08619edabad2a45b67424f1f6539856c7049e4c9e7044271fb9e6d8ed4b738c6",
   "policy_nft": "94bfde5b5aa4d474ad507822ad75c528405704536ada7061165a6fcd",
   "policy_script": "dc24da3eca13af1fea5704969882525f56dbd64a88603b085e3ff76c",
   "policy_gref": "08619edabad2a45b67424f1f6539856c7049e4c9e7044271fb9e6d8ed4b738c6#1",
   "policy_genesis_tx": "d49c21b04d661598ddd2ece54f81db7ef414e67f0d9e47c9fd6daaf8fe387152",
-  "ratelimit_thread": "2ac3ce79df0516342e5881945df4a278dc5c065fc03102d5d1240293",
-  "leap_ratelimit_script": "909e032ecdd36bfbbef062a3fa13707826fede0561f22743ef472137",
-  "ratelimit_gref": "d49c21b04d661598ddd2ece54f81db7ef414e67f0d9e47c9fd6daaf8fe387152#1",
+  "ratelimit_thread": "c4e8344afa11da32eceeb1a063a1db091603ec27e1f3fe228887e9c2",
+  "leap_ratelimit_script": "d27958590cb8294e92ca21cc17fcdb64458ff7ab2bc639714e78ec8a",
+  "ratelimit_gref": "09b266f40fce4828ea1b17b3d9a07ab543157167396ad1e8b0ae653f9f986d32#1",
   "cardano_bound_script": "3f5b0b742b6f32248887a8ea110aace02ad4977a5b8dff8740836654",
-  "leap_mint_guard_policy": "b6112ba2280676ef6f29dcc01e750d707615d30dafb804e670898fb6",
-  "ratelimit_genesis_tx": "779f747f0c808c44b3ecb5b82a0ae3cda187826e5ba0f9b7fe5dd9c6ddc0aba3"
+  "leap_mint_guard_policy": "86f38509a9ae7a83682b07a5692313af675adf45f9ec9c12b751200d",
+  "ratelimit_genesis_tx": "779f747f0c808c44b3ecb5b82a0ae3cda187826e5ba0f9b7fe5dd9c6ddc0aba3",
+  "smt_depth": 128,
+  "seal_empty_root": "923d2522a06a9d91e5e045a357cbb594cf1c39a44f050841154ae67f3acd6cbf"
 }
