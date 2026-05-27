@@ -13,6 +13,12 @@ The bridge has **two legs**. Both are demonstrated live on testnet (CKB Pudge �
 
 A native-token round-trip (path B) uses BOTH: forward = Groth16 (mint χCKB), return = Mithril (release CKB).
 
+**Two assets, two directions (true 2-way leap).** The χCKB leg moves **CKB** value (lock CKB → χCKB on
+Cardano → back). The mirror **χADA leg** moves **ADA** value (lock ADA → **χADA on CKB** → back) and uses each
+oracle the other way: forward χADA = Mithril (CKB verifies the Cardano ADA-lock), return χADA = Groth16
+(Cardano verifies the CKB χADA-burn). Spec + status: `spike/cardano-to-ckb-zk/XADA_LEG.md`. The forward-mint
+keystone (`xada_mint`) is **BUILT + in-VM TESTED** (see the Mithril-leg table); P3–P5 remain.
+
 ---
 
 ## 1. Component matrix
@@ -28,6 +34,7 @@ A native-token round-trip (path B) uses BOTH: forward = Groth16 (mint χCKB), re
 | bound_asset_v2 (RGB++ seal lock, Mithril-gated) | `bound_asset_v2.rs` | DEPLOYED | code `0xf135e9ef`:0, **hash `0x4cc7ae86`** (LCKP+REG baked) |
 | ownership toggle (CkbOwned↔CardanoBound) | `leap_to_cardano_v2.mjs`, `leap_to_ckb_v2.mjs`, `leap_orchestrator.mjs` | LIVE round-trip | genesis `0x408d9c28`; S4 `0x838e39f2`; S5 `0xb45812da` |
 | **burn→unlock release lock** | `burn_gated_unlock_v2.rs` | **BUILT + VM-TESTED (15 tests incl. full χCKB round-trip), NOT yet deployed** | — (see §3, go-live B) |
+| **χADA forward-mint type script** (lock ADA → mint χADA on CKB) | `burn-gated-unlock/src/bin/xada_mint.rs` | **BUILT + VM-TESTED (4 host + 9 in-VM, fail-closed), NOT yet deployed** | — (mirror of `leap_mint_guard`; reuses LCKP+MKMap+registry verbatim) |
 
 Detail: `relayer/onchain/LIVE.md`, `relayer/onchain/V2_DEPLOY_RUNBOOK.md`, `docs/LEAP_V2_GOLIVE.md`,
 `spike/ckb-to-cardano/RETURN_TRIP.md`.

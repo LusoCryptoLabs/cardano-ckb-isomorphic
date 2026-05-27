@@ -38,6 +38,13 @@ path = "src/bin/bound_asset_v2.rs"
 name = "bridge_lock_v1"
 path = "src/bin/bridge_lock_v1.rs"
 
+# Cardano→CKB leg (χADA): the FORWARD-mint type script (spike/cardano-to-ckb-zk/XADA_LEG.md). χADA = wrapped
+# ADA on CKB (xUDT-style). Issuance is Mithril-gated: mints iff a certified Cardano ADA-lock (escrow output)
+# is proven in-VM, bound 1:1 to the locked lovelace + the committed CKB recipient, nullified replay-once.
+[[bin]]
+name = "xada_mint"
+path = "src/bin/xada_mint.rs"
+
 [dependencies]
 ckb-std = "0.16"
 blake2 = { version = "0.10", default-features = false }
