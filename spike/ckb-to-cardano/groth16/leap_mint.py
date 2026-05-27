@@ -130,15 +130,20 @@ def main():
     leapin = pc.RawPlutusData(constr(0, []))
 
     lo = ctx.last_block_slot; hi = lo + 300
+    # the rate-limiter reads `now` = the validity lower bound in POSIXTime MS (not the slot). preview:
+    # POSIXTime_ms = (system_start_sec + slot) * 1000. The continuing RateState.window_start MUST equal it.
+    SYSTEM_START = 1666656000
+    now_ms = (SYSTEM_START + lo) * 1000
     seal_nft = pc.MultiAsset.from_primitive({bytes.fromhex(M["seal_registry_nft"]): {THREAD_NAME: 1}})
     rl_nft = pc.MultiAsset.from_primitive({bytes.fromhex(M["ratelimit_thread"]): {THREAD_NAME: 1}})
     ck_mint = pc.MultiAsset.from_primitive({bytes.fromhex(M["leap_mint_guard_policy"]): {FT_NAME: AMOUNT}})
     bs_out = pc.RawPlutusData(constr(0, [SEAL, NEW_STATE]))                 # continuing BoundState{seal, new_state}
     reg_out = pc.RawPlutusData(constr(0, [NEW_ROOT]))                       # SealSet{new_root}
-    rate_out = pc.RawPlutusData(constr(0, [lo, AMOUNT]))                    # RateState{window_start=lo, minted=amount}
+    rate_out = pc.RawPlutusData(constr(0, [now_ms, AMOUNT]))                # RateState{window_start=now_ms, minted=amount}
 
-    EXU = {"bound": pc.ExecutionUnits(232_000, 3_100_000_000), "seal": pc.ExecutionUnits(15_475_000, 4_600_000_000),
-           "rl": pc.ExecutionUnits(222_000, 140_000_000), "mg": pc.ExecutionUnits(570_000, 320_000_000)}
+    # SMT depth 128: the seal insert mem ~halves (fold ~6.5M + TxInfo ~2.6M ≈ 9M, vs ~15.6M at 256).
+    EXU = {"bound": pc.ExecutionUnits(800_000, 3_400_000_000), "seal": pc.ExecutionUnits(10_800_000, 3_000_000_000),
+           "rl": pc.ExecutionUnits(450_000, 200_000_000), "mg": pc.ExecutionUnits(1_700_000, 500_000_000)}
     b = pc.TransactionBuilder(ctx)
     b.add_input_address(a)
     b.add_script_input(bound_in, script=RB, redeemer=pc.Redeemer(transition, EXU["bound"]))
@@ -156,8 +161,13 @@ def main():
     b.collaterals = [pure[0]]
     b.required_signers = [vk.hash()]
     if not live:
-        print("[dry] leap tx assembled (3 script inputs + 2 ref + mint). re-run with --live."); return
-    tx = b.build_and_sign([sk], change_address=a); txid = ctx.submit_tx(tx)
+        body = b.build(change_address=a)
+        print("[dry] validity_start:", body.validity_start, "ttl:", body.ttl, "| now(lo):", lo)
+        print("[dry] outputs:", len(body.outputs), "| mint:", b.mint)
+        return
+    tx = b.build_and_sign([sk], change_address=a)
+    print("[live] tx validity_start:", tx.transaction_body.validity_start, "ttl:", tx.transaction_body.ttl)
+    txid = ctx.submit_tx(tx)
     print("\nLEAP MINT submitted — preview tx:", txid, "| minted", AMOUNT, "χCKB -> Script", RECIPIENT.hex()[:12])
     json.dump({"leap_tx": txid, "amount": AMOUNT, "recipient": RECIPIENT.hex(), "seal": SEAL.hex()},
               open(os.path.join(PRE, "leap-mint.json"), "w"), indent=2)

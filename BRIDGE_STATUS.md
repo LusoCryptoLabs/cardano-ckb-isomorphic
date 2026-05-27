@@ -167,19 +167,25 @@ Careful pre-flight (no live tx fired) of the live Groth16-leg deploy on Cardano 
   deployed — ckbcert checkpoint `d80bc0ac` (NFT `e66554ae`), seal registry `08619eda` (`4f234265`), policy cell
   `d49c21b0` (`94bfde5b`, K=12 + sane caps), ratelimit cell `779f747f` (`2ac3ce79`). Derived against them:
   `cardano_bound 3f5b0b74`, `leap_mint_guard b6112ba2`. Manifest → `deployed/cardano/preview/groth16-deploy.json`.
-- ⚠️ THE LEAP TX HITS THE PER-TX MEM CEILING (a real architectural finding; NO funds lost — every attempt was
-  node-rejected pre-inclusion). The leap (`leap_mint.py`) was built + fired live, and ALL the hard parts work:
-  `validate_leap_binding.py` confirms seal/commitment bind the proof; the BoundState UTxO + the 4 reference
-  scripts are deployed; the Groth16 `proof.b` (96B) is indefinite-CBOR chunked; and across the live evaluations
-  **`cardano_bound` (the on-chain Groth16 verify of the value-bound proof) and `leap_ratelimit` PASSED** — only
-  the budgets failed. But the 4-script tx's REAL mem is ~16.62 M > the **16.5 M** Conway per-tx limit: bound
-  ~230K + **seal_nullifier 256-deep SMT insert ~15.6 M** + ratelimit ~220K + mint_guard ~570K. The SMT insert
-  in the full TxInfo is far heavier than its isolated Aiken test (12.9 M) and dominates.
-- FIX (focused, next step): shrink the seal-nullifier SMT — depth 256→128 (truncate the 32-byte seal key to
-  16 bytes; 128-bit collision resistance is ample for a nullifier set) ≈ halves the insert to ~8 M, giving
-  comfortable headroom — OR decouple the seal-insert into a prior tx. Either is a `seal_set`/`seal_nullifier`
-  change + a seal-registry re-deploy + re-derive of `leap_mint_guard`/`leap_ratelimit`. Then re-fire `leap_mint.py`.
-- The advance ceremony (advance_windowed) remains a separate follow-up for an advanceable (vs pinned) checkpoint.
+- ✅✅ **LIVE χCKB MINT — the CKB→Cardano value leg is COMPLETE end-to-end on Cardano preview.** Leap tx
+  `07a8023d…` (block 4371186, confirmed): a real CKB lock (200 CKB, receipt `0xcfaaf177`) → value-bound Groth16
+  proof → **`cardano_bound` verified the proof ON-CHAIN** → `leap_mint_guard` minted exactly **20,000,000,000
+  χCKB (200 CKB)** to the bound recipient `Script(2df44c71)` (= `addr_test1wqklgnr…`), with `seal_nullifier`
+  recording the seal (replay-once) and `leap_ratelimit` ticking. All 4 scripts passed phase-2.
+  `leap_mint.py` (BoundState `2255888` + 4 reference scripts `7d79d5a3`); `validate_leap_binding.py` proved
+  seal/commitment bind the proof; `proof.b` (96B G2) indefinite-CBOR chunked.
+- Two real bugs were surfaced + fixed by the live run (NO funds lost — pre-inclusion rejections): (1) the
+  4-script tx exceeded the 16.5 M Conway mem limit, dominated by the seal 256-deep SMT insert (~15.6 M) →
+  **SMT depth 256→128** (low 128 bits of the 32B key; replay-once intact, see `seal_set.ak`) ≈ 8 M, fits.
+  (2) `leap_ratelimit` compared the validity-interval width against `max_width=600` "slots" but Plutus V3
+  reports `validity_range` in **POSIXTime ms** → it always returned False → **`max_width`/`window_len` → ms**;
+  the prover sets `RateState.window_start` to the POSIXTime-ms `now`. Live deploy hashes: checkpoint
+  `e66554ae`, cardano_bound `3f5b0b74` (unchanged), seal_registry `19651f80`, ratelimit_thread `c4e8344a`,
+  leap_mint_guard `86f38509`.
+- Remaining (operability, not value): the advance ceremony (advance_windowed) for an advanceable (vs pinned)
+  checkpoint; the relayer should lock the forward CKB under `burn_gated_unlock_v2` so the return trip releases
+  it (the live forward receipt used the deployer secp lock). The bridge is now demonstrated LIVE in BOTH
+  directions (Mithril toggle/return + Groth16 value mint).
 - ckbcert demo deploy note: the *advance* circuit ceremony (`advance_windowed`) is not done, so a live deploy
   would use the leap VK as a placeholder `advance_ckbcert.vk` (checkpoint pinned at the real window state +
   referenced by the leap; advancing needs the advance ceremony + redeploy — a documented follow-up). The CYCLE
