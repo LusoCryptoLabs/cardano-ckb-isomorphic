@@ -14,3 +14,10 @@ blake2b-ref = "0.3"
 [[test]]
 name = "v2"
 path = "tests/v2.rs"
+
+# χADA forward-mint (Cardano→CKB): a synthetic Conway ESCROW tx (ADA locked at the escrow address, inline
+# datum binding a CKB recipient) + the same two-level MMR cert proof + the replay-once registry, run in
+# ckb-testtool against `xada_mint`. Proves a certified ADA-lock mints exactly the bound χADA to the recipient.
+[[test]]
+name = "xada"
+path = "tests/xada.rs"
