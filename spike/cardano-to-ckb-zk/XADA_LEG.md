@@ -110,9 +110,19 @@ caveat as the χCKB token-registry discussion: integer-on-chain, decimals are di
   the happy path mints exactly the locked lovelace to the committed recipient; wrong amount / datum mismatch /
   wrong recipient / tampered proof / missing checkpoint / missing-or-miskeyed registry / stray χADA input all
   fail closed. Reuses the deployed Mithril core verbatim (LCKP read, MKMap proof, replay registry).
-- [ ] **P3** `ada_escrow.ak` (lock side) + Aiken tests. ← building
-- [ ] **P4** relayer forward wiring + **live χADA mint on Pudge** from a real preview ADA lock.
-- [ ] **P5** return leg (burn receipt + Groth16 rebind + escrow release) — completes 2-way.
+- [x] **P3** `ada_escrow.ak` — BUILT + TESTED. `spike/ckb-to-cardano/groth16/validators/ada_escrow.ak`.
+  The Cardano lock side: `EscrowDatum{ckb_recipient, amount, nonce}` is the forward receipt `xada_mint` reads;
+  the `Release` path is the return-leg verifier — a Groth16 proof of a CKB χADA-burn (reuses `g16/verifier`,
+  the genesis-pinned CKB-header checkpoint, the 5-input `(window_root, seal, commitment, tip, K)` binding, and
+  governance-K verbatim from `cardano_bound`), bound to `amount ‖ cardano_recipient`, replay-once via the seal
+  registry (`g16/seal_set`), with the released ADA actually paid to the recipient. 10 Aiken tests pass; the
+  full groth16 suite still passes (no regression).
+- [ ] **P4** relayer forward wiring + **live χADA mint on Pudge** from a real preview ADA lock. PREREQS: deploy
+  the `xada_mint` code cell + the `ada_escrow` address; the forward mint also needs the existing deployed
+  Mithril checkpoint (LCKP `0xa055798e`) — already live. (The *return* leg additionally needs the CKB-header
+  `ckbcert` checkpoint on Cardano, currently BUILT-not-deployed — a P5 prereq, not P4.)
+- [ ] **P5** return leg circuit: rebind the `leap_bound_windowed` prover to a CKB χADA-**burn** receipt + a CKB
+  burn-receipt cell (`bridge_lock_v1`-style) + deploy `ada_escrow`'s checkpoint — completes the 2-way round-trip.
 
 Nothing here re-implements the Mithril light client, the cert verifier, the replay registry, or the Groth16
 verifier — all four are already deployed and are consumed as-is (see §1).

@@ -51,6 +51,7 @@ Detail: `relayer/onchain/LIVE.md`, `relayer/onchain/V2_DEPLOY_RUNBOOK.md`, `docs
 | deploy derivation (acyclic apply chain) | `groth16/d6_deploy.py` | wired to REAL ceremony VKs; derives `cardano_bound` `206873ab…` | gated on funded key + ckbcert checkpoint |
 | trusted-setup ceremonies (transition + finalize) | `circuit/ceremony/` | ✅ DONE 2026-06-11 (2^21, 3+3); on-chain-accepted | vk_blake2b: transition `b73bd298…`, finalize `d26e679f…` |
 | CKB-header window checkpoint on Cardano (ckbcert) | `advance_ckbcert.ak`, `advance_windowed.rs` | BUILT; **NOT deployed** (placeholder NFT) | gated with the leg deploy |
+| **χADA escrow + return-leg release verifier** (lock ADA / release on a Groth16 CKB-burn proof) | `groth16/validators/ada_escrow.ak` | **BUILT + TESTED (10 Aiken tests; full suite green)**, NOT yet deployed | mirror of `cardano_bound`; reuses `g16/verifier`+ckbcert+seal_set |
 
 Detail: `spike/ckb-to-cardano/VALUE_BINDING_FIX.md`, `AUTHZ_DOUBLEMINT_AUDIT.md`,
 `circuit/RESTRUCTURE.md`, `spike/ckb-to-cardano/circuit/ceremony/`.
