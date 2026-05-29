@@ -121,10 +121,17 @@ caveat as the χCKB token-registry discussion: integer-on-chain, decimals are di
   - [x] **P4b** `xada_mint` code cell DEPLOYED on Pudge: tx `0x9ec60f9a…`, codeHash
     `0x92e9403546f98255752c6a150201718cd551291c6cc8537a139e790fafec2fbd` (stripped 56,664 B; re-tested in-VM).
     Baked to the live LCKP checkpoint `0xa055798e` + replay registry `0xdc18fd56`. (`relayer/onchain/deploy_xada_mint.mjs`.)
-  - [ ] **P4c** create the `ada_escrow` address on preview + lock real preview ADA with an `EscrowDatum`.
-  - [ ] **P4d** relayer builds the χADA mint tx (escrow tx → Mithril cert → MKMap proof vs the live LCKP →
-    spend+insert registry → mint) + submit live on Pudge. Adapts `relayer/onchain/leap_to_ckb_v2.mjs` (same
-    witness shape; `xada_mint` reads the proof from `input_type` on GroupOutput witness 0).
+  - [x] **P4c** ADA LOCKED on preview: escrow tx `6f57b56914a169d7bb71defc50173e2cb5c45460ef984964307b13a5e5d03544`,
+    addr `addr_test1wpaxh6vwegnlm2exhzm4pf9ydl7gd3wu2t8he9plgr6w5dgwrpqn9` (script hash `7a6be98e…`, addr bytes
+    `707a6be98e…` ← the `xada_mint` `escrow_addr` arg), `EscrowDatum{ckb_recipient 7a971a3b…, amount 5_000_000,
+    nonce 1}`. 5 ADA → will mint 5,000,000 χADA. (`groth16/escrow_lock.py`; state `deployed/cardano/preview/xada-escrow.json`.)
+    NOTE: the escrow's return-vk is a PLACEHOLDER (the real burn-vk is P5), so this demo escrow's ADA is
+    release-locked until the P5 redeploy — hence the small 5 ADA.
+  - [ ] **P4d** ⏳ GATED on Mithril certifying the escrow tx. Then the relayer builds the χADA mint tx (escrow
+    tx → Mithril cert → MKMap proof vs the live LCKP `0xa055798e` → spend+insert registry `0xdc18fd56` → mint
+    5,000,000 χADA to lock `7a971a3b…`) + submit on Pudge. Adapts `relayer/onchain/leap_to_ckb_v2.mjs` (same
+    witness shape; `xada_mint` reads the proof from `input_type` on GroupOutput witness 0). xada_mint args =
+    LCKP(32) ‖ reg(32) ‖ escrow_addr `707a6be98e…`.
 - [ ] **P5** return leg circuit: rebind the `leap_bound_windowed` prover to a CKB χADA-**burn** receipt + a CKB
   burn-receipt cell (`bridge_lock_v1`-style) + deploy `ada_escrow`'s checkpoint — completes the 2-way round-trip.
 
