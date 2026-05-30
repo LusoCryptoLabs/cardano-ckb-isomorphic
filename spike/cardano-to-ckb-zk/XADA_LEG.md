@@ -127,11 +127,14 @@ caveat as the χCKB token-registry discussion: integer-on-chain, decimals are di
     nonce 1}`. 5 ADA → will mint 5,000,000 χADA. (`groth16/escrow_lock.py`; state `deployed/cardano/preview/xada-escrow.json`.)
     NOTE: the escrow's return-vk is a PLACEHOLDER (the real burn-vk is P5), so this demo escrow's ADA is
     release-locked until the P5 redeploy — hence the small 5 ADA.
-  - [ ] **P4d** ⏳ GATED on Mithril certifying the escrow tx. Then the relayer builds the χADA mint tx (escrow
-    tx → Mithril cert → MKMap proof vs the live LCKP `0xa055798e` → spend+insert registry `0xdc18fd56` → mint
-    5,000,000 χADA to lock `7a971a3b…`) + submit on Pudge. Adapts `relayer/onchain/leap_to_ckb_v2.mjs` (same
-    witness shape; `xada_mint` reads the proof from `input_type` on GroupOutput witness 0). xada_mint args =
-    LCKP(32) ‖ reg(32) ‖ escrow_addr `707a6be98e…`.
+  - [~] **P4d** WIRED + validated to the cert gate; ⏳ FIRES once Mithril certifies the escrow tx.
+    `relayer/onchain/xada_mint_relayer.mjs` (adapts `leap_to_ckb_v2`): escrow tx → `alignCheckpointAndWitness`
+    (LCKP `0xa055798e` + MKMap proof) → spend+insert registry `0xdc18fd56` → mint 5,000,000 χADA to lock
+    `7a971a3b…`. `xada_mint` args = LCKP(32) ‖ reg(32) ‖ escrow_addr `707a6be98e…`; the MKMap proof rides
+    `witness[0].input_type` (read via GroupOutput[0], exactly the placement the 9 in-VM tests exercise).
+    `relayer/onchain/xada_reg_witness.py` keys the replay-once insert on `blake2b256(escrow tx body)` — self-test
+    reconstructs the LIVE registry root `0x0b49efae…` from the 3 current keys (non-membership + insert checks pass).
+    To fire when certified: `node relayer/onchain/xada_mint_relayer.mjs` (it throws cleanly until certified).
 - [ ] **P5** return leg circuit: rebind the `leap_bound_windowed` prover to a CKB χADA-**burn** receipt + a CKB
   burn-receipt cell (`bridge_lock_v1`-style) + deploy `ada_escrow`'s checkpoint — completes the 2-way round-trip.
 
