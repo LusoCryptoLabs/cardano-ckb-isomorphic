@@ -45,6 +45,13 @@ path = "src/bin/bridge_lock_v1.rs"
 name = "xada_mint"
 path = "src/bin/xada_mint.rs"
 
+# χADA RETURN leg: the burn receipt. Burning χADA on CKB creates a receipt binding (amount, cardano_recipient);
+# self-enforces Σ χADA in − Σ χADA out == amount (a real burn), so the deployed xada_mint policy is reused
+# unchanged for the round-trip. The return Groth16 circuit reads it; ada_escrow releases the ADA.
+[[bin]]
+name = "xada_burn_receipt"
+path = "src/bin/xada_burn_receipt.rs"
+
 [dependencies]
 ckb-std = "0.16"
 blake2 = { version = "0.10", default-features = false }

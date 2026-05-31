@@ -86,8 +86,11 @@ Pudge. Mirrors `relayer/onchain/leap_to_ckb_v2.mjs` (same witness shape) + `leap
 
 ## 3. Return path (CKB → Cardano): burn χADA, release ADA  ← Phase 5, closes the round-trip
 
-1. **CKB burn + receipt:** `xada_mint.rs` burn path requires a `bridge_lock_v1`-style receipt cell binding
-   `(amount, cardano_recipient)` (the return mirror of the χCKB forward lock). The burn destroys χADA.
+1. **CKB burn + receipt:** burning χADA creates one `xada_burn_receipt` cell binding `(amount,
+   cardano_recipient)` (48 B: `"XAD1" ‖ amount(16 LE) ‖ recipient(28)`). The receipt **self-enforces** that the
+   tx genuinely burns exactly `amount` of the χADA policy (Σ χADA in − Σ χADA out == amount), so it can't
+   overstate — which means the already-deployed `xada_mint` is reused UNCHANGED (no policy fork). BUILT +
+   7 in-VM tests (`xada_burn_receipt.rs`, `integration/tests/xada_burn.rs`).
 2. **Groth16 proof:** reuse the `leap_bound_windowed` circuit (value-binding + reorg K-floor in one proof),
    **rebound** so the bound "value" is the χADA-**burn** receipt (amount + Cardano recipient) instead of a
    CKB lock. PoW+inclusion machinery is unchanged.
@@ -135,8 +138,15 @@ caveat as the χCKB token-registry discussion: integer-on-chain, decimals are di
     `relayer/onchain/xada_reg_witness.py` keys the replay-once insert on `blake2b256(escrow tx body)` — self-test
     reconstructs the LIVE registry root `0x0b49efae…` from the 3 current keys (non-membership + insert checks pass).
     To fire when certified: `node relayer/onchain/xada_mint_relayer.mjs` (it throws cleanly until certified).
-- [ ] **P5** return leg circuit: rebind the `leap_bound_windowed` prover to a CKB χADA-**burn** receipt + a CKB
-  burn-receipt cell (`bridge_lock_v1`-style) + deploy `ada_escrow`'s checkpoint — completes the 2-way round-trip.
+- [~] **P5** return leg (CKB → Cardano):
+  - [x] **P5a** `xada_burn_receipt.rs` — the burn receipt binding `(amount, cardano_recipient)`, self-enforcing
+    the χADA burn. BUILT + 7 in-VM tests (full/partial burn pass; wrong amount / no burn / net mint / bad
+    magic / bad length fail closed). `xada_mint` reused unchanged.
+  - [ ] **P5b** rebind the `leap_bound_windowed` SP1 prover to the χADA-**burn** receipt (value = amount ‖
+    cardano_recipient) + run its trusted-setup ceremony → the real return-leg vk.
+  - [ ] **P5c** deploy the `ckbcert` CKB-header checkpoint on Cardano (`ada_escrow.canonical_cp` reads it) +
+    redeploy `ada_escrow` with the real burn-vk (replacing the P4c placeholder) → unlocks the demo escrow's
+    release and completes the 2-way round-trip.
 
 Nothing here re-implements the Mithril light client, the cert verifier, the replay registry, or the Groth16
 verifier — all four are already deployed and are consumed as-is (see §1).
