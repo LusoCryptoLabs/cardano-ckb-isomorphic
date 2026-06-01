@@ -91,11 +91,16 @@ Pudge. Mirrors `relayer/onchain/leap_to_ckb_v2.mjs` (same witness shape) + `leap
    tx genuinely burns exactly `amount` of the χADA policy (Σ χADA in − Σ χADA out == amount), so it can't
    overstate — which means the already-deployed `xada_mint` is reused UNCHANGED (no policy fork). BUILT +
    7 in-VM tests (`xada_burn_receipt.rs`, `integration/tests/xada_burn.rs`).
-2. **Groth16 proof:** reuse the `leap_bound_windowed` circuit (value-binding + reorg K-floor in one proof),
-   **rebound** so the bound "value" is the χADA-**burn** receipt (amount + Cardano recipient) instead of a
-   CKB lock. PoW+inclusion machinery is unchanged.
-3. **`ada_escrow.ak` release:** verify the Groth16 proof (reuse `cardano_bound.ak`'s verifier) → release
-   `amount` lovelace to `cardano_recipient`; nullify the CKB-burn outpoint once (reuse `seal_nullifier.ak`).
+2. **Groth16 proof — SAME circuit, no new code (P5b finding):** `leap_bound_windowed` is RECEIPT-AGNOSTIC. It
+   reads `(body, type_off, amount_off, recip_off, type_code_hash)` from its input JSON (`bridge_lock_live.json`
+   for χCKB), derives `new_state = amount(16 LE) ‖ recipient(28)` from the body, and binds
+   `commitment = blake2b(new_state ‖ seal)` with PoW + windowed K-floor — exactly the 5 PI
+   `(window_root, seal, commitment, tip, K)` `ada_escrow` already verifies. The return leg is the SAME binary
+   fed an **`xada_burn_live.json`** (the burn tx body + offsets + the `xada_burn_receipt` code-hash). The
+   commitment/PI shape matches `ada_escrow.commitment/inputs_bind` byte-for-byte — so the only new work is
+   producing the burn artifacts + running the existing ceremony; the circuit, prover, and verifier are reused.
+3. **`ada_escrow.ak` release:** verify the Groth16 proof (`g16/verifier.verify`) → release `amount` lovelace to
+   `cardano_recipient`; nullify the burn seal once in the shared registry. (All BUILT in P3 — 10 tests.)
 
 This is the most involved half (a circuit rebind + a new release verifier); it is **separable** — Phases 2–4
 already deliver the headline ("real ADA lock on Cardano ⇒ real χADA minted on CKB"), and Phase 5 closes the
@@ -142,11 +147,17 @@ caveat as the χCKB token-registry discussion: integer-on-chain, decimals are di
   - [x] **P5a** `xada_burn_receipt.rs` — the burn receipt binding `(amount, cardano_recipient)`, self-enforcing
     the χADA burn. BUILT + 7 in-VM tests (full/partial burn pass; wrong amount / no burn / net mint / bad
     magic / bad length fail closed). `xada_mint` reused unchanged.
-  - [ ] **P5b** rebind the `leap_bound_windowed` SP1 prover to the χADA-**burn** receipt (value = amount ‖
-    cardano_recipient) + run its trusted-setup ceremony → the real return-leg vk.
+  - [~] **P5b** circuit ARCHITECTURE RESOLVED (no new circuit/prover code): the return proof IS
+    `leap_bound_windowed` reused, fed an `xada_burn_live.json` (burn body + offsets + `xada_burn_receipt`
+    code-hash) instead of `bridge_lock_live.json`; the derived commitment + 5 PI match `ada_escrow` exactly
+    (§3.2). EXECUTION gated on: (a) a REAL burn tx (header+CBMT+body) — downstream of the cert-gated forward
+    mint, since you need χADA to burn; (b) running the existing MPC ceremony over that burn instance →
+    the return vk. Remaining new code = a `xada_burn_live.json` builder (mirror of `bridge_deploy_lock.mjs`,
+    which captured the lock tx + offsets).
   - [ ] **P5c** deploy the `ckbcert` CKB-header checkpoint on Cardano (`ada_escrow.canonical_cp` reads it) +
-    redeploy `ada_escrow` with the real burn-vk (replacing the P4c placeholder) → unlocks the demo escrow's
-    release and completes the 2-way round-trip.
+    redeploy `ada_escrow` with the real burn-vk (replacing the P4c placeholder). Both are FUNDING-gated (a new
+    CKB code cell needs ~25–60k CKB; relayer plain balance is ~6.7k after the `xada_mint` deploy → needs a
+    faucet top-up or an obsolete-cell reclaim). Completes the ADA round-trip + unlocks the demo escrow.
 
 Nothing here re-implements the Mithril light client, the cert verifier, the replay registry, or the Groth16
 verifier — all four are already deployed and are consumed as-is (see §1).
