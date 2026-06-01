@@ -60,9 +60,10 @@ fn uint(n: u64) -> Vec<u8> { let mut o = Vec::new();
     else if n < 65536 { o.push(0x19); o.extend_from_slice(&(n as u16).to_be_bytes()); }
     else if n < (1u64 << 32) { o.push(0x1a); o.extend_from_slice(&(n as u32).to_be_bytes()); }
     else { o.push(0x1b); o.extend_from_slice(&n.to_be_bytes()); } o }
-// EscrowDatum = Constr 121 [ recipient:bytes32, amount:int, nonce:int ]
+// EscrowDatum = Constr 121 [ recipient:bytes32, amount:int, nonce:int ] — INDEFINITE inner array (the standard
+// Plutus / pycardano encoding the live escrow datum actually uses: 0x9f … 0xff).
 fn escrow_datum(recipient: &[u8], amount: u64, nonce: u64) -> Vec<u8> {
-    let mut o = vec![0xd8u8, 0x79, 0x83]; o.extend(bstr(recipient)); o.extend(uint(amount)); o.extend(uint(nonce)); o }
+    let mut o = vec![0xd8u8, 0x79, 0x9f]; o.extend(bstr(recipient)); o.extend(uint(amount)); o.extend(uint(nonce)); o.push(0xff); o }
 fn inline(datum: &[u8]) -> Vec<u8> { let mut o = vec![0x82u8, 0x01, 0xd8, 0x18]; o.extend(bstr(datum)); o }   // [1, 24(bstr)]
 fn map_output(addr: &[u8], coin: u64, datum: &[u8]) -> Vec<u8> {
     let mut o = vec![0xa3u8];

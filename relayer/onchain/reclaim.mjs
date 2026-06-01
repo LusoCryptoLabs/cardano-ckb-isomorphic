@@ -10,12 +10,15 @@ const dep = JSON.parse(fs.readFileSync(new URL("./deployed.json", import.meta.ur
 const cs = JSON.parse(fs.readFileSync(new URL("./chain_state.json", import.meta.url), "utf8"));
 const ck2 = JSON.parse(fs.readFileSync(new URL("./checkpoint_v2.json", import.meta.url), "utf8"));
 const reg = JSON.parse(fs.readFileSync(new URL("./v2_registry.json", import.meta.url), "utf8"));
+let xm = null; try { xm = JSON.parse(fs.readFileSync(new URL("./xada_mint_deploy.json", import.meta.url), "utf8")); } catch {}
 const PROT = new Set([
   `${dep.cv_advance.txHash}:0`, `${dep.cv_deploy.txHash}:0`, `${dep.bound_asset.txHash}:0`,
   `${dep.cv_deploy_v2.txHash}:0`, `${cs.ckpt.outpoint.txHash}:${cs.ckpt.outpoint.index}`,
-  `${ck2.checkpoint.txHash}:${ck2.checkpoint.index}`, `${ck2.witnessCell.txHash}:${ck2.witnessCell.index}`,
+  `${ck2.checkpoint.txHash}:${ck2.checkpoint.index}`,
+  ...(ck2.witnessCell ? [`${ck2.witnessCell.txHash}:${ck2.witnessCell.index}`] : []),
   `${reg.registryCode.txHash}:0`, `${reg.registryGenesis.txHash}:${reg.registryGenesis.index}`,
   `${reg.boundCode.txHash}:0`,   // v2 bound_asset_v2 code cell — lock-only (no type), MUST be protected
+  ...(xm ? [`${xm.xadaMintCode.txHash}:0`] : []),   // χADA mint code cell (lock-only) — MUST be protected
 ]);
 const FEE = 2_000_000n; // 0.02 CKB — well above min, under ccc's max-fee-rate for this small tx (~530 bytes)
 

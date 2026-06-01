@@ -4,14 +4,14 @@
     "index": 0
   },
   "ckpt": {
-    "epoch": 1324,
+    "epoch": 1325,
     "outpoint": {
-      "txHash": "0x2519ee3cd7ba463aa70b9d24afd07fa1fca184728850c55f52d78792ac7b5c7a",
+      "txHash": "0x6e1030c94009d5cfd28cf7f6db100163ef80c6525a5969481b0cbec289cdd586",
       "index": 0
     }
   },
   "witness": {
-    "txHash": "0xe0c2c8d863010bc940239c08fec0d3da60e810fc39b527620f7e9855816845ca",
+    "txHash": "0x5880209ad75a179a2619d943bfab0d84fa7bb795a407ccb8face6501fa3866f7",
     "index": 0
   },
   "deploy": {
