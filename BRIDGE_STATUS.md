@@ -16,8 +16,11 @@ A native-token round-trip (path B) uses BOTH: forward = Groth16 (mint χCKB), re
 **Two assets, two directions (true 2-way leap).** The χCKB leg moves **CKB** value (lock CKB → χCKB on
 Cardano → back). The mirror **χADA leg** moves **ADA** value (lock ADA → **χADA on CKB** → back) and uses each
 oracle the other way: forward χADA = Mithril (CKB verifies the Cardano ADA-lock), return χADA = Groth16
-(Cardano verifies the CKB χADA-burn). Spec + status: `spike/cardano-to-ckb-zk/XADA_LEG.md`. The forward-mint
-keystone (`xada_mint`) is **BUILT + in-VM TESTED** (see the Mithril-leg table); P3–P5 remain.
+(Cardano verifies the CKB χADA-burn). Spec + status: `spike/cardano-to-ckb-zk/XADA_LEG.md`.
+**✅ χADA FORWARD LEG IS LIVE: 5,000,000 χADA minted on CKB Pudge** (mint tx `0x07e81ab7ed04e894…`) from a
+real Mithril-certified preview ADA lock — so the bridge now moves value BOTH assets BOTH directions on testnet.
+(Required advancing the AVK lineage 1324→1325 + an indefinite-CBOR datum-parser fix.) Return leg = P5a
+(burn receipt) done; P5b circuit reuse resolved; P5c (burn ceremony + ckbcert deploy) remains.
 
 ---
 

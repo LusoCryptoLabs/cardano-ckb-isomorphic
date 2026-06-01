@@ -1,9 +1,9 @@
 {
   "xadaMintCode": {
-    "txHash": "0x9ec60f9ae81b131759ebf96cca0bb7e6e22a99c78989e8fa4885b94f49ce5531",
+    "txHash": "0x836b381b99726f5a736942c49592967b361e09270b6bbee9ab39fccfc1a2ad6b",
     "index": 0,
-    "codeHash": "0x92e9403546f98255752c6a150201718cd551291c6cc8537a139e790fafec2fbd",
-    "size": 56664
+    "codeHash": "0x7ab7a516828474046aa31fd4ccfbf49619f60e277001df01e4b03cc1f0be1e15",
+    "size": 56720
   },
   "lckpTypeHash": "0xa055798e911a4f7ed074d5e1ee6273683e9a446c70d3e22adab680d70eea5b74",
   "registryTypeHash": "0xdc18fd562bca1834536c926ce8c9d94f608318c3a79a43959c0c46a84265a24e"

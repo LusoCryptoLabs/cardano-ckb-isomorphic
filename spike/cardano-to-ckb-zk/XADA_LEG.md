@@ -125,7 +125,7 @@ caveat as the χCKB token-registry discussion: integer-on-chain, decimals are di
   governance-K verbatim from `cardano_bound`), bound to `amount ‖ cardano_recipient`, replay-once via the seal
   registry (`g16/seal_set`), with the released ADA actually paid to the recipient. 10 Aiken tests pass; the
   full groth16 suite still passes (no regression).
-- [~] **P4** relayer forward wiring + **live χADA mint on Pudge** from a real preview ADA lock.
+- [x] **P4 ✅ FORWARD LEG LIVE** — real preview ADA lock → Mithril-certified → **5,000,000 χADA minted on CKB Pudge** (mint tx `0x07e81ab7…`). The bridge now moves ADA value Cardano→CKB, live.
   - [x] **P4b** `xada_mint` code cell DEPLOYED on Pudge: tx `0x9ec60f9a…`, codeHash
     `0x92e9403546f98255752c6a150201718cd551291c6cc8537a139e790fafec2fbd` (stripped 56,664 B; re-tested in-VM).
     Baked to the live LCKP checkpoint `0xa055798e` + replay registry `0xdc18fd56`. (`relayer/onchain/deploy_xada_mint.mjs`.)
@@ -135,14 +135,19 @@ caveat as the χCKB token-registry discussion: integer-on-chain, decimals are di
     nonce 1}`. 5 ADA → will mint 5,000,000 χADA. (`groth16/escrow_lock.py`; state `deployed/cardano/preview/xada-escrow.json`.)
     NOTE: the escrow's return-vk is a PLACEHOLDER (the real burn-vk is P5), so this demo escrow's ADA is
     release-locked until the P5 redeploy — hence the small 5 ADA.
-  - [~] **P4d** WIRED + validated to the cert gate; ⏳ FIRES once Mithril certifies the escrow tx.
-    `relayer/onchain/xada_mint_relayer.mjs` (adapts `leap_to_ckb_v2`): escrow tx → `alignCheckpointAndWitness`
-    (LCKP `0xa055798e` + MKMap proof) → spend+insert registry `0xdc18fd56` → mint 5,000,000 χADA to lock
-    `7a971a3b…`. `xada_mint` args = LCKP(32) ‖ reg(32) ‖ escrow_addr `707a6be98e…`; the MKMap proof rides
-    `witness[0].input_type` (read via GroupOutput[0], exactly the placement the 9 in-VM tests exercise).
-    `relayer/onchain/xada_reg_witness.py` keys the replay-once insert on `blake2b256(escrow tx body)` — self-test
-    reconstructs the LIVE registry root `0x0b49efae…` from the 3 current keys (non-membership + insert checks pass).
-    To fire when certified: `node relayer/onchain/xada_mint_relayer.mjs` (it throws cleanly until certified).
+  - [x] **P4d ✅ LIVE — χADA MINTED ON CKB.** Mint tx
+    **`0x07e81ab7ed04e89407fc4e77cc4129ccf36ade1d9417c58dbf9966c1ee9ca6c7`**: the certified escrow lock
+    (`0x6f57b569`) → MKMap proof vs LCKP checkpoint `0x9a3bab44` (root `0xc510326526e4`, height 4371629) →
+    `xada_mint` verified cert+proof+escrow-binding+replay → **5,000,000 χADA** to lock `7a971a3b…`
+    (cell `0x07e81ab7…:0`, data `0x404b4c00…` = u128 LE 5,000,000). χADA policy
+    `0x0e75fc06abce0f29f312225b1ec1be743618e38a5f7f566c866d73936b165da4`. Getting there exercised the FULL
+    Mithril pipeline + surfaced 4 fixes: (1) AVK lineage was 1 epoch stale → **advanced 1324→1325**
+    (`advance_1325.mjs` + `advance_check_1325.py`, cv_advance tx `0x6e1030c9`); (2) relayer now prefers the
+    existing checkpoint (skips the flaky refresh); (3) χADA cell cap 200→300 CKB (93-byte args); (4) **the
+    datum's Constr inner array is INDEFINITE-length** (pycardano/Plutus default `0x9f…0xff`) — the parser only
+    handled definite arrays → `constr_fields_start` now accepts both (re-tested, 4 host + 9 in-VM). xada_mint
+    redeployed at codeHash `0x7ab7a516…` (new outpoint `0x836b381b…`).
+    Record: `relayer/onchain/xada_mint_relayer.mjs`, `deployed/cardano/preview/xada-mint.json`.
 - [~] **P5** return leg (CKB → Cardano):
   - [x] **P5a** `xada_burn_receipt.rs` — the burn receipt binding `(amount, cardano_recipient)`, self-enforcing
     the χADA burn. BUILT + 7 in-VM tests (full/partial burn pass; wrong amount / no burn / net mint / bad

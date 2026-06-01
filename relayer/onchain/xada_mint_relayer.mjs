@@ -15,7 +15,7 @@ import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { ccc } from "@ckb-ccc/core";
 import { signerOf, myLock, wait } from "./_signer.mjs";
-import { alignCheckpointAndWitness, pickPlain, guard, dumpMock, REG, regCodeDep, FEE } from "./leap_common_v2.mjs";
+import { alignCheckpointAndWitness, getWitness, pickPlain, guard, dumpMock, REG, regCodeDep, FEE } from "./leap_common_v2.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const strip = (h) => (h || "").replace(/^0x/, "");
@@ -23,7 +23,7 @@ const XADA = JSON.parse(fs.readFileSync(path.join(HERE, "xada_mint_deploy.json")
 const ESC = JSON.parse(fs.readFileSync(path.resolve(HERE, "../../deployed/cardano/preview/xada-escrow.json"), "utf8"));
 const REG_STATE = path.join(HERE, "registry_state.json");
 const BA_STATE = path.join(HERE, "boundasset_v2_state.json");
-const XADA_CAP = 200_00000000n;   // 200 CKB for the χADA cell (ample for type+data)
+const XADA_CAP = 300_00000000n;   // 300 CKB for the χADA cell (occupied ≈203 CKB: 93-byte xada_mint args + data)
 
 async function main() {
   const escrowTx = strip(ESC.escrow_tx);
@@ -42,9 +42,20 @@ async function main() {
   const xadaDep = { outPoint: { txHash: XADA.xadaMintCode.txHash, index: 0 }, depType: "code" };
   console.log("χADA policy (xada_mint type hash):", xadaScript.hash());
 
-  // CERT GATE: refresh the LCKP checkpoint + fetch the MKMapProof for the escrow tx. Throws "not Mithril-
-  // certified yet" until Mithril seals a preview snapshot containing the escrow tx — then this just works.
-  const { ckpt, wit, ckptDep } = await alignCheckpointAndWitness(escrowTx);
+  // CERT GATE: prefer the EXISTING LCKP checkpoint if it already certifies the escrow tx — avoids the flaky
+  // Mithril cert-fetch in refreshCheckpointV2 (the preview aggregator times out intermittently). Only refresh
+  // if the witness root has drifted past the published checkpoint.
+  let wit, ckptDep;
+  const ck2 = (() => { try { return JSON.parse(fs.readFileSync(path.join(HERE, "checkpoint_v2.json"), "utf8")); } catch { return null; } })();
+  const w0 = getWitness(escrowTx);
+  if (w0.status !== "ready") throw new Error("escrow tx not Mithril-certified yet: " + JSON.stringify(w0));
+  if (ck2 && ck2.checkpoint && strip(w0.root) === strip(ck2.root)) {
+    wit = w0; ckptDep = { outPoint: ck2.checkpoint, depType: "code" };
+    console.log("using EXISTING checkpoint (no refresh):", ck2.checkpoint.txHash.slice(0, 14), "root", strip(ck2.root).slice(0, 12));
+  } else {
+    console.log("witness root drift vs published checkpoint -> refreshing (may retry on aggregator flakiness)...");
+    ({ wit, ckptDep } = await alignCheckpointAndWitness(escrowTx));
+  }
 
   // extract the certified Cardano tx body (first lp field of the R-layout) -> the registry key = blake2b256(body).
   const wb = ccc.bytesFrom(wit.witness);

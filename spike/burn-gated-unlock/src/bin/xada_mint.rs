@@ -74,11 +74,21 @@ fn oskip(b:&[u8], i:usize, depth:usize) -> Option<usize> {
 }
 
 // ---- EscrowDatum readers: Constr 121 [ recipient:bytes32, amount:int, nonce:int ] ----
+// The Constr inner array is INDEFINITE-length in the standard Plutus encoding (`0x9f … 0xff`) — which is what
+// pycardano / cardano-cli emit — though a definite array is also legal. Return the offset of the first field,
+// handling either form (else the on-chain datum doesn't parse and the mint fails closed).
+fn constr_fields_start(d:&[u8]) -> Option<usize> {
+    let (t,_v,ti)=ohdr(d,0)?;           // Constr tag (major 6, e.g. 121)
+    if t!=6 { return None; }
+    match *d.get(ti)? {
+        0x9f => Some(ti+1),             // indefinite-length array (the Plutus default; pycardano emits this)
+        b if (b>>5)==4 => { let (_,_,a)=ohdr(d,ti)?; Some(a) }   // definite-length array
+        _ => None,
+    }
+}
 // field 0 = the CKB lock hash the χADA must be minted to (RECIPIENT binding, mirror of leap_mint_guard).
 fn datum_recipient(d:&[u8]) -> Option<Vec<u8>> {
-    let (_t,_x,ti)=ohdr(d,0)?;          // Constr tag 121 (major 6)
-    let (am,_n,ai)=ohdr(d,ti)?;         // inner array
-    if am!=4 { return None; }
+    let ai = constr_fields_start(d)?;
     let (rm,rl,ra)=ohdr(d,ai)?;         // field 0 = bytes
     if rm!=2 { return None; }
     let e=ra.checked_add(rl as usize)?; if e>d.len(){ return None; }
@@ -86,9 +96,7 @@ fn datum_recipient(d:&[u8]) -> Option<Vec<u8>> {
 }
 // field 1 = the lovelace amount the datum self-declares (cross-checked against the on-chain coin).
 fn datum_amount(d:&[u8]) -> Option<i128> {
-    let (_t,_x,ti)=ohdr(d,0)?;
-    let (am,_n,ai)=ohdr(d,ti)?;
-    if am!=4 { return None; }
+    let ai = constr_fields_start(d)?;
     let j0=oskip(d,ai,0)?;              // skip field 0 (recipient)
     let (m,a,_)=ohdr(d,j0)?;            // field 1 = int
     match m { 0 => Some(a as i128), 1 => Some(-1i128 - a as i128), _ => None }
@@ -323,9 +331,14 @@ mod tests {
         else if n<65536 { o.push(0x19); o.extend_from_slice(&(n as u16).to_be_bytes()); }
         else if n<(1u64<<32) { o.push(0x1a); o.extend_from_slice(&(n as u32).to_be_bytes()); }
         else { o.push(0x1b); o.extend_from_slice(&n.to_be_bytes()); } o }
-    // EscrowDatum = Constr 121 [recipient(bytes32), amount(int), nonce(int)]
+    // EscrowDatum = Constr 121 [recipient(bytes32), amount(int), nonce(int)] — INDEFINITE inner array, the
+    // standard Plutus / pycardano encoding (0x9f … 0xff). This is what the live escrow datum on preview uses.
     fn escrow_datum(recipient:&[u8], amount:u64, nonce:u64)->Vec<u8>{
-        let mut o=vec![0xd8u8,0x79,0x83];               // tag 121, array(3)
+        let mut o=vec![0xd8u8,0x79,0x9f];               // tag 121, INDEFINITE array
+        o.extend(bstr(recipient)); o.extend(uint(amount)); o.extend(uint(nonce)); o.push(0xff); o }
+    // a definite-length variant (also legal Plutus) — the parser must accept both.
+    fn escrow_datum_def(recipient:&[u8], amount:u64, nonce:u64)->Vec<u8>{
+        let mut o=vec![0xd8u8,0x79,0x83];               // tag 121, array(3) definite
         o.extend(bstr(recipient)); o.extend(uint(amount)); o.extend(uint(nonce)); o }
     fn inline(datum:&[u8])->Vec<u8>{                     // datum_option = [1, 24(bstr(datum))]
         let mut o=vec![0x82u8,0x01,0xd8,0x18];           // array(2), 1, tag 24
@@ -347,9 +360,12 @@ mod tests {
     #[test]
     fn datum_readers_hit_recipient_and_amount() {
         let recip=[0x33u8;32];
-        let d=escrow_datum(&recip, 20_000_000, 7);
+        let d=escrow_datum(&recip, 20_000_000, 7);              // indefinite array (live pycardano form)
         assert_eq!(datum_recipient(&d).unwrap(), recip.to_vec());
         assert_eq!(datum_amount(&d).unwrap(), 20_000_000i128);
+        let dd=escrow_datum_def(&recip, 20_000_000, 7);         // definite array — must also parse
+        assert_eq!(datum_recipient(&dd).unwrap(), recip.to_vec());
+        assert_eq!(datum_amount(&dd).unwrap(), 20_000_000i128);
     }
     #[test]
     fn escrow_output_extracts_coin_and_datum() {
