@@ -52,6 +52,13 @@ path = "src/bin/xada_mint.rs"
 name = "xada_burn_receipt"
 path = "src/bin/xada_burn_receipt.rs"
 
+# χADA xUDT OWNER lock — makes χADA a STANDARD xUDT (canonical code hash) instead of a bespoke type script.
+# The bridge verification (Mithril cert + escrow binding + replay registry) is re-homed into this lock, which
+# authorizes xUDT owner-mode minting. Supersedes xada_mint.rs (which minted a non-standard custom-typed cell).
+[[bin]]
+name = "xada_mint_owner"
+path = "src/bin/xada_mint_owner.rs"
+
 [dependencies]
 ckb-std = "0.16"
 blake2 = { version = "0.10", default-features = false }
