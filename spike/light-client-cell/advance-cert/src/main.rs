@@ -153,14 +153,24 @@ fn read_state(src: Source) -> Option<(u64,[u8;32],u64)> {
     let mut t=[0u8;8]; t.copy_from_slice(&d[40..48]);
     Some((u64::from_le_bytes(e), r, u64::from_le_bytes(t)))
 }
+// NOTE: SUPERSEDED prototype. The live, parameterized verifier is ../../cert-verify/src/main.rs (feature
+// "advance"). Kept for reference; the singleton guard below mirrors the tested cert-verify fix so a revival
+// is not silently vulnerable.
 fn program_entry() -> i8 {
     let _ = load_witness_args(0, Source::GroupInput);
     // GENESIS: no prior checkpoint in inputs -> only the trusted genesis (EPOCH 320, AVK_ROOT, TOTAL) may
     // be created. Every later spend (below) is the AUTHENTICATED advance: a full Mithril cert verify.
     if read_state(Source::GroupInput).is_none() {
+        // SEC (singleton, RQ-SG): a type script runs ONCE per group; without this an attacker rides a SECOND
+        // output wearing this trusted type but forged avk data, accepted downstream by type-hash alone.
+        if load_cell_data(0, Source::GroupInput).is_ok() { return 41; }
+        if load_cell_data(1, Source::GroupOutput).is_ok() { return 40; }
         let (oe, or, ot) = match read_state(Source::GroupOutput) { Some(s)=>s, None=>return 6 };
         if oe == EPOCH && or == AVK_ROOT && ot == TOTAL { return 0; } else { return 7; }
     }
+    // SEC (singleton, RQ-SG): exactly ONE checkpoint per side in the advance — no forged sibling.
+    if load_cell_data(1, Source::GroupInput).is_ok() { return 42; }
+    if load_cell_data(1, Source::GroupOutput).is_ok() { return 43; }
     let (in_epoch, in_root, in_total) = match read_state(Source::GroupInput) { Some(s)=>s, None=>return 1 };
     if in_root != AVK_ROOT || in_total != TOTAL || in_epoch != EPOCH { return 2; }  // cert verifies vs THIS avk
     if !check_compute_hash() { return 10; }

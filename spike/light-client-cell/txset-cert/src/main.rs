@@ -108,7 +108,13 @@ fn avk_root_src() -> Option<[u8;32]> {
         }
     }
 }
+// NOTE: SUPERSEDED prototype. The live verifier is ../../cert-verify/src/main.rs (deploy mode). The singleton
+// guard below mirrors the tested cert-verify fix so a revival is not silently vulnerable.
 fn program_entry() -> i8 {
+    // SEC (singleton, RQ-SG): forbid a forged sibling LCKP riding this trusted type in the same group;
+    // downstream consumers trust an LCKP cell by its type-hash, so an unvalidated sibling is a forged snapshot.
+    if load_cell_data(1, Source::GroupInput).is_ok() { return 44; }
+    if load_cell_data(1, Source::GroupOutput).is_ok() { return 45; }
     let avk_root = match avk_root_src() { Some(r) => r, None => return 1 };
     let mut msgp: Vec<u8> = SM_ASCII.to_vec(); msgp.extend_from_slice(&avk_root);
     if !check_m1() { return 10; }
