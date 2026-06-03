@@ -106,10 +106,24 @@ This is the most involved half (a circuit rebind + a new release verifier); it i
 already deliver the headline ("real ADA lock on Cardano ⇒ real χADA minted on CKB"), and Phase 5 closes the
 ADA round-trip.
 
-## 4. Token identity (off-chain display)
-χADA = wrapped ADA on CKB. xUDT amount = lovelace, 1:1. **decimals 6** (1 ADA = 1,000,000 units), mirroring
-χCKB's decimals 8 (shannons). Registry/sUDT metadata is off-chain (CKB token-info cell / explorer), same
-caveat as the χCKB token-registry discussion: integer-on-chain, decimals are display-only.
+## 4. Token identity — χADA is now a REAL xUDT (P6)
+The first live mint (`xada_mint.rs`) used a **bespoke type script** → functional but NOT a standard token, so
+no wallet/DEX/explorer recognizes it. **Redone as a proper xUDT** (the ecosystem standard):
+- χADA = **canonical xUDT** (Pudge code hash `0x25c29dc3…`, hashType `type`) with `args = owner_lock_hash`.
+  **χADA token id (xUDT type hash) = `0xe3a8d7be94191ed6ba7ac647673b5c8b2fd328cfcd970286a2458d8ecf64d73c`** —
+  this is what wallets/DEXes key on.
+- The bridge verification is re-homed into the **owner lock** `xada_mint_owner.rs` (DEPLOYED: code
+  `0xc4e9077f…`, codeHash `0xd409ffcf…`, owner hash `0x72f4edb5…`). xUDT **owner mode** lets the bridge
+  authorize minting: the mint tx spends an owner-locked authority cell → the xUDT skips its amount check →
+  the owner lock enforces the exact bound mint (Mithril cert + escrow binding + replay registry, the SAME
+  checks as `xada_mint`). 2 host tests; riscv 58,264 B. It finds χADA cells by `xUDT_code + args==self_hash`
+  (no genesis cycle).
+- **Wired + ready to fire** (`relayer/onchain/xada_xudt_mint.mjs`, owner cell `0x74d5944a…:0`): fires when the
+  fresh escrow `c0be40c4…` (3 ADA, nonce 2) is Mithril-certified. `node xada_xudt_mint.mjs --dump` runs BOTH
+  the real xUDT type script and the owner lock in ckb-debugger offline before the live submit.
+
+amount = lovelace, 1:1, **decimals 6** (1 ADA = 1,000,000 units), mirroring χCKB's decimals 8 (shannons).
+Decimals/ticker/logo are off-chain xUDT metadata (CKB token-info cell), same as the χCKB token-registry note.
 
 ## 5. Status / phasing
 - [x] **P1** this spec (XADA_LEG.md).
