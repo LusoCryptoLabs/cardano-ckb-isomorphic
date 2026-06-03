@@ -1,0 +1,27 @@
+{
+  "ownerCode": {
+    "txHash": "0xc4e9077f709594ee34b32db682be2d8424c0e103ab987463fbf673367de4b748",
+    "index": 0,
+    "codeHash": "0xd409ffcf004c804986097635ab8a894e5dbf172198bf414eb37c5b9b190e150c",
+    "size": 58264
+  },
+  "ownerArgs": "0xa055798e911a4f7ed074d5e1ee6273683e9a446c70d3e22adab680d70eea5b74dc18fd562bca1834536c926ce8c9d94f608318c3a79a43959c0c46a84265a24e707a6be98eca27fdab26b8b750a4a46ffc86c5dc52cf7c943f40f4ea35",
+  "ownerLockHash": "0x72f4edb51c72fd73cf0a8122709e5c02ca0ac521f661d366e373006481fd435d",
+  "lckpTypeHash": "0xa055798e911a4f7ed074d5e1ee6273683e9a446c70d3e22adab680d70eea5b74",
+  "registryTypeHash": "0xdc18fd562bca1834536c926ce8c9d94f608318c3a79a43959c0c46a84265a24e",
+  "escrowAddr": "707a6be98eca27fdab26b8b750a4a46ffc86c5dc52cf7c943f40f4ea35",
+  "xudt": {
+    "codeHash": "0x25c29dc317811a6f6f3985a7a9ebc4838bd388d19d0feeecf0bcd60f6c0975bb",
+    "hashType": "type",
+    "dep": {
+      "txHash": "0xbf6fb538763efec2a70a6a3dcb7242787087e1030c4e7d86585bc63a9d337f5f",
+      "index": 0
+    }
+  },
+  "xadaTokenType": {
+    "codeHash": "0x25c29dc317811a6f6f3985a7a9ebc4838bd388d19d0feeecf0bcd60f6c0975bb",
+    "hashType": "type",
+    "args": "0x72f4edb51c72fd73cf0a8122709e5c02ca0ac521f661d366e373006481fd435d"
+  },
+  "xadaTokenId": "0xe3a8d7be94191ed6ba7ac647673b5c8b2fd328cfcd970286a2458d8ecf64d73c"
+}

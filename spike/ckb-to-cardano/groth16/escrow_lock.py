@@ -28,8 +28,8 @@ VK = RED["vk"]   # PLACEHOLDER return-vk (forward leg does not verify it; P5 swa
 
 # χADA recipient on CKB = the relayer's CKB lock hash (where xada_mint mints χADA). 32 bytes.
 CKB_RECIPIENT = bytes.fromhex("7a971a3b730d3e5b69f73ac7add6dcd2396cab9523176132ed23e17500c820c7")
-AMOUNT = 5_000_000      # 5 ADA in lovelace -> mints 5,000,000 χADA (decimals 6); small, since release is P5.
-NONCE  = 1
+AMOUNT = 3_000_000      # 3 ADA in lovelace -> mints 3,000,000 χADA xUDT (a fresh escrow for the proper-xUDT mint).
+NONCE  = 2              # distinct from the first escrow (nonce 1) -> a different tx -> a fresh registry key.
 TN = pc.Network.TESTNET
 
 def constr(i, fs): return cbor2.CBORTag(121 + i, fs)
