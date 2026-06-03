@@ -37,9 +37,11 @@ def input_cell(tag, data, typ=None, cap=0x10000000000):
     }, {"since": "0x0", "previous_output": op}
 
 def run(binpath, *, celldeps=(), group_in=None, out_type=None, out_data=b"",
-        group="type", cell_type="output"):
+        group="type", cell_type="output", extra_outs=(), extra_ins=()):
     """celldeps: list of (data, type) tuples. group_in: (data,type) for an input
-    whose `group` script is the verifier. out_type/out_data: the output cell."""
+    whose `group` script is the verifier. out_type/out_data: the output cell.
+    extra_outs / extra_ins: list of (data, type) sibling cells; type=None means the
+    verifier type itself (used to test the singleton 'one group cell' guard)."""
     mock_cell_deps, tx_cell_deps = [], []
     # the verifier binary is itself a cellDep so its code_hash resolves
     code = open(binpath, "rb").read()
@@ -65,11 +67,21 @@ def run(binpath, *, celldeps=(), group_in=None, out_type=None, out_data=b"",
         # need at least one input for a valid tx
         mc, tc = input_cell("filler", b"")
         mock_inputs.append(mc); tx_inputs.append(tc)
+    # SEC (singleton attack): extra inputs that ALSO carry the verifier type join the same script group.
+    for j, (data, typ) in enumerate(extra_ins):
+        mc, tc = input_cell(f"groupin_x{j}", data, typ=(typ if typ is not None else verifier_script))
+        mock_inputs.append(mc); tx_inputs.append(tc)
 
     # output carrying the verifier type
     outputs.append({"capacity": "0x100000000000", "lock": ANY_LOCK,
                     "type": out_type if out_type is not None else verifier_script})
     outputs_data.append(h(out_data))
+    # SEC (singleton attack): extra outputs wearing the verifier type are siblings in the SAME group;
+    # the singleton guard must reject them so a forged checkpoint can't ride alongside the valid one.
+    for (data, typ) in extra_outs:
+        outputs.append({"capacity": "0x100000000000", "lock": ANY_LOCK,
+                        "type": typ if typ is not None else verifier_script})
+        outputs_data.append(h(data))
 
     mock = {
         "mock_info": {"inputs": mock_inputs, "cell_deps": mock_cell_deps, "header_deps": []},
@@ -90,7 +102,11 @@ def run(binpath, *, celldeps=(), group_in=None, out_type=None, out_data=b"",
     m = re.search(r'ValidationFailure\("[^"]*",\s*(-?\d+)\)', out)
     if m:
         return int(m.group(1)), out
-    if p.returncode == 0 or "Run result: 0" in out:
+    # newer ckb-debugger prints `Run result: N` (N is the script's i8 return) instead of ValidationFailure
+    m2 = re.search(r'Run result:\s*(-?\d+)', out)
+    if m2:
+        return int(m2.group(1)), out
+    if p.returncode == 0:
         return 0, out
     return p.returncode, out
 

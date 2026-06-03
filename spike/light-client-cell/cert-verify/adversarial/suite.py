@@ -99,7 +99,10 @@ c,o = run(ADVANCE, celldeps=[(flip(W19, L19["signers"][0]["sigma_off"]), None)],
           group_in=(GENESIS, None), out_data=ck(1320, AVK20, T20));             check("B8 forged cert in advance", c, 20, o)
 
 print("== Battery C — avk-source binding (deploy mode): only a canonically-typed checkpoint is trusted ==")
-avk_cell_match = b"\x00"*8 + (W[L["avk_root"][0]:L["avk_root"][0]+32]) + b"\x00"*8
+# the avk checkpoint cell must carry the cert's avk_root AND its total stake (the deploy path anchors total,
+# code 17 — a zero/mismatched total is rejected before the tx-root gate). Use the cert's real total here.
+TW = struct.unpack_from("<Q", W, L["total"][0])[0]
+avk_cell_match = b"\x00"*8 + (W[L["avk_root"][0]:L["avk_root"][0]+32]) + struct.pack("<Q", TW)
 # untrusted: a plain 48-byte cell (no type) must NOT be accepted as an avk source
 c,o = run(DEPLOY, celldeps=[(W, None), (avk_cell_match, None)]);                check("C1 untyped checkpoint NOT trusted", c, 3, o)
 # untrusted: 48-byte cell with a DIFFERENT type -> still not trusted
@@ -110,6 +113,27 @@ c,o = run(DEPLOY, celldeps=[(W, None), (avk_cell_bad, ADV_TYPE)]);              
 # trusted type AND matching avk -> passes the binding, reaches the tx-root check
 # (this MSD cert has no cardano_transactions_merkle_root, so it stops at 14: binding satisfied)
 c,o = run(DEPLOY, celldeps=[(W, None), (avk_cell_match, ADV_TYPE)]);            check("C4 trusted+matching avk reaches tx-root gate", c, 14, o)
+
+print("== Battery D — singleton guard: a forged SIBLING checkpoint in the same type group must be REJECTED ==")
+# RQ-SG: a CKB type script runs ONCE per group; the verifier validated only GroupOutput[0]. An attacker
+# rode a SECOND cell wearing this trusted type (forged avk/LCKP data) which downstream consumers accept by
+# type-hash alone -> forged cert -> unbacked mint. The guard must reject ANY sibling in the group.
+fake_ck = ck(9999, b"\xaa"*32, 1)
+# D1 genesis + a forged second output wearing the verifier type -> reject (40)
+c,o = run(ADVANCE, celldeps=[(W19, None)], out_data=GENESIS,
+          extra_outs=[(fake_ck, None)]);                                check("D1 genesis + forged sibling OUTPUT", c, 40, o)
+# D2 advance + a forged second output -> reject (43)
+c,o = run(ADVANCE, celldeps=[(W19, None)], group_in=(GENESIS, None),
+          out_data=ck(1320, AVK20, T20), extra_outs=[(fake_ck, None)]); check("D2 advance + forged sibling OUTPUT", c, 43, o)
+# D3 advance + a forged second GROUP INPUT -> reject (42)
+c,o = run(ADVANCE, celldeps=[(W19, None)], group_in=(GENESIS, None),
+          out_data=ck(1320, AVK20, T20), extra_ins=[(GENESIS, None)]);  check("D3 advance + forged sibling INPUT", c, 42, o)
+# D4 deploy + a forged second output -> reject (45) before the witness/avk path even runs
+c,o = run(DEPLOY, celldeps=[(W, None), (avk_cell_match, ADV_TYPE)],
+          extra_outs=[(b"LCKP"+b"\x00"*40, None)]);                     check("D4 deploy + forged sibling OUTPUT", c, 45, o)
+# D5 deploy + duplicate group inputs -> reject (44)
+c,o = run(DEPLOY, celldeps=[(W, None), (avk_cell_match, ADV_TYPE)],
+          extra_ins=[(b"\x00"*44, None), (b"\x00"*44, None)]);         check("D5 deploy + duplicate group INPUTS", c, 44, o)
 
 print(f"\n==== {sum(results)}/{len(results)} scenarios behaved as specified ====")
 sys.exit(0 if all(results) else 1)

@@ -181,12 +181,21 @@ const PINNED_GENESIS: [u8;48] = [39,5,0,0,0,0,0,0,15,60,12,127,134,236,178,138,2
 fn program_entry()->i8{
     // GENESIS: no input checkpoint -> the output MUST be the one pinned canonical genesis.
     if read_ck(Source::GroupInput).is_none() {
+        // SEC (singleton, RQ-SG): a CKB type script runs ONCE per group and here validated only
+        // GroupOutput[0]. Without this guard an attacker rides a SECOND output carrying this same
+        // trusted type but arbitrary (forged) avk data; deploy/txset consumers (avk_checkpoint) then
+        // accept it by type-hash alone -> forged cert -> unbacked mint. Forbid any sibling cell.
+        if load_cell_data(0,Source::GroupInput).is_ok() { return 41; }   // no input may wear this type at genesis
+        if load_cell_data(1,Source::GroupOutput).is_ok() { return 40; }  // exactly one genesis output
         match load_cell_data(0,Source::GroupOutput) {
             Ok(od) if od.len()==48 && od.as_slice()==&PINNED_GENESIS[..] => return 0,
             _ => return 7,
         }
     }
     // ADVANCE: verify the cert against the input checkpoint's avk, roll forward to the next avk.
+    // SEC (singleton, RQ-SG): exactly ONE checkpoint in this type group on each side — no forged sibling.
+    if load_cell_data(1,Source::GroupInput).is_ok() { return 42; }
+    if load_cell_data(1,Source::GroupOutput).is_ok() { return 43; }
     let w=match witness_from_celldep(){Some(w)=>w,None=>return 1};
     let ct=match parse(&w){Some(c)=>c,None=>return 2};
     let cert_epoch=match epoch_of(&ct){Some(e)=>e,None=>return 8};
@@ -214,6 +223,11 @@ fn program_entry()->i8{
 }
 #[cfg(all(not(feature="standalone"),not(feature="embedtest"),not(feature="advance")))]
 fn program_entry()->i8{
+    // SEC (singleton, RQ-SG): this LCKP type validated only GroupOutput[0]; forbid a forged sibling
+    // checkpoint riding a SECOND group output (or input). Downstream (xada_mint/bound_asset) trusts an
+    // LCKP cell by its type-hash, so an unvalidated sibling would be a forged certified snapshot.
+    if load_cell_data(1,Source::GroupInput).is_ok() { return 44; }
+    if load_cell_data(1,Source::GroupOutput).is_ok() { return 45; }
     let w=match witness_from_celldep(){Some(w)=>w,None=>return 1};
     let ct=match parse(&w){Some(c)=>c,None=>return 2};
     // bind the witness avk AND total stake to an authenticated AVK checkpoint cellDep
