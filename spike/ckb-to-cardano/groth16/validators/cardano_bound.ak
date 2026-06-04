@@ -58,7 +58,9 @@ fn inputs_bind_w(pi: List<Int>, wroot: ByteArray, seal: ByteArray, comm: ByteArr
 // pinned to the chiral_policy script hash. NEVER from the checkpoint (permissionless advance) or the redeemer.
 // The one-shot NFT makes the cell unforgeable; the script-hash pin ensures it is the cell governed by
 // chiral_policy.spend; the in-line range assert re-bounds K so even a stray/forged datum cannot push K out of
-// the sane [0,32] band. Fails-closed (exactly-one) if absent/duplicated — K must be authoritative.
+// the sane [k_min,32] band. Fails-closed (exactly-one) if absent/duplicated — K must be authoritative.
+// SEC D6 floor: k_min must equal the leap circuit's baked confirmation floor (leap_bound_windowed kmin=12).
+const k_min: Int = 12
 fn read_k(tx: Transaction, policy_nft: PolicyId, policy_name: ByteArray, policy_script: ByteArray) -> Int {
   expect [p_in] =
     list.filter(
@@ -73,7 +75,7 @@ fn read_k(tx: Transaction, policy_nft: PolicyId, policy_name: ByteArray, policy_
   expect InlineDatum(d) = p_in.output.datum
   expect ps: PolicyState = d
   let k = ps.policy.min_confirmations
-  expect k >= 0 && k <= 32
+  expect k >= k_min && k <= 32
   k
 }
 

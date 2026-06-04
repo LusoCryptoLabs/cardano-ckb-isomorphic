@@ -10,6 +10,11 @@ use cardano/assets.{PolicyId, quantity_of}
 use cardano/transaction.{Transaction, OutputReference, InlineDatum}
 use leap_guard.{GuardPolicy, PolicyState}
 
+// SEC D6 floor: k_min must equal the confirmation floor baked into the leap circuit's vk (leap_bound_windowed
+// kmin=12). Enforcing it on-chain makes the reorg floor visible and stops a governor from setting a K below it
+// (which the circuit would reject anyway, bricking leaps). Effective governance range: [k_min, 32].
+const k_min: Int = 12
+
 pub type PolicyRedeemer {
   // governor updates pause flags / caps (sanity-checked: min <= max unless max==0)
   Update
@@ -33,12 +38,12 @@ validator chiral_policy(nft_policy: PolicyId, nft_name: ByteArray) {
     // identity preserved (governor unchanged here; rotate via a dedicated path if ever needed) + sane caps
     let governor_same = new_state.governor == state.governor
     let p = new_state.policy
-    // SEC D6: K must leave a usable live window. W=64 is the FROZEN membership window; a leap is provable
-    // only for a header at depth in [K, W). Require K + MIN_LIVE_WINDOW <= W (MIN_LIVE_WINDOW=32 => K<=32)
-    // so a fat-fingered/compromised governor cannot set a self-bricking K while still passing "sane".
+    // SEC D6: K must meet the reorg floor AND leave a usable live window. W=64 is the FROZEN membership
+    // window; a leap is provable only for a header at depth in [K, W). Require K in [k_min, 32] so a
+    // fat-fingered/compromised governor can set neither a sub-floor K (reorg-unsafe) nor a self-bricking K.
     let sane_caps =
       p.min_amount >= 0 && p.max_amount >= 0 && ( p.max_amount == 0 || p.min_amount <= p.max_amount )
-        && p.min_confirmations >= 0 && p.min_confirmations <= 32
+        && p.min_confirmations >= k_min && p.min_confirmations <= 32
     signed && governor_same && sane_caps
   }
 
@@ -72,16 +77,21 @@ test governor_pinned() {
   a.governor == b.governor // an update keeps the governor
 }
 
-// SEC D6: K must be in [0, 32] (= W - MIN_LIVE_WINDOW, W=64) so a leap always has a live window.
+// SEC D6: K must be in [k_min, 32] (k_min = circuit reorg floor; 32 = W - MIN_LIVE_WINDOW, W=64) so a leap
+// is both reorg-safe and always has a live window.
 test k_in_range_ok() {
   let p = GuardPolicy { ..mk(0, 0), min_confirmations: 12 }
-  p.min_confirmations >= 0 && p.min_confirmations <= 32
+  p.min_confirmations >= k_min && p.min_confirmations <= 32
 }
 test k_too_large_rejected() {
   let p = GuardPolicy { ..mk(0, 0), min_confirmations: 33 }
-  !( p.min_confirmations >= 0 && p.min_confirmations <= 32 )
+  !( p.min_confirmations >= k_min && p.min_confirmations <= 32 )
+}
+test k_below_floor_rejected() {
+  let p = GuardPolicy { ..mk(0, 0), min_confirmations: 11 } // below the circuit reorg floor -> rejected
+  !( p.min_confirmations >= k_min && p.min_confirmations <= 32 )
 }
 test k_negative_rejected() {
   let p = GuardPolicy { ..mk(0, 0), min_confirmations: -1 }
-  !( p.min_confirmations >= 0 && p.min_confirmations <= 32 )
+  !( p.min_confirmations >= k_min && p.min_confirmations <= 32 )
 }

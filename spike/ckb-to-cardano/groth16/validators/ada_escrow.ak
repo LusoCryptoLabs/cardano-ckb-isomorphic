@@ -64,8 +64,10 @@ fn canonical_cp(tx: Transaction, nft: PolicyId) -> Checkpoint {
   c
 }
 
+// SEC D6 floor: k_min must equal the leap circuit's baked confirmation floor (leap_bound_windowed kmin=12).
+const k_min: Int = 12
 // SEC D6 (verbatim from cardano_bound): governance confirmation depth K from the NFT'd PolicyState pinned to
-// the chiral_policy script hash, re-bounded to [0,32]. The CKB burn must be K-deep — the same reorg defense.
+// the chiral_policy script hash, re-bounded to [k_min,32]. The CKB burn must be K-deep — the same reorg defense.
 fn read_k(tx: Transaction, policy_nft: PolicyId, policy_name: ByteArray, policy_script: ByteArray) -> Int {
   expect [p_in] =
     list.filter(
@@ -80,7 +82,7 @@ fn read_k(tx: Transaction, policy_nft: PolicyId, policy_name: ByteArray, policy_
   expect InlineDatum(d) = p_in.output.datum
   expect ps: PolicyState = d
   let k = ps.policy.min_confirmations
-  expect k >= 0 && k <= 32
+  expect k >= k_min && k <= 32
   k
 }
 
