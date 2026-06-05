@@ -246,7 +246,9 @@ fn ls_pin(out:&[u8])->Result<(),i8>{
 // is RQ-8). Mirrors burn_gated_unlock_v2::registry_inserts_key.
 fn seal_nullifier_inserts(src_txid:&[u8], src_idx:u32)->bool{
     let idxb=src_idx.to_le_bytes();
-    let key=b2b256(&[src_txid, &idxb[..]]);
+    // SEC (domain separation): 1-byte leg tag (0x03 = χCKB-leap seal nullifier); keyspace disjoint from the
+    // χADA-mint (0x01) and CKB-release (0x02) legs sharing this registry. Off-chain: reg_nullifier_witness.py.
+    let key=b2b256(&[&[0x03u8], src_txid, &idxb[..]]);
     let mut i=0usize;
     loop {
         match load_cell_type_hash(i, Source::Input) {

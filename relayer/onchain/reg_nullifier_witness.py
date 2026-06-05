@@ -3,7 +3,9 @@
 insert witness for the NEXT nullifier, against a registry SMT that may already hold keys (repeatable leaps).
 
 The nullifier key is derived exactly as bound_asset_v2::seal_nullifier_inserts:
-  key = blake2b-256( src_txid(32) ‖ src_idx(4 LE) ) = blake2b-256(src_seal36)   [PLAIN blake2b, NO personal]
+  key = blake2b-256( 0x03 ‖ src_txid(32) ‖ src_idx(4 LE) ) = blake2b-256(0x03 ‖ src_seal36)
+  [NO personalization; 0x03 = χCKB-leap leg domain tag, disjoint from the 0x01 χADA-mint and 0x02 CKB-release
+   legs that share this registry]
 
 The on-chain set is a 256-deep SPARSE MERKLE TREE (burn_nullifier_registry.rs):
   h2(l,r) = blake2b-256(l‖r, personal="ckb-smt-null-set");  leaf value PRESENT=0x01*32, absent=0x00*32.
@@ -72,7 +74,7 @@ def main():
     keys = []
     if state_file and os.path.exists(state_file):
         keys = [bytes.fromhex(k.removeprefix("0x")) for k in json.load(open(state_file)).get("keys", [])]
-    key = hashlib.blake2b(seal36, digest_size=32).digest()
+    key = hashlib.blake2b(b"\x03" + seal36, digest_size=32).digest()   # 0x03 leg tag == bound_asset_v2 b2b256(&[&[0x03],txid,idx])
     if key in keys:
         raise SystemExit(f"nullifier {key.hex()} already inserted — this seal outpoint was already leaped (replay)")
 

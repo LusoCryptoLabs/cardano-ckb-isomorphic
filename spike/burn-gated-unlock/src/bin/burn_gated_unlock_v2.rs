@@ -199,7 +199,9 @@ fn program_entry() -> i8 {
 
     // 5. SEC C1: nullify this burn in the global registry — its key (the Cardano burn tx hash) must be the
     //    one inserted, and the registry's own validator proves it was ABSENT before (replay-once).
-    let key = b2b256(&tx_body);
+    // SEC (domain separation): 1-byte leg tag (0x02 = CKB-release burn nullifier); keyspace disjoint from the
+    // χADA-mint (0x01) and χCKB-leap (0x03) legs sharing this registry. A future relayer builder must prefix 0x02.
+    let key = { let mut p = vec![0x02u8]; p.extend_from_slice(&tx_body); b2b256(&p) };
     if !registry_inserts_key(&registry_type_hash, &key) { return 15; }
     0
 }
