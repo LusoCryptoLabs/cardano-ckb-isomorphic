@@ -24,7 +24,12 @@ import cbor2, pycardano as pc, cardano_net, d6_deploy as d6
 PRE = os.path.join(ROOT, "deployed", "cardano", "preview")
 M = json.load(open(os.path.join(PRE, "groth16-deploy.json")))
 RED = json.load(open(os.path.join(HERE, "..", "circuit", "ceremony", "leap_bound_windowed_redeemer.json")))
-VK = RED["vk"]   # PLACEHOLDER return-vk (forward leg does not verify it; P5 swaps in the real burn-vk)
+LEAP_VK = RED["vk"]   # the forward leap vk
+VK = LEAP_VK     # PLACEHOLDER return-vk (forward leg does not verify it; P5 swaps in the real burn-vk)
+# SEC (audit #4): while VK is the leap PLACEHOLDER, the escrow's Release path verifies a vk whose proving key +
+# prover are ON DISK (circuit/ceremony/) — so a self-bound leap proof can drain the escrow with NO real χADA
+# burn. Until P5 deploys the real burn-vk, refuse to lock more than a trivial demo amount at this address.
+DEMO_MAX = 5_000_000  # lovelace (5 ADA) — the most that may be locked at a placeholder-vk escrow
 
 # χADA recipient on CKB = the relayer's CKB lock hash (where xada_mint mints χADA). 32 bytes.
 CKB_RECIPIENT = bytes.fromhex("7a971a3b730d3e5b69f73ac7add6dcd2396cab9523176132ed23e17500c820c7")
@@ -53,9 +58,21 @@ def main():
     print("ada_escrow addr bytes  :", addr_hex, "  <- bake as xada_mint escrow_addr")
     print("EscrowDatum            : ckb_recipient", CKB_RECIPIENT.hex(), "amount", AMOUNT, "nonce", NONCE)
 
+    placeholder = VK == LEAP_VK
+    if placeholder:
+        print(f"\n[audit #4] WARNING: return-vk is the PLACEHOLDER leap vk — this escrow is DRAINABLE "
+              f"(its proving key is on disk). Safe to fund at most {DEMO_MAX/1_000_000} ADA here until P5.")
+
     if "--live" not in sys.argv:
         print("\nDRY. Pass --live to lock", AMOUNT/1_000_000, "ADA at the escrow.")
         return
+
+    # SEC (audit #4): refuse to fund a drainable placeholder-vk escrow with non-trivial value.
+    if placeholder and AMOUNT > DEMO_MAX and os.environ.get("CHIRAL_ESCROW_FORCE") != "1":
+        sys.exit(f"REFUSING: escrow return-vk is the PLACEHOLDER leap vk (proving key on disk -> the Release "
+                 f"path is satisfiable with NO real burn, i.e. drainable). AMOUNT={AMOUNT} lovelace > "
+                 f"DEMO_MAX={DEMO_MAX}. Deploy the real burn-vk (P5) before funding, or set CHIRAL_ESCROW_FORCE=1 "
+                 f"to acknowledge this is a throwaway demo lock.")
 
     ctx = cardano_net.chain_context(); sk, vk, a = cardano_net.account()
     b = pc.TransactionBuilder(ctx); b.add_input_address(a)
