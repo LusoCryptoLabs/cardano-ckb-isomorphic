@@ -287,7 +287,11 @@ fn program_entry()->i8{
 
     if let Err(e)=xada_outputs_at(&owner, &recipient) { return e; }
 
-    let key=b2b256(&[&tx_body]);
+    // SEC (domain separation): prefix a 1-byte leg tag (0x01 = χADA-mint escrow nullifier) so this leg's
+    // keyspace is disjoint from the CKB-release (0x02) and χCKB-leap (0x03) legs sharing this registry —
+    // defense-in-depth so no future Cardano tx-body shape can collide across legs. Off-chain match:
+    // xada_reg_witness.py (blake2b(0x01 ‖ tx_body)). The cert leaf above stays UNtagged (= Cardano tx hash).
+    let key=b2b256(&[&[0x01u8], &tx_body]);
     if !registry_inserts_key(&reg_type, &key) { return 25; }
     0
 }

@@ -147,7 +147,7 @@ fn build(cfg: Cfg) -> (Context, ckb_testtool::ckb_types::core::TransactionView) 
 
     let tx_body = cfg.bad_body.clone().unwrap_or_else(|| build_txbody(&POLICY, NAME, cfg.witness_burn));
     let (lock_witness, cert_root) = make_proof(&tx_body, cfg.tamper);
-    let key = b2b256(&tx_body);
+    let key = { let mut p = vec![0x02u8]; p.extend_from_slice(&tx_body); b2b256(&p) }; // 0x02 = CKB-release leg tag
     let (empty_root, _sib, new_root, reg_witness) = empty_insert(&key);
     let old_root = cfg.registry_old_root.unwrap_or(empty_root);
 
@@ -300,7 +300,7 @@ fn replay_same_burn_rejected() {
     // post-insert root). The registry's non-membership proof against that root cannot verify, so the
     // second use of the same certified burn is rejected — one burn can release at most one cell.
     let tx_body = build_txbody(&POLICY, NAME, 100_000);
-    let key = b2b256(&tx_body);
+    let key = { let mut p = vec![0x02u8]; p.extend_from_slice(&tx_body); b2b256(&p) }; // 0x02 = CKB-release leg tag
     let (_empty, _sib, new_root, _w) = empty_insert(&key);
     let (ctx, tx) = build(Cfg { registry_old_root: Some(new_root), ..Cfg::ok() });
     assert!(ctx.verify_tx(&tx, MAX_CYCLES).is_err(), "replaying the same certified burn must be rejected");
@@ -341,7 +341,7 @@ fn build_roundtrip(rt: RT) -> (Context, ckb_testtool::ckb_types::core::Transacti
     // the certified Cardano χCKB burn (real asset name) of `burn_amount`.
     let tx_body = build_txbody(&rt.burn_policy, &rt.burn_name, rt.burn_amount);
     let (lock_witness, cert_root) = make_proof(&tx_body, false);
-    let key = b2b256(&tx_body);
+    let key = { let mut p = vec![0x02u8]; p.extend_from_slice(&tx_body); b2b256(&p) }; // 0x02 = CKB-release leg tag
     let (empty_root, _sib, new_root, reg_witness) = empty_insert(&key);
 
     // the release lock is bound to the χCKB asset identity (CKCKB_POLICY ‖ CKCKB_NAME) + the bound amount.

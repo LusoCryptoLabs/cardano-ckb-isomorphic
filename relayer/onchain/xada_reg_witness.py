@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """xada_reg_witness.py <material_hex> [state_file] [old_root_hex] — emit a burn_nullifier_registry insert
 witness for the χADA mint. Identical SMT to reg_nullifier_witness.py, but the nullifier key is derived as
-`xada_mint.rs` derives it:  key = blake2b-256( escrow_tx_body )   [PLAIN blake2b, NO personalization].
+`xada_mint.rs` derives it:  key = blake2b-256( 0x01 ‖ escrow_tx_body )  [NO personalization; 0x01 = χADA-mint
+leg domain tag, disjoint from the 0x02 CKB-release and 0x03 χCKB-leap legs sharing this registry].
 (reg_nullifier_witness.py keys on a fixed 36-byte seal; here the material is the whole certified Cardano
 escrow tx body, any length — so this is a thin variant without the 36-byte length check.)
 
@@ -59,7 +60,7 @@ def fold(value, key, sib):
 
 def main():
     material = bytes.fromhex(sys.argv[1].removeprefix("0x"))
-    key = hashlib.blake2b(material, digest_size=32).digest()   # == xada_mint b2b256(tx_body)
+    key = hashlib.blake2b(b"\x01" + material, digest_size=32).digest()   # 0x01 leg tag == xada_mint b2b256(&[&[0x01],&tx_body])
     state_file = sys.argv[2] if len(sys.argv) > 2 else None
     keys = []
     if state_file and os.path.exists(state_file):

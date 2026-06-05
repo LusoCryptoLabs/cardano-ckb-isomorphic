@@ -146,7 +146,7 @@ fn build(cfg: Cfg) -> (Context, ckb_testtool::ckb_types::core::TransactionView) 
 
     let body = build_escrow_body(&ESCROW_ADDR, cfg.coin, &recipient_hash, cfg.datum_amount, 1);
     let (mint_witness, cert_root) = make_proof(&body, cfg.tamper);
-    let key = cfg.registry_key_override.unwrap_or_else(|| b2b256(&body));
+    let key = cfg.registry_key_override.unwrap_or_else(|| { let mut p = vec![0x01u8]; p.extend_from_slice(&body); b2b256(&p) }); // 0x01 = χADA-mint leg tag
     let (old_root, new_root, reg_witness) = empty_insert(&key);
 
     // args = LCKP_type_hash(32) ‖ registry_type_hash(32) ‖ escrow_addr

@@ -289,7 +289,9 @@ fn program_entry()->i8{
     // certified escrow tx hash (blake2b256 of the body, the same hash already certified above) ‖ idx is folded
     // by the relayer into the inserted key. We require the registry to insert blake2b256(tx_body) — the unique
     // certified escrow tx — so the same escrow tx can authorize at most one mint across ALL transactions.
-    let key=b2b256(&[&tx_body]);
+    // SEC (domain separation): 1-byte leg tag (0x01 = χADA-mint escrow nullifier); keyspace disjoint from the
+    // CKB-release (0x02) and χCKB-leap (0x03) legs sharing this registry. Off-chain: xada_reg_witness.py.
+    let key=b2b256(&[&[0x01u8], &tx_body]);
     if !registry_inserts_key(&reg_type, &key) { return 25; }
     0
 }
