@@ -60,7 +60,10 @@ def fold(value, key, sib):
 
 def main():
     material = bytes.fromhex(sys.argv[1].removeprefix("0x"))
-    key = hashlib.blake2b(b"\x01" + material, digest_size=32).digest()   # 0x01 leg tag == xada_mint b2b256(&[&[0x01],&tx_body])
+    # #7 leg domain tag. DEFAULT empty = UNtagged, matching the CURRENTLY-DEPLOYED pre-#7 owner lock
+    # (0xd409ffcf) / xada_mint (0x92e94035). The #7 redeploy ships the tagged contract -> set CHIRAL_NULL_TAG=01.
+    _tag = bytes.fromhex(os.environ.get("CHIRAL_NULL_TAG", ""))
+    key = hashlib.blake2b(_tag + material, digest_size=32).digest()   # == xada_mint b2b256(&[&[tag],&tx_body])
     state_file = sys.argv[2] if len(sys.argv) > 2 else None
     keys = []
     if state_file and os.path.exists(state_file):

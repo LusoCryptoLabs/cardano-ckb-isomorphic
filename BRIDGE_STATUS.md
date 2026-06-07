@@ -29,6 +29,28 @@ real Mithril-certified preview ADA lock — so the bridge now moves value BOTH a
 
 ---
 
+### Status deltas (2026-06-11 security-hardening session) — read alongside §1/§2
+
+**Proper-xUDT χADA redo (supersedes the bespoke `xada_mint`).** χADA is now a canonical **xUDT** owner-gated
+by the bridge. Owner lock `xada_mint_owner` DEPLOYED — code `0xc4e9077f`, codeHash `0xd409ffcf`, owner hash
+`0x72f4edb5`; **χADA token id (xUDT type hash) `0xe3a8d7be94191ed6ba7ac647673b5c8b2fd328cfcd970286a2458d8ecf64d73c`**.
+Owner authority cell `0x74d5944a:0`. Active escrow **`c0be40c4`** (3 ADA, nonce 2) at `addr_test1wpaxh6v…`.
+**The live proper-xUDT mint has NOT fired** — gated on Mithril certifying `c0be40c4`. The original 5M bespoke
+χADA (`0x07e81ab7`) was frozen when its old code cell was reclaimed to fund this (intentionally superseded).
+
+**Security audit + fixes (see `SECURITY_FIXES.md`).** 5 code fixes shipped to `main` — singleton forge-cert
+guard (`f7a725e`), K_MIN reorg floor (`76a2ba0`), per-leg nullifier domain tags (`a442604`), placeholder-vk
+escrow guard (`1fdd52e`), compat shim (`CHIRAL_NULL_TAG`). **The SOURCE is now ahead of the DEPLOYED contracts:**
+the live `cv_*` (pre-STM-pin AND pre-singleton-guard), `bound_asset_v2`, `xada_mint_owner`, `burn_gated_unlock_v2`
+all need redeploy to carry the fixes. Off-chain nullifier builders DEFAULT to untagged to match the live
+(pre-#7) contracts; the redeploy sets `CHIRAL_NULL_TAG` per leg (01/02/03).
+
+**Redeploy is funding-blocked.** Relayer plain-spendable ≈ **4,195 CKB**; each cert-verify code cell needs
+~100k+ CKB (1 CKB/byte). The ~600k total is locked in the existing code cells, so the only realistic funding
+path is reclaiming the old code cells (~500k recoverable) — a deliberate teardown that resets the live demo.
+
+---
+
 ## 1. Component matrix
 
 ### Mithril leg (CKB-verifies-Cardano) — LIVE on Pudge + preview

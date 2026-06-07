@@ -74,7 +74,10 @@ def main():
     keys = []
     if state_file and os.path.exists(state_file):
         keys = [bytes.fromhex(k.removeprefix("0x")) for k in json.load(open(state_file)).get("keys", [])]
-    key = hashlib.blake2b(b"\x03" + seal36, digest_size=32).digest()   # 0x03 leg tag == bound_asset_v2 b2b256(&[&[0x03],txid,idx])
+    # #7 leg domain tag. DEFAULT empty = UNtagged, matching the CURRENTLY-DEPLOYED pre-#7 bound_asset_v2
+    # (0x4cc7ae86). The #7 redeploy ships the tagged contract -> set CHIRAL_NULL_TAG=03.
+    _tag = bytes.fromhex(os.environ.get("CHIRAL_NULL_TAG", ""))
+    key = hashlib.blake2b(_tag + seal36, digest_size=32).digest()   # == bound_asset_v2 b2b256(&[&[tag],txid,idx])
     if key in keys:
         raise SystemExit(f"nullifier {key.hex()} already inserted — this seal outpoint was already leaped (replay)")
 
