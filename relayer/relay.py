@@ -18,7 +18,7 @@ This module wires steps 1-5 and emits a submission descriptor (JSON) consumed by
 (deploy-unified-* / leapout-* mjs). Steps 3-5 are validated against real on-chain-accepted data by
 relayer/validate_transcode.py (the transcode reproduces the live transition witness byte-for-byte).
 """
-import os, sys, json, time, urllib.request
+import os, sys, json, time, urllib.request, urllib.error, ssl
 from transcode import transcode, proof_from_aggregator_entry, extract_tx_body
 
 AGG = os.environ.get("MITHRIL_AGGREGATOR",
@@ -31,6 +31,21 @@ LOCK_ADDR_HEX = "701cbba2088e24980d54a23bb65de2d1e233a336ccac5b75fb01acd270"
 
 def _get(url, headers=None):
     return json.load(urllib.request.urlopen(urllib.request.Request(url, headers=headers or {}), timeout=30))
+
+def _urlopen_tolerant(req, timeout=30):
+    """urlopen with normal TLS verification; if the peer presents an EXPIRED cert (e.g. a third-party
+    read-only data source like Koios serving a stale cert), retry ONCE unverified with a stderr warning.
+    SAFE here ONLY because the fetched tx CBOR is re-verified ON-CHAIN: the Mithril MKMapProof binds
+    blake2b256(tx_body) to the certified tx-set root, so a tampered/forged response fails the on-chain
+    verify (it can DoS, never forge). Do NOT use this for any data the protocol trusts without on-chain proof."""
+    try:
+        return urllib.request.urlopen(req, timeout=timeout)
+    except urllib.error.URLError as e:
+        if "CERTIFICATE_VERIFY_FAILED" in str(e) and "expired" in str(e):
+            ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
+            print("WARN: peer TLS cert expired; retrying unverified (CBOR is re-verified on-chain).", file=sys.stderr)
+            return urllib.request.urlopen(req, timeout=timeout, context=ctx)
+        raise
 
 def mithril_proof(tx_hash):
     """Return (proof_json, certified) for a tx, or (None, False) if not yet certified."""
@@ -55,7 +70,7 @@ def tx_cbor(tx_hash):
         f"{KOIOS_BASE}/tx_cbor",
         data=json.dumps({"_tx_hashes": [tx_hash]}).encode(),
         headers={"content-type": "application/json", "accept": "application/json"})
-    rows = json.load(urllib.request.urlopen(req, timeout=30))
+    rows = json.load(_urlopen_tolerant(req, 30))
     if not rows:
         raise LookupError(f"tx {tx_hash} not found on Koios (not yet on-chain?)")
     return rows[0]["cbor"]

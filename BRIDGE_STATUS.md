@@ -34,9 +34,13 @@ real Mithril-certified preview ADA lock — so the bridge now moves value BOTH a
 **Proper-xUDT χADA redo (supersedes the bespoke `xada_mint`).** χADA is now a canonical **xUDT** owner-gated
 by the bridge. Owner lock `xada_mint_owner` DEPLOYED — code `0xc4e9077f`, codeHash `0xd409ffcf`, owner hash
 `0x72f4edb5`; **χADA token id (xUDT type hash) `0xe3a8d7be94191ed6ba7ac647673b5c8b2fd328cfcd970286a2458d8ecf64d73c`**.
-Owner authority cell `0x74d5944a:0`. Active escrow **`c0be40c4`** (3 ADA, nonce 2) at `addr_test1wpaxh6v…`.
-**The live proper-xUDT mint has NOT fired** — gated on Mithril certifying `c0be40c4`. The original 5M bespoke
-χADA (`0x07e81ab7`) was frozen when its old code cell was reclaimed to fund this (intentionally superseded).
+Active escrow **`c0be40c4`** (3 ADA, nonce 2) at `addr_test1wpaxh6v…` (block 4,371,689; Mithril-certified).
+**✅ The live proper-xUDT mint FIRED** — mint tx **`0x98f9383d2bbc70ef164c54280de587fbd1ef81e0d1222acc78326f2b2252ef26`**,
+**3,000,000 χADA** to relayer lock `7a971a3b…` (cell `0x98f9383d…:0`); both the canonical xUDT type script and
+the bridge owner lock validated `Run result: 0` in ckb-debugger before submit. χADA is now a real
+wallet/DEX-recognized xUDT. (The original 5M bespoke χADA `0x07e81ab7` was frozen when its old code cell was
+reclaimed; intentionally superseded.) Note: required tolerating Koios's expired TLS cert on the read-only
+tx-CBOR fetch — safe, re-verified on-chain (`relay.py::_urlopen_tolerant`).
 
 **Security audit + fixes (see `SECURITY_FIXES.md`).** 5 code fixes shipped to `main` — singleton forge-cert
 guard (`f7a725e`), K_MIN reorg floor (`76a2ba0`), per-leg nullifier domain tags (`a442604`), placeholder-vk
