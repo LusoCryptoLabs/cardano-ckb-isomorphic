@@ -38,9 +38,13 @@ Active escrow **`c0be40c4`** (3 ADA, nonce 2) at `addr_test1wpaxh6v…` (block 4
 **✅ The live proper-xUDT mint FIRED** — mint tx **`0x98f9383d2bbc70ef164c54280de587fbd1ef81e0d1222acc78326f2b2252ef26`**,
 **3,000,000 χADA** to relayer lock `7a971a3b…` (cell `0x98f9383d…:0`); both the canonical xUDT type script and
 the bridge owner lock validated `Run result: 0` in ckb-debugger before submit. χADA is now a real
-wallet/DEX-recognized xUDT. (The original 5M bespoke χADA `0x07e81ab7` was frozen when its old code cell was
-reclaimed; intentionally superseded.) Note: required tolerating Koios's expired TLS cert on the read-only
-tx-CBOR fetch — safe, re-verified on-chain (`relay.py::_urlopen_tolerant`).
+wallet/DEX-recognized xUDT. **Token metadata published** (xUDT carries only the amount; identity lives in a
+Unique-type info cell the explorer indexes) — tx `0x5f78ab97dd667e7dc9973da1cda27eb519fb29c67894c43fb34fb40ffd6968e9`:
+name **Chiral ADA**, symbol **xADA**, decimals **6** (mirrors ADA), info cell `…:0`, bound to the token via a
+χADA output in the same tx; live χADA cell is now `0x5f78ab97…:1` (`xada_token_info.mjs`). (The original 5M
+bespoke χADA `0x07e81ab7` was frozen when its old code cell was reclaimed; intentionally superseded.) Note: the
+mint required tolerating Koios's expired TLS cert on the read-only tx-CBOR fetch — safe, re-verified on-chain
+(`relay.py::_urlopen_tolerant`).
 
 **Security audit + fixes (see `SECURITY_FIXES.md`).** 5 code fixes shipped to `main` — singleton forge-cert
 guard (`f7a725e`), K_MIN reorg floor (`76a2ba0`), per-leg nullifier domain tags (`a442604`), placeholder-vk
