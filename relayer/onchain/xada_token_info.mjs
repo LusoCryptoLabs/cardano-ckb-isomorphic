@@ -31,17 +31,21 @@ async function main() {
   const xudtType = ccc.Script.from({ codeHash: O.xudt.codeHash, hashType: O.xudt.hashType, args: O.ownerLockHash });
   const xudtDep = { outPoint: { txHash: O.xudt.dep.txHash, index: O.xudt.dep.index }, depType: "code" };
 
-  const xadaOp = { txHash: MINT.mint_tx, index: 0 };
+  // current live χADA cell: a prior token-info tx may have moved it (xada-token-info.json), else the mint output.
+  let TI = null; try { TI = JSON.parse(fs.readFileSync(path.resolve(HERE, "../../deployed/cardano/preview/xada-token-info.json"), "utf8")); } catch {}
+  const xadaOp = TI && TI.xada_cell
+    ? { txHash: TI.xada_cell.split(":")[0], index: Number(TI.xada_cell.split(":")[1]) }
+    : { txHash: MINT.mint_tx, index: 0 };
   const xadaCell = await client.getCellLive(xadaOp, true);
-  if (!xadaCell) throw new Error("minted χADA cell not live (already spent?)");
+  if (!xadaCell) throw new Error(`χADA cell ${xadaOp.txHash}:${xadaOp.index} not live`);
   const xadaCap = BigInt(xadaCell.cellOutput.capacity);
   const xadaData = xadaCell.outputData;
 
-  // Unique args = ckbhash( firstInput.toBytes() ‖ u64le(uniqueOutputIndex=0) )[..20]. We put the Unique cell
-  // at output index 0 so the index is unambiguous (0) regardless of global-vs-same-type convention.
+  // CCC IssueXUdt structure (packages/demo .../IssueXUdtTypeId): xUDT cell BEFORE the Unique info cell, both in
+  // ONE tx. Unique args = ckbhash(firstInput ‖ u64le(uniqueOutputIndex))[:20]; the Unique cell is output 1 here.
   const inp0 = ccc.CellInput.from({ previousOutput: xadaOp, since: 0n });
   const ib = ccc.bytesFrom(inp0.toBytes());
-  const pre = new Uint8Array(ib.length + 8); pre.set(ib, 0);   // +8 zero bytes = u64le(0)
+  const pre = new Uint8Array(ib.length + 8); pre.set(ib, 0); pre[ib.length] = 1;   // u64le(1)
   const uniqueArgs = ccc.hashCkb(pre).slice(0, 42);            // 0x + 40 hex = 20 bytes
   const uniqueType = ccc.Script.from({ codeHash: UNIQUE_CODE, hashType: "type", args: uniqueArgs });
   const infoData = tokenInfoData(DECIMALS, NAME, SYMBOL);
@@ -50,7 +54,7 @@ async function main() {
     console.log("token id :", xudtType.hash());
     console.log("uniqueArgs:", uniqueArgs);
     console.log("infoData  :", infoData, "(decimals", DECIMALS, "name", JSON.stringify(NAME), "symbol", JSON.stringify(SYMBOL) + ")");
-    console.log("χADA cell :", xadaOp.txHash + ":0  cap", (Number(xadaCap) / 1e8) + " CKB  amount", xadaData);
+    console.log("χADA in   :", xadaOp.txHash + ":" + xadaOp.index, "cap", (Number(xadaCap) / 1e8) + " CKB amount", xadaData);
     return;
   }
 
@@ -58,18 +62,18 @@ async function main() {
   const tx = ccc.Transaction.from({
     inputs: [{ previousOutput: xadaOp, since: 0n }, { previousOutput: fund.outPoint, since: 0n }],
     outputs: [
-      { lock, type: uniqueType, capacity: UNIQUE_CAP },           // 0: token-info (Unique) cell
-      { lock, type: xudtType, capacity: xadaCap },                // 1: χADA re-output -> explorer association
+      { lock, type: xudtType, capacity: xadaCap },               // 0: χADA xUDT (re-output) — BEFORE the info cell, per CCC
+      { lock, type: uniqueType, capacity: UNIQUE_CAP },          // 1: token-info (Unique) cell
       { lock, capacity: BigInt(fund.cellOutput.capacity) - FEE - UNIQUE_CAP }, // 2: change
     ],
-    outputsData: [infoData, xadaData, "0x"],
+    outputsData: [xadaData, infoData, "0x"],
     cellDeps: [xudtDep, UNIQUE_DEP],
   });
   const h = await client.sendTransaction(await signer.signTransaction(tx));
-  console.log("token-info tx:", h, "| unique cell:", h + ":0 | χADA:", h + ":1");
+  console.log("token-info tx:", h, "| χADA:", h + ":0 | unique cell:", h + ":1");
   await wait(client, h);
   fs.writeFileSync(path.resolve(HERE, "../../deployed/cardano/preview/xada-token-info.json"),
-    JSON.stringify({ tx: h, token_id: xudtType.hash(), name: NAME, symbol: SYMBOL, decimals: DECIMALS, unique_cell: h + ":0", xada_cell: h + ":1" }, null, 2));
+    JSON.stringify({ tx: h, token_id: xudtType.hash(), name: NAME, symbol: SYMBOL, decimals: DECIMALS, xada_cell: h + ":0", unique_cell: h + ":1" }, null, 2));
   console.log("DONE — name:", NAME, "symbol:", SYMBOL, "decimals:", DECIMALS, "| token id:", xudtType.hash());
 }
 main().catch((e) => { console.error("ERR:", e.message || e); process.exit(1); });
