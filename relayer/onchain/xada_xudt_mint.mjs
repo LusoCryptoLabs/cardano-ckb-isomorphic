@@ -28,6 +28,19 @@ const ownerDep = { outPoint: { txHash: O.ownerCode.txHash, index: 0 }, depType: 
 const xudtType = ccc.Script.from({ codeHash: O.xudt.codeHash, hashType: O.xudt.hashType, args: O.ownerLockHash });
 const xudtDep = { outPoint: { txHash: O.xudt.dep.txHash, index: O.xudt.dep.index }, depType: "code" };
 
+// Token identity (Unique cell), per @rgbpp-sdk/ckb + CCC IssueXUdt: emit the Unique info cell IN the mint tx so
+// the token is ISSUED WITH its name/symbol/decimals (the explorer/wallets read it; a separate later tx is NOT
+// recognized). data = encodeRgbppTokenInfo = decimal(1)‖nameLen(1)‖name‖symLen(1)‖symbol; args =
+// generateUniqueTypeArgs(firstInput, outIdx) = ckbhash(serializeInput(in0) ‖ u64le(outIdx))[:20].
+const UNIQUE_CODE = "0x8e341bcfec6393dcd41e635733ff2dca00a6af546949f70c57a706c0f344df8b";  // CCC KnownScript.UniqueType (Pudge)
+const UNIQUE_DEP = { outPoint: { txHash: "0xff91b063c78ed06f10a1ed436122bd7d671f9a72ef5f5fa28d05252c17cf4cef", index: 0 }, depType: "code" };
+const UNIQUE_CAP = 150_00000000n;
+const TOKEN = { name: "Chiral ADA", symbol: "xADA", decimals: 6 };
+const tokenInfoBytes = (dec, name, sym) => { const n = new TextEncoder().encode(name), s = new TextEncoder().encode(sym);
+  return "0x" + Buffer.concat([Buffer.from([dec]), Buffer.from([n.length]), Buffer.from(n), Buffer.from([s.length]), Buffer.from(s)]).toString("hex"); };
+const uniqueArgs = (firstInputOp, outIdx) => { const ib = ccc.bytesFrom(ccc.CellInput.from({ previousOutput: firstInputOp, since: 0n }).toBytes());
+  const pre = new Uint8Array(ib.length + 8); pre.set(ib, 0); pre[ib.length] = outIdx & 0xff; return ccc.hashCkb(pre).slice(0, 42); };
+
 async function main() {
   const { client, signer } = signerOf();
   const lock = await myLock(signer);
@@ -81,7 +94,8 @@ async function main() {
   const xadaData = "0x" + amtBuf.toString("hex");
   const regCap = BigInt(regCell.cellOutput.capacity);
   const recipientLock = lock; // recipient == our lock
-  const fund = await pickPlain(client, lock, FEE + XADA_CAP + 100_00000000n);
+  const fund = await pickPlain(client, lock, FEE + XADA_CAP + UNIQUE_CAP + 100_00000000n);
+  const uniqueType = ccc.Script.from({ codeHash: UNIQUE_CODE, hashType: "type", args: uniqueArgs(ownerOp, 1) }); // firstInput=ownerOp, outIdx=1
 
   // inputs: [owner authority cell (owner lock -> witness[0].lock = MKMap proof), funding (secp), registry]
   const tx = ccc.Transaction.from({
@@ -92,12 +106,13 @@ async function main() {
     ],
     outputs: [
       { lock: recipientLock, type: xudtType, capacity: XADA_CAP },   // 0: χADA xUDT to the recipient (owner mode)
-      { lock: ownerLock, capacity: BigInt(ownerCell.cellOutput.capacity) },  // 1: recreate the owner authority cell
-      { lock, type: regScript, capacity: regCap },                  // 2: continuing registry
-      { lock, capacity: BigInt(fund.cellOutput.capacity) - FEE - XADA_CAP },  // 3: change
+      { lock, type: uniqueType, capacity: UNIQUE_CAP },             // 1: token-info (Unique) cell — issued WITH the xUDT
+      { lock: ownerLock, capacity: BigInt(ownerCell.cellOutput.capacity) },  // 2: recreate the owner authority cell
+      { lock, type: regScript, capacity: regCap },                  // 3: continuing registry
+      { lock, capacity: BigInt(fund.cellOutput.capacity) - FEE - XADA_CAP - UNIQUE_CAP },  // 4: change
     ],
-    outputsData: [xadaData, "0x", reg.new_root, "0x"],
-    cellDeps: [ownerDep, xudtDep, ckptDep, regCodeDep],
+    outputsData: [xadaData, tokenInfoBytes(TOKEN.decimals, TOKEN.name, TOKEN.symbol), "0x", reg.new_root, "0x"],
+    cellDeps: [ownerDep, xudtDep, ckptDep, regCodeDep, UNIQUE_DEP],
   });
   tx.setWitnessArgsAt(0, ccc.WitnessArgs.from({ lock: wit.witness }));        // MKMap proof on the owner lock's GroupInput[0]
   tx.setWitnessArgsAt(2, ccc.WitnessArgs.from({ inputType: reg.witness }));   // registry SMT insert
@@ -118,11 +133,12 @@ async function main() {
   const rs = JSON.parse(fs.readFileSync(REG_STATE, "utf8"));
   if (!rs.keys.includes(reg.key)) rs.keys.push(reg.key);
   rs.root = reg.new_root; fs.writeFileSync(REG_STATE, JSON.stringify(rs, null, 2));
-  if (ba.registry) { ba.registry = { txHash: h, index: 2, root: reg.new_root }; fs.writeFileSync(BA_STATE, JSON.stringify(ba, null, 2)); }
-  fs.writeFileSync(OWNER_STATE, JSON.stringify({ txHash: h, index: 1 }, null, 2));  // owner cell recreated at output 1
+  if (ba.registry) { ba.registry = { txHash: h, index: 3, root: reg.new_root }; fs.writeFileSync(BA_STATE, JSON.stringify(ba, null, 2)); }
+  fs.writeFileSync(OWNER_STATE, JSON.stringify({ txHash: h, index: 2 }, null, 2));  // owner cell recreated at output 2 (Unique info now at 1)
   fs.writeFileSync(path.resolve(HERE, "../../deployed/cardano/preview/xada-xudt-mint.json"),
-    JSON.stringify({ mint_tx: h, xada_token_id: xudtType.hash(), amount: amount.toString(), recipient, escrow_tx: escrowTx }, null, 2));
-  console.log("  REAL xUDT χADA minted. token id:", xudtType.hash(), "| cell:", h + ":0");
+    JSON.stringify({ mint_tx: h, xada_token_id: xudtType.hash(), amount: amount.toString(), recipient, escrow_tx: escrowTx,
+      token: TOKEN, xada_cell: h + ":0", unique_cell: h + ":1" }, null, 2));
+  console.log("  REAL xUDT χADA minted WITH identity. token id:", xudtType.hash(), "| χADA:", h + ":0 | info:", h + ":1");
   process.exit(0);
 }
 main().catch((e) => { console.error("ERR:", e.message || e); process.exit(1); });
