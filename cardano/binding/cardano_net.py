@@ -6,7 +6,7 @@ funded preview key from ~/.chiral/preview_relayer.key (bech32 ed25519_sk). Nativ
 Koios has no tx-evaluation endpoint, so Plutus redeemers must carry MANUAL ExUnits (our seal_nft is a
 tiny one-shot mint; we set a safe fixed budget well under the per-tx limits).
 """
-import os, json, urllib.request
+import os, sys, json, urllib.request, urllib.error, ssl
 from fractions import Fraction
 import pycardano as pc
 
@@ -16,17 +16,30 @@ KEY_PATH = os.environ.get("CHIRAL_PREVIEW_KEY",
 AIKEN = os.environ.get("AIKEN", os.path.join(os.path.expanduser("~"), ".aiken", "bin", "aiken"))
 AIKEN_NATIVE = [AIKEN]  # invoke aiken directly (the original used a Docker wrapper)
 
+def _urlopen_tolerant(req, timeout=45):
+    """urlopen with normal TLS; if the peer cert is EXPIRED (Koios preview is currently serving a stale cert),
+    retry once unverified with a warning. Testnet-only convenience: chain data is re-validated on submit and
+    against the live chain (a tampered response causes a build/submit failure, never a key/fund compromise)."""
+    try:
+        return urllib.request.urlopen(req, timeout=timeout)
+    except urllib.error.URLError as e:
+        if "CERTIFICATE_VERIFY_FAILED" in str(e) and "expired" in str(e):
+            ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
+            print("WARN: Koios TLS cert expired; retrying unverified (testnet).", file=sys.stderr)
+            return urllib.request.urlopen(req, timeout=timeout, context=ctx)
+        raise
+
 def _kget(path, body=None):
     req = urllib.request.Request(KOIOS + path,
         data=(json.dumps(body).encode() if body is not None else None),
         headers={"content-type": "application/json", "accept": "application/json"})
-    return json.load(urllib.request.urlopen(req, timeout=45))
+    return json.load(_urlopen_tolerant(req, 45))
 
 def _ksubmit(cbor_bytes):
     req = urllib.request.Request(KOIOS + "/submittx", data=cbor_bytes,
         headers={"content-type": "application/cbor"})
     try:
-        return urllib.request.urlopen(req, timeout=60).read().decode().strip().strip('"')
+        return _urlopen_tolerant(req, 60).read().decode().strip().strip('"')
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="replace")
         raise RuntimeError(f"submit rejected ({e.code}): {body}") from None

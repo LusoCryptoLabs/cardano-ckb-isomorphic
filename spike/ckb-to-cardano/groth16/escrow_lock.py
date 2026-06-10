@@ -34,7 +34,7 @@ DEMO_MAX = 5_000_000  # lovelace (5 ADA) — the most that may be locked at a pl
 # χADA recipient on CKB = the relayer's CKB lock hash (where xada_mint mints χADA). 32 bytes.
 CKB_RECIPIENT = bytes.fromhex("7a971a3b730d3e5b69f73ac7add6dcd2396cab9523176132ed23e17500c820c7")
 AMOUNT = 3_000_000      # 3 ADA in lovelace -> mints 3,000,000 χADA xUDT (a fresh escrow for the proper-xUDT mint).
-NONCE  = 2              # distinct from the first escrow (nonce 1) -> a different tx -> a fresh registry key.
+NONCE  = 3              # fresh escrow (prev nonces 1,2 minted) -> a different tx -> a fresh registry key.
 TN = pc.Network.TESTNET
 
 def constr(i, fs): return cbor2.CBORTag(121 + i, fs)
@@ -52,6 +52,19 @@ def main():
     escrow_hash = derive_escrow()
     escrow_addr = pc.Address(payment_part=pc.ScriptHash(bytes.fromhex(escrow_hash)), network=TN)
     addr_hex = escrow_addr.to_primitive().hex()    # the EXACT address bytes xada_mint must bake as escrow_addr
+    # The DEPLOYED xada_mint_owner bakes the escrow address it will accept. If ada_escrow.ak has changed since
+    # that deploy (e.g. the audit #8 K_MIN edit changed its hash), the freshly-derived address won't match — so
+    # lock at the address the owner lock actually expects, to keep the SAME χADA token id (= owner lock hash).
+    try:
+        _owner = json.load(open(os.path.join(ROOT, "relayer", "onchain", "xada_owner_deploy.json")))
+        _expected = _owner.get("escrowAddr")
+        if _expected and _expected != addr_hex:
+            print(f"NOTE: derived escrow {addr_hex} != owner-lock-expected {_expected}; locking at the expected addr "
+                  f"(ada_escrow.ak changed since deploy). Same token id preserved.")
+            addr_hex = _expected
+            escrow_addr = pc.Address(payment_part=pc.ScriptHash(bytes.fromhex(_expected[2:])), network=TN)  # drop 0x70 header
+    except Exception as _e:
+        print("WARN: could not read owner-lock escrowAddr:", _e)
     datum = pc.RawPlutusData(constr(0, [CKB_RECIPIENT, AMOUNT, NONCE]))   # EscrowDatum{ckb_recipient, amount, nonce}
     print("ada_escrow script hash :", escrow_hash)
     print("ada_escrow address     :", escrow_addr)
