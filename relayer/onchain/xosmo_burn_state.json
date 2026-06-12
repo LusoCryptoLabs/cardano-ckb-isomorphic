@@ -1,0 +1,23 @@
+{
+  "receiptDep": {
+    "codeHash": "0xf7b4acd4c55d6bc8df77853fcb7839e01285b3cf84e53663b89a9d8d63749a4f",
+    "dataDep": {
+      "outPoint": {
+        "txHash": "0x0b08f7738350caec2c82dffeb4c8c9fddf894cc89df20d6a94e691b0d48498bf",
+        "index": 0
+      },
+      "depType": "code"
+    }
+  },
+  "burnTx": "0x4ca0e3c04deb60a6881fd24bb9b6dd6ff26edd9e31462af1c6dad19507975372",
+  "receipt": {
+    "txHash": "0x4ca0e3c04deb60a6881fd24bb9b6dd6ff26edd9e31462af1c6dad19507975372",
+    "index": 0,
+    "amount": "400000",
+    "recipient20": "476facba3f2b084528ce10a63e8d38da30ebc24c",
+    "recipientAddr": "osmo1gah6ew3l9vyy22xwzznrarfcmgcwhsjv39xelf",
+    "policy": "0x8059cdb01f9d0227e87af0ae09c9a58ea709be5c987fe515f7e2b75b57b1a26e"
+  },
+  "changeXosmo": "0x4ca0e3c04deb60a6881fd24bb9b6dd6ff26edd9e31462af1c6dad19507975372:1",
+  "keep": "600000"
+}

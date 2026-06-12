@@ -100,6 +100,15 @@ wsl: wasm-opt ckb_verifier.wasm --enable-bulk-memory --enable-sign-ext --llvm-me
 node deploy_osmo.mjs               # store + instantiate + live VerifyCkbProof -> {"valid": true}
 ```
 
+- **χOSMO return leg (Cosmos <- CKB), LIVE + proof verified on-chain** (`RETURN_LEG.md`): a real χOSMO burn on
+  CKB Pudge (`live_xosmo_burn.mjs`, receipt tx `0x4ca0e3c0…`, self-enforcing `Σin−Σout==amount`) is proven by
+  `leap_burn_windowed` (the 20-byte-osmo-recipient mirror of `leap_bound_windowed`: PoW + window membership +
+  CBMT + K-floor + value binding, `arkworks verify = true`, 5-case audit OK), and the LIVE osmo-test-5 contract
+  verified that burn proof: `VerifyCkbProof -> {"valid": true}`, with the proof's 5 public inputs equal to
+  `derive_burn_inputs(event)` byte-for-byte (so it is bound to THIS named burn). The only step not executed live
+  is the final `BankMsg::Send` uosmo payout in `ReleaseOnCkbBurn`, host-fn-gated on osmo-test-5 exactly like the
+  χCKB mint (cleared on Neutron). See `RETURN_LEG.md` for every live hash and the reproduce steps.
+
 ## Where this sits, and what is left
 
 - **Gas / size optimization: done.** The contract now does the scalar muls for `vk_x` in wasm and the final

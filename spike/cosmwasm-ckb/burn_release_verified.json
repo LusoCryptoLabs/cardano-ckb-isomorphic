@@ -1,0 +1,8 @@
+{
+  "contract": "osmo1h9wvlfh7jfqpd5rtylqf0apnxt0d6at3nyxseh7ls9vsj6ht475sqkzt22",
+  "burn_tx": "4ca0e3c04deb60a6881fd24bb9b6dd6ff26edd9e31462af1c6dad19507975372",
+  "amount": "400000",
+  "recipient": "476facba3f2b084528ce10a63e8d38da30ebc24c",
+  "recipientAddr": "osmo1gah6ew3l9vyy22xwzznrarfcmgcwhsjv39xelf",
+  "query_valid": true
+}

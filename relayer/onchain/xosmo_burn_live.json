@@ -1,0 +1,16 @@
+{
+  "burnTx": "0x4ca0e3c04deb60a6881fd24bb9b6dd6ff26edd9e31462af1c6dad19507975372",
+  "receiptCell": "0x4ca0e3c04deb60a6881fd24bb9b6dd6ff26edd9e31462af1c6dad19507975372:0",
+  "receiptCode": "0xf7b4acd4c55d6bc8df77853fcb7839e01285b3cf84e53663b89a9d8d63749a4f",
+  "policy": "0x8059cdb01f9d0227e87af0ae09c9a58ea709be5c987fe515f7e2b75b57b1a26e",
+  "amount": "400000",
+  "recipient20": "476facba3f2b084528ce10a63e8d38da30ebc24c",
+  "recipientAddr": "osmo1gah6ew3l9vyy22xwzznrarfcmgcwhsjv39xelf",
+  "changeXosmoCell": "0x4ca0e3c04deb60a6881fd24bb9b6dd6ff26edd9e31462af1c6dad19507975372:1",
+  "keptAmount": "600000",
+  "token": {
+    "name": "Chiral OSMO",
+    "symbol": "xOSMO",
+    "decimals": 6
+  }
+}
