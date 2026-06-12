@@ -68,6 +68,24 @@ landed in a finalized block, for ~344M cycles.
   transition gives `Run result: 0`; a wrong new anchor gives `Run result: 21`. This is sequential advancement,
   the analog of the AVK epoch advance; the bridge cell holds the anchor and a tx advances it.
 
+- **The asset layer: χATOM mint** (`catom_mint.rs`, `build_catom_mock.mjs`): the Cosmos-leg mirror of
+  `xada_mint`. χATOM is wrapped ATOM on CKB (an xUDT-style token whose policy is this type script), and a mint
+  is gated NOT on an admin key but on a finalized Cosmos escrow. The escrow is a bank `MsgSend` that locks ATOM
+  into a fixed account, carrying the 32-byte CKB recipient lock-hash (hex) in the tx memo. The script composes
+  the inclusion verifier above with a protobuf `MsgSend` reader (`TxRaw -> TxBody -> MsgSend + memo`, real Cosmos
+  proto field numbers) and enforces: `to_address` == the pinned escrow, `denom` == the pinned denom,
+  `Coin.amount` == χATOM minted (1:1 conservation), `memo` == hex(the lock-hash all minted χATOM is locked to);
+  then it nullifies the certified Cosmos tx hash replay-once (leg tag `0x04`), reading the trusted validator-set
+  anchor from a `TMCP` checkpoint cell-dep. The protobuf reader is the only new code vs the two parents and is
+  host-unit-tested (independent encoders; the full parse, the type-URL guard, decimal-amount + overflow, the
+  hex-32 memo, varint field-skipping). The whole script is then validated end-to-end in CKB-VM
+  (`build_catom_mock.mjs` builds a synthetic single-validator Tendermint block whose one tx is the escrow
+  `MsgSend`, so a chosen escrow/amount/memo sits in a self-signed block; the Tendermint encodings themselves are
+  already proven against real cosmoshub data above): the valid mint gives `Run result: 0` at ~2.5M cycles, and
+  four adversarial cases fail closed with distinct codes, wrong minted amount `24`, wrong recipient `28`, wrong
+  validator-set anchor `9`, non-`MsgSend` `30`. So the Cosmos -> CKB direction is complete and verified offline:
+  CKB verifies a Cosmos escrow is final, parses it in-VM, and mints wrapped ATOM bound 1:1 with replay-once.
+
 ## How to run
 
 ```
@@ -78,6 +96,13 @@ wsl: cd ../burn-gated-unlock && RUSTFLAGS="-C target-feature=-a,+forced-atomics"
 node build_witness_mock.mjs           # pack the real data into the CKB witness
 wsl: ckb-debugger --max-cycles 5000000000 --tx-file tm_mock.json --script-group-type lock --cell-type input --cell-index 0   # 0
 TAMPER=1 node build_witness_mock.mjs  # then ckb-debugger tm_mock_bad.json -> 20 (fail-closed)
+
+# the χATOM mint (Cosmos -> CKB asset layer)
+wsl: cd ../burn-gated-unlock && RUSTFLAGS="-C target-feature=-a,+forced-atomics" cargo build --release --bin catom_mint
+wsl: cargo test --bin catom_mint --target x86_64-unknown-linux-gnu   # the protobuf MsgSend reader: 4 host tests
+node build_catom_mock.mjs             # synthetic block + escrow MsgSend + checkpoint dep + registry input
+wsl: ckb-debugger --max-cycles 5000000000 --tx-file catom_mock.json --script-group-type type --cell-type output --cell-index 0   # 0
+BADAMOUNT=1 node build_catom_mock.mjs # then ckb-debugger catom_mock_badamount.json -> 24 (also BADRECIP 28 / BADPIN 9 / BADTYPEURL 30)
 ```
 
 ## Where this sits, and what is left
@@ -90,14 +115,19 @@ What remains to reach a full live Cosmos to CKB isomorphic binding:
   above). What remains is the SKIPPING variant for big height gaps (verify the block's commit has > 1/3 overlap
   of the trusted set within the unbonding/trust period, then adopt the block's own set), which avoids
   processing every block. Sequential proves the mechanism; skipping is the throughput optimization.
-- **The reverse verifier:** a CosmWasm contract that verifies the existing CKB-state proof (Cosmos verifies
-  CKB), reusing the bridge's CKB-state circuit.
-- **Asset + registry wiring:** reuse the chain-agnostic asset binding and the replay-once registry for the
-  Cosmos to CKB pair, plus a deploy of `tendermint_inclusion` as a live code cell.
+- **The reverse verifier:** DONE. A CosmWasm contract (`spike/cosmwasm-ckb`) verifies the existing CKB-state
+  Groth16 proof (Cosmos verifies CKB), in production host-function form, bound to a named CKB event, with a
+  replay-once registry.
+- **Asset + registry wiring:** DONE for the Cosmos -> CKB direction. `catom_mint` mints wrapped ATOM on a
+  finalized Cosmos escrow, bound 1:1, replay-once (validated end-to-end in CKB-VM, above). `tendermint_inclusion`
+  is already deployed as a live code cell on Pudge.
+- **What remains needs external resources / a design decision:** the live CosmWasm testnet deploy (a funded
+  Neutron/Osmosis account), the CKB -> Cosmos release leg (needs a CKB-burn proof committing a Cosmos recipient,
+  a different circuit instance), and the SKIPPING light-client variant (throughput, not safety).
 
 The keystone, the piece that was unknown and could have killed the design (can CKB-VM verify Tendermint
-affordably, and bind a real tx to it), is done at ~344M cycles. Ethereum, Stellar, and Solana are backlogged
-behind this template.
+affordably, and bind a real tx to it), is done at ~344M cycles, and the full Cosmos -> CKB mint is now verified.
+Ethereum, Stellar, and Solana are backlogged behind this template.
 
 ```
 # full verifier

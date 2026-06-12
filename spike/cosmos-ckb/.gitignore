@@ -8,3 +8,9 @@ inc_mock_badpin.json
 inc_mock_badtx.json
 adv_mock.json
 adv_mock_bad.json
+catom_mock.json
+catom_mock_badamount.json
+catom_mock_badrecip.json
+catom_mock_badpin.json
+catom_mock_badtypeurl.json
+inc_badpin.json
