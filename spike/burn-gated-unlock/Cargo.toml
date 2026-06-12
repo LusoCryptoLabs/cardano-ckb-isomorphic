@@ -78,6 +78,12 @@ path = "src/bin/tendermint_verify.rs"
 name = "tendermint_inclusion"
 path = "src/bin/tendermint_inclusion.rs"
 
+# Validator-set ADVANCEMENT: a block signed by the current trusted set carries next_validators_hash, which
+# becomes the next anchor. Lets the pinned anchor follow Cosmos validator rotations (sequential light client).
+[[bin]]
+name = "tendermint_advance"
+path = "src/bin/tendermint_advance.rs"
+
 [dependencies]
 ckb-std = "0.16"
 blake2 = { version = "0.10", default-features = false }

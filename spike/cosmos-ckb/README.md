@@ -61,6 +61,12 @@ landed in a finalized block, for ~344M cycles.
   then UNLOCKED by supplying the Cosmos tx-inclusion proof in the witness (unlock tx `0x18f519b6`). The spend
   succeeded, so the live CKB-VM verified on-chain that a real Cosmos tx is in a finalized block. This is the
   CKB side of the binding, live, not just ckb-debugger.
+- **Validator-set advancement** (`tendermint_advance.rs`, `build_advance_mock.mjs`): Cosmos validators rotate,
+  so the pinned anchor must follow them. The advance script (args = `current_anchor || new_anchor`) checks that
+  the provided set hashes to `current_anchor` (= header `validators_hash`), that > 2/3 of it signed the block,
+  and that `new_anchor` equals the block's `next_validators_hash` (header leaf[8]). On real data: a valid
+  transition gives `Run result: 0`; a wrong new anchor gives `Run result: 21`. This is sequential advancement,
+  the analog of the AVK epoch advance; the bridge cell holds the anchor and a tx advances it.
 
 ## How to run
 
@@ -80,12 +86,10 @@ The CKB-verifies-Cosmos direction is now complete at the proof level: CKB-VM pro
 a finalized block (commit + header reconstruction + tx inclusion), `tendermint_inclusion.rs`, on real data.
 What remains to reach a full live Cosmos to CKB isomorphic binding:
 
-- **Validator-set lineage:** the BINDING is done (the set must hash to the header's `validators_hash` and to a
-  pinned trusted anchor, see above). What remains is the ADVANCEMENT: as validators rotate, move the pinned
-  anchor forward. The header already binds `next_validators_hash` (leaf[8]), so sequential advancement is
-  adopting leaf[8] after each verified block; cross-epoch gaps need the skipping check (>1/3 overlap of the
-  trusted set within the trust period). The anchor lives in the bridge cell's state, so advancement is a
-  state-update operation, the direct analog of the AVK epoch advance in the Mithril leg.
+- **Validator-set lineage:** binding (anchor) and sequential advancement are both done (`tendermint_advance`,
+  above). What remains is the SKIPPING variant for big height gaps (verify the block's commit has > 1/3 overlap
+  of the trusted set within the unbonding/trust period, then adopt the block's own set), which avoids
+  processing every block. Sequential proves the mechanism; skipping is the throughput optimization.
 - **The reverse verifier:** a CosmWasm contract that verifies the existing CKB-state proof (Cosmos verifies
   CKB), reusing the bridge's CKB-state circuit.
 - **Asset + registry wiring:** reuse the chain-agnostic asset binding and the replay-once registry for the
