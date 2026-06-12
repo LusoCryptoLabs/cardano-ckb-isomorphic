@@ -36,15 +36,16 @@ is the atomicity: no custody, no trusted relayer for safety, only liveness (the 
   XRP. Example finish tx: `6D6CCA92BD337188A32925C362728589A7946D47AD48DCC7428FA275188BA2B2`
   (https://testnet.xrpl.org/transactions/6D6CCA92BD337188A32925C362728589A7946D47AD48DCC7428FA275188BA2B2),
   with `H = 200DE703657DA41E834D9000B045D06E4072081DD0BDA148BF3915F4CC87EABF`.
-- **CKB leg, validated in ckb-debugger** (`htlc_lock.rs`, built in WSL; `build_ckb_mock.mjs` emits the mocks
-  against the SAME `H`): CLAIM `Run result: 0`, REFUND `Run result: 0`, BADCLAIM (wrong preimage, no timelock)
-  `Run result: 2` (rejected). The CKB live deploy is only a funding step (a code cell costs ~1 CKB per byte);
-  the logic is proven in-VM exactly as the bridge's other contracts are validated before deploy.
-- **The relay, end to end** (`swap_relay.mjs`): runs the realistic choreography. Alice locks 10 XRP under `H`
-  (live), the CKB claim reveals `s` in its witness (`claim_live.json`, validated `Run result: 0`), the relay
-  reads that witness, extracts `s`, verifies `SHA256(s) == H`, reconstructs the XRPL fulfillment from `s`, and
-  finishes the escrow (live) so Bob receives the XRP. One secret settles both legs; the relay never holds funds.
-  Example run: lock tx `454D578A...`, finish tx `BF934714...`, Bob 100 -> 109.99 XRP, `s = 767e692e...`.
+- **CKB leg, in ckb-debugger** (`htlc_lock.rs`, built in WSL; `build_ckb_mock.mjs` emits the mocks against the
+  SAME `H`): CLAIM `Run result: 0`, REFUND `Run result: 0`, BADCLAIM (wrong preimage, no timelock)
+  `Run result: 2` (rejected).
+- **FULLY LIVE swap, both real chains** (`live_swap.mjs`): `htlc_lock` is now DEPLOYED on Pudge (codeHash
+  `0xa08d3763...`, dep tx `0x74c21c0f...`). One run: Alice locked 10 XRP under `H` on XRPL (`EF71F9DE...`),
+  200 CKB locked in a real `htlc_lock` cell (`0x037dc1c6...:0`), claimed ON-CHAIN by revealing `s`
+  (`0x12d71ef6...`), the relay read `s` from that CKB claim witness and finished the XRPL escrow
+  (`3CF7E943...`), Bob 100 -> 109.99 XRP. The same secret settled both real chains, no party holding funds.
+- **The relay** (`swap_relay.mjs`): the same choreography with the CKB side in ckb-debugger (handy when you do
+  not want to spend the on-chain code-cell capacity); `live_swap.mjs` is the on-chain version.
 
 ## How to run
 
@@ -71,16 +72,16 @@ This contrasts with the bridge's Mode A (verify-and-mint), where the destination
 (Mithril cert in CKB-VM, or a Groth16 proof of CKB on Cardano) and mints a wrapped asset. Stellar (Soroban) and
 Solana (alt_bn128) can host a verifier and so can join Mode A; XRPL cannot, and joins here via Mode B.
 
-## How to run the relay
+## How to run
 
 ```
-cd spike/xrpl-htlc && node swap_relay.mjs     # live XRPL lock + finish, relay extracts s from the CKB claim
-wsl: ckb-debugger --tx-file spike/xrpl-htlc/claim_live.json --script-group-type lock --cell-type input --cell-index 0   # 0
+cd spike/xrpl-htlc && npm install
+node live_swap.mjs     # FULLY LIVE: deploys htlc_lock (first run), locks + claims on Pudge, settles XRPL
+node swap_relay.mjs    # same choreography but CKB claim in ckb-debugger (no on-chain code-cell spend)
 ```
 
-## Next steps (not built here)
+## Next steps
 
-- Live CKB deploy of `htlc_lock` (funding-gated) and a full on-chain round-trip, plus the mirror direction
-  (watch the CKB claim on Pudge, submit the XRPL `EscrowFinish`) as a long-running daemon with the
-  timelock-ordering safety checks (`T1 < T2`) enforced before locking.
+- The mirror direction (watch the CKB claim on Pudge, submit the XRPL `EscrowFinish`) as a long-running
+  daemon, with the timelock-ordering safety checks (`T1 < T2`) enforced before locking the second leg.
 - Generalize to a swap-leg interface so XRPL, Bitcoin, and Lightning/Fiber share one Mode B implementation.
