@@ -1,0 +1,23 @@
+{
+  "ownerCode": "0x70068086aa008179c500befce3f842ac0298de7b914212afbee94c74ad3317bb",
+  "registryCode": "0xfbd01737e9c2becbf2edef927fda1688c2a7bb9abb5e5ff67eb94f4704607752",
+  "registryGenesis": "0x550fc3d49bc767045e724584b5a320e9318a91ef7f67331baba8f6c41af9cecc",
+  "regTypeHash": "0x775dee801cf7d32d6a948b2b5d3b3d88c69d25bf6157ff737a2223137209b17c",
+  "ownerLockHash": "0xe712e997d4359e4bca82dbde6c4ba28328712ddd3322b8536eb4f4db0ebcb8e1",
+  "ownerCell": {
+    "txHash": "0x2bea4e7ee69aff7d25005a5639a50f1e90faf1622756fc719e03112a454e83bb",
+    "index": 0
+  },
+  "tokenId": "0x8059cdb01f9d0227e87af0ae09c9a58ea709be5c987fe515f7e2b75b57b1a26e",
+  "mintTx": "0xb25d8e425a6bf6c78e2e6afdd4a8ee1ce4e24695f8df16a52caca8cb7f19d597",
+  "token": {
+    "name": "Chiral OSMO",
+    "symbol": "xOSMO",
+    "decimals": 6
+  },
+  "amount": "1000000",
+  "recipient": "7a971a3b730d3e5b69f73ac7add6dcd2396cab9523176132ed23e17500c820c7",
+  "osmoHeight": 60734565,
+  "xosmoCell": "0xb25d8e425a6bf6c78e2e6afdd4a8ee1ce4e24695f8df16a52caca8cb7f19d597:0",
+  "uniqueCell": "0xb25d8e425a6bf6c78e2e6afdd4a8ee1ce4e24695f8df16a52caca8cb7f19d597:1"
+}
