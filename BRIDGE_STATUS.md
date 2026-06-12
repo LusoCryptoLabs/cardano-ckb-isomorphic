@@ -12,6 +12,10 @@
 > shipped (singleton forge-cert guard, K_MIN floor, nullifier domain separation, escrow placeholder guard);
 > 4 operational remediations gate mainnet (real MPC setup, STM-pin+singleton redeploy, advance ceremony/K,
 > upgrade-key lockdown). All testnet, no value at risk. **Read before any redeploy** (codeHash re-bake notes).
+>
+> ✅ **Verified 2026-06-12:** a multi-agent design-conformance run ([`docs/VERIFICATION_REPORT.md`](docs/VERIFICATION_REPORT.md))
+> ran every test battery + checked each load-bearing invariant: PASS-WITH-CAVEATS, the one real gap is the
+> known STM-pin deploy (staged turnkey in [`docs/STM_REDEPLOY_READY.md`](docs/STM_REDEPLOY_READY.md)).
 
 The bridge has **two legs**. Both are demonstrated live on testnet (CKB Pudge ⇄ Cardano preview).
 
@@ -265,3 +269,7 @@ Careful pre-flight (no live tx fired) of the live Groth16-leg deploy on Cardano 
 - `spike/ckb-to-cardano/AUTHZ_DOUBLEMINT_AUDIT.md` — authz + doublemint re-audit.
 - `spike/ckb-to-cardano/RETURN_TRIP.md` — burn→unlock return leg (symmetry table + VM tests).
 - `docs/SEC_STM_QUORUM_PIN.md` — the STM quorum finding/fix + the deferred-cascade note.
+- `docs/VERIFICATION_REPORT.md` — 2026-06-12 multi-agent design-conformance verdict (PASS-WITH-CAVEATS): every
+  test battery + each load-bearing invariant, adversarially re-verified.
+- `docs/STM_REDEPLOY_READY.md` — the staged, turnkey STM-pin `cv_*` redeploy (new code hashes + funding plan +
+  runbook), deferred to audit/mainnet.
