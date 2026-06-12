@@ -40,6 +40,7 @@ dependencies = [
  "blake2b-ref",
  "ckb-merkle-mountain-range",
  "ckb-std",
+ "sha2",
 ]
 
 [[package]]
@@ -106,6 +107,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cpufeatures"
+version = "0.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "crypto-common"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -149,6 +159,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "libc"
+version = "0.2.186"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
+
+[[package]]
 name = "molecule"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -156,6 +172,17 @@ checksum = "6efe1c7efcd0bdf4ca590e104bcb13087d9968956ae4ae98e92fb8c1da0f3730"
 dependencies = [
  "bytes",
  "cfg-if",
+]
+
+[[package]]
+name = "sha2"
+version = "0.10.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest",
 ]
 
 [[package]]
