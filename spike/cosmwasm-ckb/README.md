@@ -36,6 +36,20 @@ e(A, B) == e(alpha, beta) * e(vk_x, gamma) * e(C, delta),   vk_x = ic[0] + sum(p
 So a Cosmos chain can verify the bridge's CKB-state proof on-chain, in the cheap production form, with the same
 math Cardano runs.
 
+- **χCKB forward mint (CKB -> Cosmos), the wrapped-CKB token** (`MintChiCkb` / `MintChiCkbRaw`, `deploy_chickb.mjs`):
+  the contract mints a wallet-visible χCKB **Osmosis token-factory denom** (`factory/<contract>/uchickb`) gated on
+  the CKB-state proof, the forward mirror of χOSMO-on-CKB. `CreateChiCkbDenom` emits a tokenfactory `MsgCreateDenom`
+  (the contract becomes admin); `MintChiCkb` verifies a proof bound to the CKB lock event, nullifies the seal
+  replay-once, and emits `MsgMint`. The Osmosis tokenfactory messages are `CosmosMsg::Stargate` with hand-encoded
+  protobuf. **Live status on osmo-test-5** (`chickb_deploy.json`): the contract is deployed (codeId 13218,
+  `osmo1yewevz…`) and the **token-factory denom was created live**; the proof **verification is provable live** (the
+  `VerifyCkbProof` query returns valid). The **mint execute is blocked on this chain**: it runs the in-wasm
+  BLS12-381 pairing, which exceeds osmo-test-5's **80M per-tx gas cap**, and the chain does NOT expose the
+  `bls12_381_pairing_equality` host function that makes the pairing cheap. The mint is feasible on a CosmWasm chain
+  that exposes the BLS host function (e.g. Neutron), where the host pairing fits the gas budget. So χCKB-on-Cosmos
+  is contract-complete + denom-live + verification-live, with the gated mint host-fn-gated (a chain-capability
+  limit, not a logic bug).
+
 - **LIVE on Osmosis testnet (osmo-test-5).** The contract is deployed and a real Cosmos node verified the
   bridge's CKB-state proof on-chain: query `VerifyCkbProof` with the real redeemer returned `{"valid": true}`.
   codeId `13217`, contract `osmo1h9wvlfh7jfqpd5rtylqf0apnxt0d6at3nyxseh7ls9vsj6ht475sqkzt22`, store tx

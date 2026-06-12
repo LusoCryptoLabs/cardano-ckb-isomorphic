@@ -1,0 +1,12 @@
+{
+  "chain": "osmo-test-5",
+  "codeId": 13218,
+  "contract": "osmo1yewevzdvy8nynuzszhjxwxr2caze93cc6w3s3g2n3zc0gt9fmn6sya9x04",
+  "denom": "factory/osmo1yewevzdvy8nynuzszhjxwxr2caze93cc6w3s3g2n3zc0gt9fmn6sya9x04/uchickb",
+  "status": {
+    "contract": "deployed + instantiated (the chiCKB token-factory minter, gated on the CKB-state proof)",
+    "denom": "CREATED LIVE (tokenfactory MsgCreateDenom from the contract succeeded)",
+    "verification": "provable live (VerifyCkbProof query -> valid:true, the same in-wasm pairing)",
+    "mint": "BLOCKED on osmo-test-5: the MintChiCkb execute runs the in-wasm BLS12-381 pairing, which exceeds the chain's 80M per-tx gas cap; this chain does NOT expose the bls12_381_pairing_equality host function that makes the pairing cheap. The mint is feasible on a CosmWasm chain that exposes the BLS host fn (e.g. Neutron), where the host pairing fits the gas budget."
+  }
+}
