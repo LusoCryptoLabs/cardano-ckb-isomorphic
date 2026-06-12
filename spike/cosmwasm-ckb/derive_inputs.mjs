@@ -52,3 +52,14 @@ for (const p of pi) console.log(`  ${p.name.padEnd(12)} ${p.le32}  ${p.dec}`);
 
 console.log("\n// Rust cross-check vectors (paste into the contract test):");
 for (const p of pi) console.log(`    "${p.le32}", // ${p.name}`);
+
+// RETURN-leg (CKB->Cosmos) burn event: same derivation, recipient is a 20-byte Osmosis account address.
+const bev = { window_root: "ee".repeat(32), seal: [...Array(32).keys()].map((i) => ((i + 1) & 0xff).toString(16).padStart(2, "0")).join(""), amount: 7654321n, recipient: "bb".repeat(20), tip_height: 20000000n, k: 7n };
+const bamount16 = Buffer.alloc(16);
+{ let n = bev.amount; for (let i = 0; i < 16; i++) { bamount16[i] = Number(n & 0xffn); n >>= 8n; } }
+const bseal = hx(bev.seal);
+const bcommit = Buffer.from(blake2b(Buffer.concat([bamount16, hx(bev.recipient), bseal]), { dkLen: 32 }));
+const bpi = [leModHex(hx(bev.window_root)), leModHex(bseal), leModHex(bcommit), u64Hex(bev.tip_height), u64Hex(bev.k)];
+console.log("\n// BURN event (20-byte recipient) Rust cross-check vectors:");
+const bnames = ["window_root", "seal", "commitment(amount||recip20||seal)", "tip_height", "k"];
+bpi.forEach((h, i) => console.log(`    "${h}", // ${bnames[i]}`));

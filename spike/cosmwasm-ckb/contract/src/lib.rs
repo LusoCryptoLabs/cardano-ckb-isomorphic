@@ -23,7 +23,7 @@ use bls12_381::{G1Affine, G1Projective, Scalar};
 use blake2::digest::{Update, VariableOutput};
 use blake2::Blake2bVar;
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{entry_point, to_json_binary, Api, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128};
+use cosmwasm_std::{entry_point, to_json_binary, Api, BankMsg, Binary, CanonicalAddr, Coin, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128};
 
 #[cw_serde]
 pub struct InstantiateMsg {}
@@ -71,6 +71,13 @@ pub enum ExecuteMsg {
         alpha: String, beta: String, gamma: String, delta: String,
         ic: Vec<String>, public_inputs: Vec<String>,
     },
+    /// RETURN leg (CKB -> Cosmos): verify a proof that chiOSMO was burned on CKB bound to this event
+    /// (window_root, seal, amount, recipient[20-byte osmo account], tip_height, K), nullify the burn seal
+    /// replay-once, and send `amount` uosmo to the recipient. The mirror of catom_mint on the Cosmos side.
+    ReleaseOnCkbBurn {
+        window_root: String, seal: String, amount: Uint128, recipient: String, tip_height: u64, k: u64,
+        denom: String, proof: Proof, vk: Vk,
+    },
 }
 
 #[cw_serde]
@@ -101,6 +108,20 @@ pub fn execute(deps: DepsMut, _env: Env, _info: MessageInfo, msg: ExecuteMsg) ->
             let valid = verify_scalars(deps.api, &a, &b, &c, &alpha, &beta, &gamma, &delta, &ic, &pubs).map_err(StdError::generic_err)?;
             if !valid { return Err(StdError::generic_err("CKB-state proof did not verify")); }
             Ok(Response::new().add_attribute("action", "assert_ckb_proof").add_attribute("verified", "true"))
+        }
+        ExecuteMsg::ReleaseOnCkbBurn { window_root, seal, amount, recipient, tip_height, k, denom, proof, vk } => {
+            // 1) verify the proof is bound to THIS burn event (amount + recipient committed in-circuit).
+            let pubs = derive_burn_inputs(&window_root, &seal, amount.u128(), &recipient, tip_height, k).map_err(StdError::generic_err)?;
+            let valid = verify_scalars(deps.api, &proof.a, &proof.b, &proof.c, &vk.alpha, &vk.beta, &vk.gamma, &vk.delta, &vk.ic, &pubs).map_err(StdError::generic_err)?;
+            if !valid { return Err(StdError::generic_err("CKB burn proof did not verify")); }
+            // 2) replay-once on the burn seal (separate keyspace from the forward leg via the seal itself).
+            let seal_bytes = raw(&seal, 32).map_err(StdError::generic_err)?;
+            record_nullifier(deps.storage, &seal_bytes)?;
+            // 3) release: send `amount` of `denom` to the recipient (20-byte account -> this chain's bech32).
+            let rc = raw(&recipient, 20).map_err(StdError::generic_err)?;
+            let to = deps.api.addr_humanize(&CanonicalAddr::from(rc.as_slice()))?;
+            let send = BankMsg::Send { to_address: to.to_string(), amount: vec![Coin { denom, amount }] };
+            Ok(Response::new().add_message(send).add_attribute("action", "release_on_ckb_burn").add_attribute("to", to.to_string()).add_attribute("amount", amount))
         }
     }
 }
@@ -184,6 +205,21 @@ pub fn derive_event_inputs(window_root: &str, seal: &str, amount: u128, recipien
         Scalar::from(tip_height),
         Scalar::from(k),
     ])
+}
+
+/// Derive the RETURN-leg (CKB->Cosmos) burn proof's 5 public inputs from the burn event. Same shape as the
+/// forward derivation but the recipient is the 20-byte Osmosis account address (what xosmo_burn_receipt commits):
+/// commitment = blake2b256( amount(16 LE) ‖ cosmos_recipient(20) ‖ seal(32) ).
+pub fn derive_burn_inputs(window_root: &str, seal: &str, amount: u128, recipient: &str, tip_height: u64, k: u64) -> Result<[Scalar; 5], String> {
+    let wr = raw(window_root, 32)?;
+    let sl = raw(seal, 32)?;
+    let rc = raw(recipient, 20)?;
+    let mut pre = Vec::with_capacity(16 + 20 + 32);
+    pre.extend_from_slice(&amount.to_le_bytes());
+    pre.extend_from_slice(&rc);
+    pre.extend_from_slice(&sl);
+    let comm = blake2b256(&pre);
+    Ok([le_mod_scalar(&wr)?, le_mod_scalar(&sl)?, le_mod_scalar(&comm)?, Scalar::from(tip_height), Scalar::from(k)])
 }
 
 /// vk_x = ic[0] + sum(pub_i * ic[i+1]), returned compressed (48 bytes). The only EC arithmetic done in wasm
@@ -350,6 +386,47 @@ mod tests {
         for (i, exp) in expected.iter().enumerate() {
             assert_eq!(hex::encode(pubs[i].to_bytes()), *exp, "derived public input {i} differs from the off-chain reference");
         }
+    }
+
+    /// The RETURN-leg burn derivation (20-byte recipient), cross-checked against derive_inputs.mjs's burn vectors.
+    #[test]
+    fn binds_burn_event_to_public_inputs() {
+        let window_root = "ee".repeat(32);
+        let seal: String = (0u8..32).map(|i| format!("{:02x}", i.wrapping_add(1))).collect();
+        let recipient = "bb".repeat(20);
+        let pubs = derive_burn_inputs(&window_root, &seal, 7654321, &recipient, 20000000, 7).unwrap();
+        let expected = [
+            "eceeeeeef0eeeeeef036f2eee8a67347e43eabdbde3e7b885ef4b39b48a01307", // window_root (0xee*32 reduced)
+            "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20", // seal
+            "4cff559d7f8462c9df3b7e9a43c9908e190aff5531de52d9aaee88db0729385c", // commitment = blake2b(amount||recip20||seal)
+            "002d310100000000000000000000000000000000000000000000000000000000", // tip_height = 20000000
+            "0700000000000000000000000000000000000000000000000000000000000000", // k = 7
+        ];
+        for (i, exp) in expected.iter().enumerate() {
+            assert_eq!(hex::encode(pubs[i].to_bytes()), *exp, "burn public input {i} differs from the off-chain reference");
+        }
+    }
+
+    /// ReleaseOnCkbBurn is fail-closed: a proof that does not match the claimed burn event is rejected, and
+    /// nothing is released or nullified. (The success path needs a real CKB-burn proof, which requires the
+    /// CKB-state proving pipeline; that is the documented residual for the live release.)
+    #[test]
+    fn release_on_ckb_burn_fail_closed() {
+        use cosmwasm_std::testing::mock_env;
+        use cosmwasm_std::{Addr, MessageInfo, Uint128};
+        let mut deps = mock_dependencies();
+        let i = load();
+        let vk = Vk { alpha: i.alpha.clone(), beta: i.beta.clone(), gamma: i.gamma.clone(), delta: i.delta.clone(), ic: i.ic.clone() };
+        let proof = Proof { a: i.a.clone(), b: i.b.clone(), c: i.c.clone() };
+        let info = MessageInfo { sender: Addr::unchecked("anyone"), funds: vec![] };
+        let msg = ExecuteMsg::ReleaseOnCkbBurn {
+            window_root: "ee".repeat(32), seal: (0u8..32).map(|i| format!("{:02x}", i.wrapping_add(1))).collect(),
+            amount: Uint128::new(7654321), recipient: "bb".repeat(20), tip_height: 20000000, k: 7,
+            denom: "uosmo".into(), proof, vk,
+        };
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        // rejected before the nullifier insert or the bank send, so nothing is released.
+        assert!(res.is_err(), "a burn proof not matching the event must be rejected");
     }
 
     /// Tie the integer-valued public inputs (tip_height, K) to the REAL committed redeemer: the contract's
