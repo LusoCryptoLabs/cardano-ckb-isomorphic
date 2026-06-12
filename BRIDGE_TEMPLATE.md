@@ -147,15 +147,17 @@ SHA256). The asymmetric constraint is always B1: can X's VM afford to verify the
 | A1 CKB-VM Tendermint inclusion | `burn-gated-unlock/src/bin/tendermint_inclusion.rs` | LIVE on Pudge (unlock tx `0x18f519b6`) |
 | A3 anchor advance | `tendermint_advance.rs` | ckb-debugger 0/21 |
 | A3 skip (non-adjacent) | `tendermint_skip.rs` | ckb-debugger 0 + 4 fail-closed |
-| A2 χATOM wrapped mint | `catom_mint.rs` | ckb-debugger end-to-end 0 + 4 fail-closed (NOT yet a live Pudge mint) |
+| A2 χATOM wrapped mint | `catom_mint.rs` | **LIVE on Pudge**: χOSMO minted from a real osmo-test-5 lock, mint tx `0x8fbe7459…`, token id `0xf98bad86…` |
 | B1 X-verifies-CKB | `cosmwasm-ckb/contract` | **LIVE osmo-test-5** (`VerifyCkbProof -> valid:true`, codeId 13217) |
 | Public-input binding | `VerifyCkbEvent` + `derive_inputs.mjs` | tested |
 | Replay registry (X side) | `RecordCkbEvent` (tag `chiral:cosmos-ckb:nf:`) | tested |
 | B2/B3 CKB->Cosmos release leg | none | NOT built (needs a burn circuit committing a Cosmos recipient) |
 
-What is LIVE is the mutual verification (both directions). What remains to be a fully working two-way *value*
-bridge for Cosmos: a live χ-token mint on Pudge from a real Cosmos lock (A2 deployed live), and the entire
-Direction B release leg (B2 + B3).
+What is LIVE: the mutual verification (both directions) AND the full Direction A value flow, real OSMO locked on
+osmo-test-5 (escrow tx `13587CE7`, h60729382) -> real χOSMO minted on CKB Pudge (mint tx `0x8fbe7459…`), gated
+on the real Cosmos escrow proven in CKB-VM, bound 1:1 to the amount and recipient, replay-once recorded in the
+type-id nullifier registry. What remains: the entire Direction B release leg (B2 + B3), the genuinely new
+circuit work.
 
 ## 7. Order of work for a new chain
 

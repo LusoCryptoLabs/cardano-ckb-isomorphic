@@ -1,0 +1,12 @@
+{
+  "catomCode": "0x76d68a0209aec1a0fae41b7ea158af5f40cb5a05cac09763dd4a4691dba1a994",
+  "registryCode": "0xfbd01737e9c2becbf2edef927fda1688c2a7bb9abb5e5ff67eb94f4704607752",
+  "registryGenesis": "0x6bbc4af384a12b4b51b7dbe64889b9759021bab20793d6502bd764463268b9ab",
+  "regTypeHash": "0x87b71ef1fe4e3bc3f1e00a831e31b7d0c34abdde4f9ce0cad1d92bb5a3aad2f1",
+  "tokenId": "0xf98bad86a3a96db5218916568f4b4ed2e5fceb799bbabe72d3f083403482e03e",
+  "mintTx": "0x8fbe7459e523c6c4f47a52c7198df9d9d1db3e8d827b0d3ed879ff781091b23c",
+  "amount": "1000000",
+  "denom": "uosmo",
+  "recipient": "7a971a3b730d3e5b69f73ac7add6dcd2396cab9523176132ed23e17500c820c7",
+  "osmoHeight": 60729382
+}

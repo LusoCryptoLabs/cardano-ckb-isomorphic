@@ -86,6 +86,16 @@ landed in a finalized block, for ~344M cycles.
   validator-set anchor `9`, non-`MsgSend` `30`. So the Cosmos -> CKB direction is complete and verified offline:
   CKB verifies a Cosmos escrow is final, parses it in-VM, and mints wrapped ATOM bound 1:1 with replay-once.
 
+- **LIVE on CKB Pudge** (`osmo_lock.mjs`, `build_catom_live_mock.mjs`, `../../relayer/onchain/live_catom_mint.mjs`,
+  `cosmos_nullifier_registry.rs`): the full Direction-A value flow, end to end on real chains. Real OSMO was
+  locked into an escrow account on osmo-test-5 (escrow tx `13587CE7`, height 60729382) with the CKB recipient in
+  the memo; `catom_mint` verified that real escrow against the real osmo-test-5 commit in CKB-VM and minted a
+  real **χOSMO** token on Pudge (mint tx `0x8fbe7459e523c6c4f47a52c7198df9d9d1db3e8d827b0d3ed879ff781091b23c`,
+  token id `0xf98bad86…`), amount `1000000` bound 1:1 to the lock, locked at the named recipient, with the
+  certified Cosmos tx nullified replay-once in the type-id `cosmos_nullifier_registry` (genesis
+  `0x6bbc4af3…`). The anchor is baked into the policy args for this single mint; the advanceable variant uses a
+  checkpoint cell-dep with `tendermint_advance` / `tendermint_skip`. See `relayer/onchain/catom_mint_live.json`.
+
 ## How to run
 
 ```

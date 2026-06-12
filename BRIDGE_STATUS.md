@@ -16,7 +16,9 @@
 > 🧩 **Multi-chain:** see [`BRIDGE_TEMPLATE.md`](BRIDGE_TEMPLATE.md) — the repeatable recipe to bind ANY chain to
 > CKB both ways (the 6 components per chain, the curve/VM matrix, the deploy gotchas). Worked instance = Cosmos
 > (`spike/cosmos-ckb`, `spike/cosmwasm-ckb`): mutual verification LIVE both ways (CKB-verifies-Cosmos on Pudge,
-> Cosmos-verifies-CKB on osmo-test-5). Cardano below is the original instance.
+> Cosmos-verifies-CKB on osmo-test-5) **AND the Direction-A value flow LIVE: real OSMO locked on osmo-test-5 ->
+> real χOSMO minted on Pudge (mint tx `0x8fbe7459…`, token id `0xf98bad86…`), bound 1:1, replay-once.** Remaining
+> for Cosmos: the Direction-B release leg (a new burn circuit). Cardano below is the original instance.
 
 The bridge has **two legs**. Both are demonstrated live on testnet (CKB Pudge ⇄ Cardano preview).
 
