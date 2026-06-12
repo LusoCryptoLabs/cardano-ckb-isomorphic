@@ -260,5 +260,17 @@ fn main(){
     eprintln!("arkworks verify = {ok} (BOUND_WINDOWED_LEAP_OK depth={depth} K={k} amount {} recipient {})",
         u128::from_le_bytes(amt.try_into().unwrap()), rcp.iter().map(|x|format!("{:02x}",x)).collect::<String>());
     assert!(ok, "bound windowed leap proof must verify");
+    // SIDECAR: the raw CKB event preimage behind these 5 public inputs. The redeemer (stdout) carries only the
+    // reduced scalars; this lets a downstream verifier (the CosmWasm reverse leg, spike/cosmwasm-ckb) DERIVE the
+    // public inputs from the event and bind the proof to a NAMED CKB event end-to-end. RETURN-MATCHED to this
+    // exact proof. Write path overridable via EVENT_OUT.
+    let hxs = |b: &[u8]| b.iter().map(|x| format!("{:02x}", x)).collect::<String>();
+    let amount_u128 = u128::from_le_bytes(body[amount_off..amount_off + 16].try_into().unwrap());
+    let event = format!(
+        "{{\n  \"window_root\": \"{}\",\n  \"seal\": \"{}\",\n  \"amount\": \"{}\",\n  \"recipient\": \"{}\",\n  \"tip_height\": {},\n  \"k\": {}\n}}\n",
+        hxs(&window_root), hxs(&seal), amount_u128, hxs(&body[recip_off..recip_off + 28]), tip_height, k);
+    let event_out = std::env::var("EVENT_OUT").unwrap_or_else(|_| "leap_bound_windowed_event.json".into());
+    std::fs::write(&event_out, event).unwrap();
+    eprintln!("wrote event sidecar -> {event_out}");
     println!("{}", serde_json::to_string_pretty(&ckb_consensus_circuit::setup_mpc::emit_redeemer(&vk,&proof,&inputs)).unwrap());
 }

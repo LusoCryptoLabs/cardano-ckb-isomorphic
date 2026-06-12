@@ -3,27 +3,53 @@
 //! Cardano already verifies: e(A,B) == e(alpha,beta) * e(vk_x,gamma) * e(C,delta), with
 //! vk_x = ic[0] + sum(pub_i * ic[i+1]).
 //!
+//! Two query paths:
+//!   * `VerifyCkbProof` takes the 5 public inputs as raw scalars and verifies the proof (the bare check).
+//!   * `VerifyCkbEvent` takes the CONCRETE CKB event (window_root, seal, amount, recipient, tip_height, K) and
+//!     DERIVES the 5 public inputs exactly as the leap circuit does, then verifies. This is what makes the
+//!     contract a real bridge gate: it is bound to a named CKB event (a specific value to a specific recipient,
+//!     spent at a specific seal under a specific checkpoint), not just "some valid proof exists". A relayer
+//!     cannot present a valid proof and then claim different public inputs.
+//!
 //! Production form: the only in-wasm elliptic-curve work is computing vk_x (G1 scalar muls); the final
 //! four-pairing check is delegated to CosmWasm 2.x's native `bls12_381_pairing_equality` host function, which
-//! runs the chain's audited BLS implementation. That is smaller and far cheaper than doing the Miller loop and
-//! final exponentiation in wasm. The original all-in-wasm equation is kept as a test-only reference
-//! (`verify_inwasm`) and the unit test cross-checks the two against the real proof.
+//! runs the chain's audited BLS implementation.
 //!
-//! Points are compressed hex (G1 48B, G2 96B); public inputs are 32-byte little-endian scalar hex.
+//! Encodings (matching `leap_bound_windowed.rs`): pi[0]=LEmod(window_root[32]), pi[1]=LEmod(seal[32]),
+//! pi[2]=LEmod(blake2b256(amount[16 LE] ‖ recipient[28] ‖ seal[32])), pi[3]=tip_height(u64), pi[4]=K(u64).
+//! LEmod(b) = (b read little-endian) mod r (the BLS12-381 scalar order). Curve points are compressed hex
+//! (G1 48B, G2 96B); raw public inputs (VerifyCkbProof) are 32-byte little-endian scalar hex.
 use bls12_381::{G1Affine, G1Projective, Scalar};
+use blake2::digest::{Update, VariableOutput};
+use blake2::Blake2bVar;
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{entry_point, to_json_binary, Api, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult};
+use cosmwasm_std::{entry_point, to_json_binary, Api, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128};
 
 #[cw_serde]
 pub struct InstantiateMsg {}
 
 #[cw_serde]
+pub struct Vk {
+    pub alpha: String, pub beta: String, pub gamma: String, pub delta: String, pub ic: Vec<String>,
+}
+#[cw_serde]
+pub struct Proof { pub a: String, pub b: String, pub c: String }
+
+#[cw_serde]
 pub enum QueryMsg {
-    /// Verify a Groth16-BLS12-381 proof of CKB state. All points compressed hex; public_inputs are 32-byte LE.
+    /// Verify a Groth16-BLS12-381 proof against raw public inputs. All points compressed hex; public_inputs
+    /// are 32-byte LE scalar hex.
     VerifyCkbProof {
         a: String, b: String, c: String,
         alpha: String, beta: String, gamma: String, delta: String,
         ic: Vec<String>, public_inputs: Vec<String>,
+    },
+    /// Verify a Groth16-BLS12-381 proof bound to a CONCRETE CKB event: the 5 public inputs are DERIVED from the
+    /// event fields in-contract, so the proof is tied to this exact (window_root, seal, amount, recipient,
+    /// tip_height, K). window_root/seal are 32-byte hex, recipient 28-byte hex, amount a u128.
+    VerifyCkbEvent {
+        window_root: String, seal: String, amount: Uint128, recipient: String, tip_height: u64, k: u64,
+        proof: Proof, vk: Vk,
     },
 }
 
@@ -39,8 +65,13 @@ pub fn instantiate(_d: DepsMut, _e: Env, _i: MessageInfo, _m: InstantiateMsg) ->
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::VerifyCkbProof { a, b, c, alpha, beta, gamma, delta, ic, public_inputs } => {
-            let valid = verify(deps.api, &a, &b, &c, &alpha, &beta, &gamma, &delta, &ic, &public_inputs)
-                .map_err(StdError::generic_err)?;
+            let pubs: Vec<Scalar> = public_inputs.iter().map(|h| scalar_canonical(h)).collect::<Result<_, _>>().map_err(StdError::generic_err)?;
+            let valid = verify_scalars(deps.api, &a, &b, &c, &alpha, &beta, &gamma, &delta, &ic, &pubs).map_err(StdError::generic_err)?;
+            to_json_binary(&VerifyResp { valid })
+        }
+        QueryMsg::VerifyCkbEvent { window_root, seal, amount, recipient, tip_height, k, proof, vk } => {
+            let pubs = derive_event_inputs(&window_root, &seal, amount.u128(), &recipient, tip_height, k).map_err(StdError::generic_err)?;
+            let valid = verify_scalars(deps.api, &proof.a, &proof.b, &proof.c, &vk.alpha, &vk.beta, &vk.gamma, &vk.delta, &vk.ic, &pubs).map_err(StdError::generic_err)?;
             to_json_binary(&VerifyResp { valid })
         }
     }
@@ -55,17 +86,58 @@ fn g1(h: &str) -> Result<G1Affine, String> {
     let arr: [u8; 48] = raw(h, 48)?.try_into().map_err(|_| "g1 len")?;
     Option::from(G1Affine::from_compressed(&arr)).ok_or_else(|| "g1 point".to_string())
 }
-fn scalar(h: &str) -> Result<Scalar, String> {
+/// A raw public input given as a canonical (already reduced, < r) 32-byte little-endian scalar.
+fn scalar_canonical(h: &str) -> Result<Scalar, String> {
     let arr: [u8; 32] = hex::decode(h.trim_start_matches("0x")).map_err(|_| "scalar hex")?.try_into().map_err(|_| "scalar len")?;
-    Option::from(Scalar::from_bytes(&arr)).ok_or_else(|| "scalar".to_string()) // little-endian
+    Option::from(Scalar::from_bytes(&arr)).ok_or_else(|| "scalar not canonical".to_string()) // little-endian
+}
+
+/// LEmod: interpret up to 64 little-endian bytes as an integer and reduce mod the scalar order r. This matches
+/// arkworks' `Fr::from_le_bytes_mod_order` used by the circuit (32-byte hashes can exceed r, so they must be
+/// reduced, not parsed canonically). Implemented via the wide (512-bit) reduction.
+fn le_mod_scalar(bytes: &[u8]) -> Result<Scalar, String> {
+    if bytes.len() > 64 { return Err("le_mod too long".into()); }
+    let mut wide = [0u8; 64];
+    wide[..bytes.len()].copy_from_slice(bytes);
+    Ok(Scalar::from_bytes_wide(&wide))
+}
+
+/// Standard unkeyed BLAKE2b with a 32-byte digest (matches the circuit's b2b()).
+fn blake2b256(d: &[u8]) -> [u8; 32] {
+    let mut h = Blake2bVar::new(32).expect("32 is a valid blake2b output size");
+    h.update(d);
+    let mut o = [0u8; 32];
+    h.finalize_variable(&mut o).expect("32-byte output");
+    o
+}
+
+/// Derive the leap circuit's 5 public inputs from a concrete CKB event. window_root/seal are 32-byte hex,
+/// recipient 28-byte hex, amount a u128 (encoded 16-byte little-endian, as the receipt body carries it).
+pub fn derive_event_inputs(window_root: &str, seal: &str, amount: u128, recipient: &str, tip_height: u64, k: u64) -> Result<[Scalar; 5], String> {
+    let wr = raw(window_root, 32)?;
+    let sl = raw(seal, 32)?;
+    let rc = raw(recipient, 28)?;
+    // commitment = blake2b256( amount(16 LE) ‖ recipient(28) ‖ seal(32) )
+    let mut pre = Vec::with_capacity(16 + 28 + 32);
+    pre.extend_from_slice(&amount.to_le_bytes());
+    pre.extend_from_slice(&rc);
+    pre.extend_from_slice(&sl);
+    let comm = blake2b256(&pre);
+    Ok([
+        le_mod_scalar(&wr)?,
+        le_mod_scalar(&sl)?,
+        le_mod_scalar(&comm)?,
+        Scalar::from(tip_height),
+        Scalar::from(k),
+    ])
 }
 
 /// vk_x = ic[0] + sum(pub_i * ic[i+1]), returned compressed (48 bytes). The only EC arithmetic done in wasm.
-fn compute_vk_x(ic: &[String], pubs: &[String]) -> Result<[u8; 48], String> {
+fn compute_vk_x(ic: &[String], pubs: &[Scalar]) -> Result<[u8; 48], String> {
     if ic.len() != pubs.len() + 1 { return Err("ic/pubs length".into()); }
     let mut acc = G1Projective::from(g1(&ic[0])?);
     for i in 0..pubs.len() {
-        acc += G1Projective::from(g1(&ic[i + 1])?) * scalar(&pubs[i])?;
+        acc += G1Projective::from(g1(&ic[i + 1])?) * pubs[i];
     }
     Ok(G1Affine::from(acc).to_compressed())
 }
@@ -73,7 +145,7 @@ fn compute_vk_x(ic: &[String], pubs: &[String]) -> Result<[u8; 48], String> {
 /// Groth16 over BLS12-381, final pairing via the host function:
 /// e(alpha,beta) * e(vk_x,gamma) * e(C,delta) == e(A,B).
 /// ps (G1, 48B each) = alpha || vk_x || C ; qs (G2, 96B each) = beta || gamma || delta ; r = A ; s = B.
-pub fn verify(api: &dyn Api, a: &str, b: &str, c: &str, alpha: &str, beta: &str, gamma: &str, delta: &str, ic: &[String], pubs: &[String]) -> Result<bool, String> {
+pub fn verify_scalars(api: &dyn Api, a: &str, b: &str, c: &str, alpha: &str, beta: &str, gamma: &str, delta: &str, ic: &[String], pubs: &[Scalar]) -> Result<bool, String> {
     let vk_x = compute_vk_x(ic, pubs)?;
     let mut ps = Vec::with_capacity(48 * 3);
     ps.extend_from_slice(&raw(alpha, 48)?);
@@ -86,6 +158,12 @@ pub fn verify(api: &dyn Api, a: &str, b: &str, c: &str, alpha: &str, beta: &str,
     let r = raw(a, 48)?;
     let s = raw(b, 96)?;
     api.bls12_381_pairing_equality(&ps, &qs, &r, &s).map_err(|e| e.to_string())
+}
+
+/// Convenience wrapper for raw-scalar public inputs given as 32-byte LE hex.
+pub fn verify(api: &dyn Api, a: &str, b: &str, c: &str, alpha: &str, beta: &str, gamma: &str, delta: &str, ic: &[String], pubs: &[String]) -> Result<bool, String> {
+    let pubs: Vec<Scalar> = pubs.iter().map(|h| scalar_canonical(h)).collect::<Result<_, _>>()?;
+    verify_scalars(api, a, b, c, alpha, beta, gamma, delta, ic, &pubs)
 }
 
 #[cfg(test)]
@@ -106,7 +184,7 @@ mod tests {
         let alpha = g1(alpha)?; let beta = g2(beta)?; let gamma = g2(gamma)?; let delta = g2(delta)?;
         if ic.len() != pubs.len() + 1 { return Err("ic/pubs length".into()); }
         let mut vk_x = G1Projective::from(g1(&ic[0])?);
-        for i in 0..pubs.len() { vk_x += G1Projective::from(g1(&ic[i + 1])?) * scalar(&pubs[i])?; }
+        for i in 0..pubs.len() { vk_x += G1Projective::from(g1(&ic[i + 1])?) * scalar_canonical(&pubs[i])?; }
         let vk_x = G1Affine::from(vk_x);
         let ml = multi_miller_loop(&[
             (&a, &G2Prepared::from(b)),
@@ -117,20 +195,21 @@ mod tests {
         Ok(ml.final_exponentiation() == Gt::identity())
     }
 
-    struct Inputs { a: String, b: String, c: String, alpha: String, beta: String, gamma: String, delta: String, ic: Vec<String>, pubs: Vec<String> }
+    struct Inputs { a: String, b: String, c: String, alpha: String, beta: String, gamma: String, delta: String, ic: Vec<String>, pubs: Vec<String>, pubs_dec: Vec<String> }
     fn load() -> Inputs {
         let j: serde_json::Value = serde_json::from_str(include_str!("../../../ckb-to-cardano/circuit/ceremony/leap_bound_windowed_redeemer.json")).unwrap();
         let s = |v: &serde_json::Value| v.as_str().unwrap().to_string();
         let proof = &j["proof"]; let vk = &j["vk"];
         let ic: Vec<String> = vk["ic"].as_array().unwrap().iter().map(s).collect();
+        let pubs_dec: Vec<String> = j["public_inputs_dec"].as_array().unwrap().iter().map(s).collect();
         // public inputs: decimal -> 32-byte little-endian hex
-        let pubs: Vec<String> = j["public_inputs_dec"].as_array().unwrap().iter().map(|v| {
-            let n = BigUint::parse_bytes(v.as_str().unwrap().as_bytes(), 10).unwrap();
+        let pubs: Vec<String> = pubs_dec.iter().map(|v| {
+            let n = BigUint::parse_bytes(v.as_bytes(), 10).unwrap();
             let mut le = n.to_bytes_le(); le.resize(32, 0);
             hex::encode(le)
         }).collect();
         Inputs { a: s(&proof["a"]), b: s(&proof["b"]), c: s(&proof["c"]),
-            alpha: s(&vk["alpha_g1"]), beta: s(&vk["beta_g2"]), gamma: s(&vk["gamma_g2"]), delta: s(&vk["delta_g2"]), ic, pubs }
+            alpha: s(&vk["alpha_g1"]), beta: s(&vk["beta_g2"]), gamma: s(&vk["gamma_g2"]), delta: s(&vk["delta_g2"]), ic, pubs, pubs_dec }
     }
 
     #[test]
@@ -150,7 +229,6 @@ mod tests {
     fn host_fn_matches_inwasm_reference() {
         let deps = mock_dependencies();
         let i = load();
-        // same input: host-fn path and all-in-wasm path must agree, both on the real proof and a tampered one.
         let host_ok = verify(&deps.api, &i.a, &i.b, &i.c, &i.alpha, &i.beta, &i.gamma, &i.delta, &i.ic, &i.pubs).unwrap();
         let wasm_ok = verify_inwasm(&i.a, &i.b, &i.c, &i.alpha, &i.beta, &i.gamma, &i.delta, &i.ic, &i.pubs).unwrap();
         assert_eq!(host_ok, wasm_ok, "host pairing and in-wasm pairing disagree on the real proof");
@@ -161,5 +239,51 @@ mod tests {
         let wasm_bad = verify_inwasm(&i.a, &i.b, &i.c, &i.alpha, &i.beta, &i.gamma, &i.delta, &i.ic, &bad).unwrap();
         assert_eq!(host_bad, wasm_bad, "host pairing and in-wasm pairing disagree on a tampered input");
         assert!(!host_bad);
+    }
+
+    /// The event -> public-inputs derivation is byte-exact with the leap circuit, cross-checked against the
+    /// independent off-chain reference (derive_inputs.mjs: @noble/curves + @noble/hashes/blake2). The vectors
+    /// below are that reference's output for the constructed event in derive_inputs.mjs.
+    #[test]
+    fn binds_event_to_public_inputs() {
+        // constructed event (identical to derive_inputs.mjs)
+        let window_root = "ff".repeat(32);
+        let seal: String = (0u8..32).map(|i| format!("{:02x}", i)).collect();
+        let recipient = "aa".repeat(28);
+        let amount: u128 = 123456789;
+        let tip_height: u64 = 21388353;
+        let k: u64 = 12;
+
+        let pubs = derive_event_inputs(&window_root, &seal, amount, &recipient, tip_height, k).unwrap();
+
+        // reference: canonical 32-byte little-endian hex of each derived field element (from derive_inputs.mjs)
+        let expected = [
+            "fdffffff0100000002480300fab78458f54fbcecef4f8c996f05c5ac59b12418", // window_root (0xff*32 reduced mod r)
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", // seal
+            "08289493b84761ae123ffb57c21d6e6bd274b87749fe97fcea7533b071caa132", // commitment = blake2b256(amount||recip||seal)
+            "415c460100000000000000000000000000000000000000000000000000000000", // tip_height = 21388353
+            "0c00000000000000000000000000000000000000000000000000000000000000", // k = 12
+        ];
+        for (i, exp) in expected.iter().enumerate() {
+            assert_eq!(hex::encode(pubs[i].to_bytes()), *exp, "derived public input {i} differs from the off-chain reference");
+        }
+    }
+
+    /// Tie the integer-valued public inputs (tip_height, K) to the REAL committed redeemer: the contract's
+    /// u64 -> scalar binding must reproduce the real proof's pi[3] and pi[4] exactly. (The hash-valued inputs
+    /// window_root/seal/commitment cannot be tied here because the redeemer carries only their reduced scalars,
+    /// not the raw preimage; the prover now emits that preimage as a sidecar to close the round-trip.)
+    #[test]
+    fn integer_inputs_match_real_redeemer() {
+        let i = load();
+        assert_eq!(i.pubs_dec[3], "21388353", "redeemer pi[3] is the tip height");
+        assert_eq!(i.pubs_dec[4], "12", "redeemer pi[4] is K");
+        let dec_to_scalar = |d: &str| {
+            let n = BigUint::parse_bytes(d.as_bytes(), 10).unwrap();
+            let mut le = n.to_bytes_le(); le.resize(32, 0);
+            scalar_canonical(&hex::encode(le)).unwrap()
+        };
+        assert_eq!(Scalar::from(21388353u64), dec_to_scalar(&i.pubs_dec[3]), "tip_height binding != real redeemer pi[3]");
+        assert_eq!(Scalar::from(12u64), dec_to_scalar(&i.pubs_dec[4]), "K binding != real redeemer pi[4]");
     }
 }

@@ -14,6 +14,9 @@ hex = { version = "0.4", default-features = false, features = ["alloc"] }
 # Shipped wasm only needs G1 scalar muls for vk_x; the final pairing runs in the chain's host function. So no
 # "pairings" feature here -> the Miller loop / final exponentiation / Fp12 code is dropped from the wasm.
 bls12_381 = { version = "0.8", default-features = false, features = ["groups", "alloc"] }
+# Standard BLAKE2b-256, for deriving the value+recipient commitment public input from a concrete CKB event
+# (matches the circuit's b2b() = unkeyed 32-byte BLAKE2b).
+blake2 = { version = "0.10", default-features = false }
 
 [dev-dependencies]
 num-bigint = "0.4"

@@ -36,13 +36,27 @@ e(A, B) == e(alpha, beta) * e(vk_x, gamma) * e(C, delta),   vk_x = ic[0] + sum(p
 So a Cosmos chain can verify the bridge's CKB-state proof on-chain, in the cheap production form, with the same
 math Cardano runs.
 
+- **Bound to a concrete CKB event** (`VerifyCkbEvent`, `derive_inputs.mjs`): verifying a proof is not enough,
+  the contract must gate on a NAMED event so a relayer cannot present a valid proof and then claim different
+  public inputs. So the contract takes the event fields (window_root, seal, amount, recipient, tip_height, K)
+  and DERIVES the 5 Groth16 public inputs exactly as the leap circuit does:
+  `pi = [LEmod(window_root), LEmod(seal), LEmod(blake2b256(amount[16 LE] ‖ recipient[28] ‖ seal[32])),
+  tip_height, K]`, where `LEmod(b) = (b read little-endian) mod r`. The derivation is cross-checked byte-for-byte
+  against an independent off-chain reference (`derive_inputs.mjs`, `@noble/curves` + `@noble/hashes/blake2`) on a
+  constructed event (the test asserts all 5 derived field elements equal the reference, including the mod-r
+  reduction of an over-r window_root and the blake2b commitment), and the integer inputs (`tip_height`, `K`) are
+  tied to the REAL committed redeemer (`21388353`, `12`). The one seam a static redeemer cannot cover is the
+  hash inputs bound to THIS proof's hidden preimage; the leap prover now writes that preimage as a sidecar
+  (`leap_bound_windowed_event.json`), so the next real proof run gives a full event-to-proof round-trip.
+
 ## How to run
 
 ```
 cd spike/cosmwasm-ckb && npm install
 node verify_ckb_proof.mjs        # off-chain: e(A,B) == e(alpha,beta)*e(vk_x,gamma)*e(C,delta) -> true
-wsl: cd contract && cargo test --release   # host-fn path verifies + rejects tampered, and matches the in-wasm reference
-wsl: RUSTFLAGS="-C link-arg=--allow-undefined" cargo build --release --target wasm32-unknown-unknown --lib   # -> ckb_verifier.wasm (~304 KB)
+node derive_inputs.mjs           # off-chain reference: event fields -> the 5 public inputs (the test's vectors)
+wsl: cd contract && cargo test --release   # host-fn verify + in-wasm cross-check + event-binding derivation
+wsl: RUSTFLAGS="-C link-arg=--allow-undefined" cargo build --release --target wasm32-unknown-unknown --lib   # -> ckb_verifier.wasm (~332 KB)
 ```
 
 ## Where this sits, and what is left
@@ -50,9 +64,12 @@ wsl: RUSTFLAGS="-C link-arg=--allow-undefined" cargo build --release --target wa
 - **Gas / size optimization: done.** The contract now does the scalar muls for `vk_x` in wasm and the final
   pairing via CosmWasm's `bls12_381_pairing_equality` host function (~304 KB, cheap host pairing instead of an
   in-wasm Miller loop). The all-in-wasm version remains as a test-only cross-check reference.
-- **Deploy + bind:** instantiate the contract on a CosmWasm testnet (Neutron, Osmosis), and bind the proof's
-  public inputs to a concrete CKB event (the window root, the locked/burned amount, the recipient), so a Cosmos
-  action is gated on a verified CKB state, the mirror of how the CKB side gates on a verified Cosmos tx.
+- **Public-input binding: done.** `VerifyCkbEvent` derives the 5 public inputs from the concrete CKB event
+  (window root, seal, amount, recipient, tip_height, K), so a Cosmos action gates on a NAMED CKB state, the
+  mirror of how the CKB side gates on a named Cosmos tx. Cross-checked byte-exact against the off-chain
+  reference; the prover emits the event preimage sidecar for the end-to-end round-trip.
+- **Deploy:** instantiate the contract on a CosmWasm testnet (Neutron, Osmosis) and drive a live query (needs a
+  funded testnet account + gas). The wasm and the verification logic are ready.
 - **Asset + registry wiring:** reuse the chain-agnostic asset binding and the replay-once registry for the
   Cosmos <-> CKB pair.
 
