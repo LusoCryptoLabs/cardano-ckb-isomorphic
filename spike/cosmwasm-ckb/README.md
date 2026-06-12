@@ -49,6 +49,14 @@ math Cardano runs.
   hash inputs bound to THIS proof's hidden preimage; the leap prover now writes that preimage as a sidecar
   (`leap_bound_windowed_event.json`), so the next real proof run gives a full event-to-proof round-trip.
 
+- **Replay-once registry** (`ExecuteMsg::RecordCkbEvent`): verifying a CKB event is not enough, the same event
+  must be consumable only once on Cosmos. The `execute` path verifies the bound proof, then inserts the event's
+  `seal` (the unique CKB tx hash) into a nullifier set under a per-leg domain tag
+  (`chiral:cosmos-ckb:nf:`, mirroring the CKB-side `burn_nullifier_registry` separation); a second record of the
+  same seal is rejected. The test drives this against the REAL verifying proof (record once, replay rejected,
+  distinct seal still records) and checks `execute` is fail-closed (a proof that does not match the claimed event
+  is rejected before anything is stored). This is the chain-agnostic replay registry, reused for the Cosmos leg.
+
 ## How to run
 
 ```

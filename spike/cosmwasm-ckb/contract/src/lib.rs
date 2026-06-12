@@ -54,11 +54,50 @@ pub enum QueryMsg {
 }
 
 #[cw_serde]
+pub enum ExecuteMsg {
+    /// Verify a CKB event proof and record its seal in the replay-once registry, so the SAME CKB event cannot be
+    /// consumed twice on Cosmos (the chain-agnostic nullifier set, mirroring the CKB-side burn_nullifier_registry
+    /// with a per-leg domain tag). Fails if the proof is invalid or the event was already recorded.
+    RecordCkbEvent {
+        window_root: String, seal: String, amount: Uint128, recipient: String, tip_height: u64, k: u64,
+        proof: Proof, vk: Vk,
+    },
+}
+
+#[cw_serde]
 pub struct VerifyResp { pub valid: bool }
+
+/// Per-leg domain tag for the Cosmos-side nullifier set (mirrors the CKB CHIRAL_NULL_TAG separation).
+const NF_DOMAIN: &[u8] = b"chiral:cosmos-ckb:nf:";
+fn nf_key(seal: &[u8]) -> Vec<u8> { [NF_DOMAIN, seal].concat() }
 
 #[entry_point]
 pub fn instantiate(_d: DepsMut, _e: Env, _i: MessageInfo, _m: InstantiateMsg) -> StdResult<Response> {
     Ok(Response::new())
+}
+
+#[entry_point]
+pub fn execute(deps: DepsMut, _env: Env, _info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
+    match msg {
+        ExecuteMsg::RecordCkbEvent { window_root, seal, amount, recipient, tip_height, k, proof, vk } => {
+            let pubs = derive_event_inputs(&window_root, &seal, amount.u128(), &recipient, tip_height, k).map_err(StdError::generic_err)?;
+            let valid = verify_scalars(deps.api, &proof.a, &proof.b, &proof.c, &vk.alpha, &vk.beta, &vk.gamma, &vk.delta, &vk.ic, &pubs).map_err(StdError::generic_err)?;
+            if !valid { return Err(StdError::generic_err("CKB event proof did not verify")); }
+            let seal_bytes = raw(&seal, 32).map_err(StdError::generic_err)?;
+            record_nullifier(deps.storage, &seal_bytes)?;
+            Ok(Response::new().add_attribute("action", "record_ckb_event").add_attribute("seal", seal.trim_start_matches("0x")))
+        }
+    }
+}
+
+/// Insert a seal into the replay-once nullifier set; error if it is already present.
+fn record_nullifier(storage: &mut dyn cosmwasm_std::Storage, seal: &[u8]) -> StdResult<()> {
+    let key = nf_key(seal);
+    if storage.get(&key).is_some() {
+        return Err(StdError::generic_err("CKB event already recorded (replay)"));
+    }
+    storage.set(&key, &[1u8]);
+    Ok(())
 }
 
 #[entry_point]
@@ -273,6 +312,39 @@ mod tests {
     /// u64 -> scalar binding must reproduce the real proof's pi[3] and pi[4] exactly. (The hash-valued inputs
     /// window_root/seal/commitment cannot be tied here because the redeemer carries only their reduced scalars,
     /// not the raw preimage; the prover now emits that preimage as a sidecar to close the round-trip.)
+    /// The Cosmos-side replay-once registry: a verified CKB event records its seal, and the same event cannot be
+    /// recorded twice. Also checks execute() is fail-closed (a proof that does not match the claimed event is
+    /// rejected before anything is stored).
+    #[test]
+    fn records_and_blocks_replay() {
+        use cosmwasm_std::testing::mock_env;
+        use cosmwasm_std::{Addr, MessageInfo, Uint128};
+        let mut deps = mock_dependencies();
+        let i = load();
+
+        // execute() is fail-closed: the constructed event does not match the real proof's committed event, so the
+        // derived inputs verify to false and nothing is recorded.
+        let vk = Vk { alpha: i.alpha.clone(), beta: i.beta.clone(), gamma: i.gamma.clone(), delta: i.delta.clone(), ic: i.ic.clone() };
+        let proof = Proof { a: i.a.clone(), b: i.b.clone(), c: i.c.clone() };
+        let info = MessageInfo { sender: Addr::unchecked("anyone"), funds: vec![] };
+        let msg = ExecuteMsg::RecordCkbEvent {
+            window_root: "ff".repeat(32), seal: (0u8..32).map(|x| format!("{:02x}", x)).collect(),
+            amount: Uint128::new(123456789), recipient: "aa".repeat(28), tip_height: 21388353, k: 12, proof, vk,
+        };
+        assert!(execute(deps.as_mut(), mock_env(), info, msg).is_err(), "mismatched event/proof must be rejected");
+
+        // replay-once registry against the REAL verifying proof: record the seal once, reject the second time.
+        let pubs: Vec<Scalar> = i.pubs.iter().map(|h| scalar_canonical(h).unwrap()).collect();
+        let valid = verify_scalars(&deps.api, &i.a, &i.b, &i.c, &i.alpha, &i.beta, &i.gamma, &i.delta, &i.ic, &pubs).unwrap();
+        assert!(valid, "the real proof must verify before recording");
+        let nf = pubs[1].to_bytes(); // seal scalar = the unique CKB event id
+        record_nullifier(&mut deps.storage, &nf).expect("first record ok");
+        assert!(record_nullifier(&mut deps.storage, &nf).is_err(), "second record of the same seal must be rejected");
+        // a different seal still records
+        let other = pubs[0].to_bytes();
+        record_nullifier(&mut deps.storage, &other).expect("a distinct seal records ok");
+    }
+
     #[test]
     fn integer_inputs_match_real_redeemer() {
         let i = load();
