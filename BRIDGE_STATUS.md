@@ -12,6 +12,11 @@
 > shipped (singleton forge-cert guard, K_MIN floor, nullifier domain separation, escrow placeholder guard);
 > 4 operational remediations gate mainnet (real MPC setup, STM-pin+singleton redeploy, advance ceremony/K,
 > upgrade-key lockdown). All testnet, no value at risk. **Read before any redeploy** (codeHash re-bake notes).
+>
+> 🧩 **Multi-chain:** see [`BRIDGE_TEMPLATE.md`](BRIDGE_TEMPLATE.md) — the repeatable recipe to bind ANY chain to
+> CKB both ways (the 6 components per chain, the curve/VM matrix, the deploy gotchas). Worked instance = Cosmos
+> (`spike/cosmos-ckb`, `spike/cosmwasm-ckb`): mutual verification LIVE both ways (CKB-verifies-Cosmos on Pudge,
+> Cosmos-verifies-CKB on osmo-test-5). Cardano below is the original instance.
 
 The bridge has **two legs**. Both are demonstrated live on testnet (CKB Pudge ⇄ Cardano preview).
 
