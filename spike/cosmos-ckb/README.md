@@ -103,6 +103,12 @@ wsl: cargo test --bin catom_mint --target x86_64-unknown-linux-gnu   # the proto
 node build_catom_mock.mjs             # synthetic block + escrow MsgSend + checkpoint dep + registry input
 wsl: ckb-debugger --max-cycles 5000000000 --tx-file catom_mock.json --script-group-type type --cell-type output --cell-index 0   # 0
 BADAMOUNT=1 node build_catom_mock.mjs # then ckb-debugger catom_mock_badamount.json -> 24 (also BADRECIP 28 / BADPIN 9 / BADTYPEURL 30)
+
+# the skipping light client (non-adjacent verification)
+wsl: cd ../burn-gated-unlock && RUSTFLAGS="-C target-feature=-a,+forced-atomics" cargo build --release --bin tendermint_skip
+node build_skip_mock.mjs              # synthetic two-set scenario (trusted {T0..T3}, H2 own {T0,T1,N2,N3})
+wsl: ckb-debugger --max-cycles 5000000000 --tx-file skip_mock.json --script-group-type lock --cell-type input --cell-index 0   # 0
+LOWTRUST=1 node build_skip_mock.mjs   # then ckb-debugger skip_mock_lowtrust.json -> 22 (also LOWNEW 20 / BADNEW 21 / BADTRUST 9)
 ```
 
 ## Where this sits, and what is left
@@ -111,10 +117,21 @@ The CKB-verifies-Cosmos direction is now complete at the proof level: CKB-VM pro
 a finalized block (commit + header reconstruction + tx inclusion), `tendermint_inclusion.rs`, on real data.
 What remains to reach a full live Cosmos to CKB isomorphic binding:
 
-- **Validator-set lineage:** binding (anchor) and sequential advancement are both done (`tendermint_advance`,
-  above). What remains is the SKIPPING variant for big height gaps (verify the block's commit has > 1/3 overlap
-  of the trusted set within the unbonding/trust period, then adopt the block's own set), which avoids
-  processing every block. Sequential proves the mechanism; skipping is the throughput optimization.
+- **Validator-set lineage:** binding (anchor), sequential advancement (`tendermint_advance`) AND the SKIPPING
+  variant (`tendermint_skip`, below) are all done. Sequential proves the mechanism; skipping is the throughput
+  optimization for big height gaps.
+
+- **Skipping light client** (`tendermint_skip.rs`, `build_skip_mock.mjs`): jump the anchor straight to a
+  far-ahead block H2 without processing the blocks in between (Tendermint `verifyNonAdjacent`). Two distinct
+  sets are supplied, H2's OWN set and the TRUSTED set the anchor commits to, and the checks mirror Tendermint:
+  H2's own set hashes to `validators_hash` and > 2/3 of its power signed H2 (the block is valid per its own
+  set); the TRUSTED set hashes to the anchor; and validators in the trusted set who signed H2 hold > 1/3 of the
+  trusted set's power (`trustLevel = 1/3`, so at least one honest trusted validator vouches); then
+  `new_anchor == next_validators_hash`. Validated in CKB-VM with a synthetic two-set scenario (trusted
+  {T0..T3}, H2 own {T0,T1,N2,N3}): the valid skip gives `Run result: 0` at ~8.4M cycles, and four cases fail
+  closed, insufficient trust level `22`, insufficient block-own signing `20`, wrong new anchor `21`, wrong
+  trusted anchor `9`. The one documented residual is the trust-PERIOD (time) bound, which needs an on-chain
+  clock (a header-dep, the cells L-2 pattern); the cryptographic skip logic is what this proves.
 - **The reverse verifier:** DONE. A CosmWasm contract (`spike/cosmwasm-ckb`) verifies the existing CKB-state
   Groth16 proof (Cosmos verifies CKB), in production host-function form, bound to a named CKB event, with a
   replay-once registry.

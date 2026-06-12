@@ -90,6 +90,12 @@ path = "src/bin/tendermint_advance.rs"
 name = "catom_mint"
 path = "src/bin/catom_mint.rs"
 
+# SKIPPING light-client variant (verifyNonAdjacent): jump the anchor across a big height gap when > 1/3 of the
+# TRUSTED set's power signed the far-ahead block (trust level), plus > 2/3 of the block's OWN set. Throughput.
+[[bin]]
+name = "tendermint_skip"
+path = "src/bin/tendermint_skip.rs"
+
 [dependencies]
 ckb-std = "0.16"
 blake2 = { version = "0.10", default-features = false }

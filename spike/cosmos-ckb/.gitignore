@@ -14,3 +14,8 @@ catom_mock_badrecip.json
 catom_mock_badpin.json
 catom_mock_badtypeurl.json
 inc_badpin.json
+skip_mock.json
+skip_mock_lowtrust.json
+skip_mock_lownew.json
+skip_mock_badnew.json
+skip_mock_badtrust.json
