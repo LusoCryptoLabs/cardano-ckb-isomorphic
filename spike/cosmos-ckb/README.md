@@ -102,7 +102,9 @@ landed in a finalized block, for ~344M cycles.
   canonical xUDT (`xUDT(args = this lock's hash)`), minted via xUDT owner mode, with the Unique token-info cell
   (Chiral OSMO / xOSMO / 6) issued IN the mint tx. **LIVE on Pudge from a real osmo-test-5 escrow**: token id
   `0x8059cdb0…`, mint tx `0xb25d8e425a6bf6c78e2e6afdd4a8ee1ce4e24695f8df16a52caca8cb7f19d597`; verified on-chain
-  as a standard-xUDT cell with the Unique cell decoding to decimals 6 / Chiral OSMO / xOSMO. This is the χADA
+  as a standard-xUDT cell with the Unique cell decoding to decimals 6 / Chiral OSMO / xOSMO. **Explorer-confirmed:**
+  the ckb-explorer API `/udts/` and `/xudts/` both return `full_name "Chiral OSMO", symbol "xOSMO", decimal 6,
+  published: true`. This is the χADA
   display fix applied to the Cosmos leg. NOTE on capacity: a code cell costs ~1 CKB/byte; on a heavily-loaded
   deployer lock the public RPC's 10 MB cell-scan cap breaks CCC's auto input-gathering, so the orchestration is
   idempotent (never redeploys), picks funding via the indexer's empty-data filter, and `recover_paginated.mjs`
