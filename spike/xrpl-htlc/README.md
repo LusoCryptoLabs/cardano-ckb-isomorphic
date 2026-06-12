@@ -46,6 +46,11 @@ is the atomicity: no custody, no trusted relayer for safety, only liveness (the 
   (`3CF7E943...`), Bob 100 -> 109.99 XRP. The same secret settled both real chains, no party holding funds.
 - **The relay** (`swap_relay.mjs`): the same choreography with the CKB side in ckb-debugger (handy when you do
   not want to spend the on-chain code-cell capacity); `live_swap.mjs` is the on-chain version.
+- **The watcher and swap-leg interface** (`swap_leg.mjs`): a reusable Mode B leg (lock / claim / finish /
+  refund on both chains, both watcher directions, and a timelock-ordering safety gate). Autonomous live run:
+  the safety gate passed (`safe to lock second leg: true`), both legs locked (CKB cell `0xd0e45732...:0`), the
+  CKB claim fired on-chain (`0xe6445d48...`), and the watcher polled CKB, found the claim, extracted `s`, and
+  finished the XRPL escrow by itself (`60AE09B8...`) so Bob received the XRP. No human in the settlement loop.
 
 ## How to run
 
@@ -77,11 +82,13 @@ Solana (alt_bn128) can host a verifier and so can join Mode A; XRPL cannot, and 
 ```
 cd spike/xrpl-htlc && npm install
 node live_swap.mjs     # FULLY LIVE: deploys htlc_lock (first run), locks + claims on Pudge, settles XRPL
+node swap_leg.mjs      # reusable leg + AUTONOMOUS watcher: locks both, claims CKB, watcher settles XRPL itself
 node swap_relay.mjs    # same choreography but CKB claim in ckb-debugger (no on-chain code-cell spend)
 ```
 
 ## Next steps
 
-- The mirror direction (watch the CKB claim on Pudge, submit the XRPL `EscrowFinish`) as a long-running
-  daemon, with the timelock-ordering safety checks (`T1 < T2`) enforced before locking the second leg.
-- Generalize to a swap-leg interface so XRPL, Bitcoin, and Lightning/Fiber share one Mode B implementation.
+- Run the mirror watcher direction (`watchXrplThenClaimCkb`) live end to end (the XRPL-reveal -> CKB-claim
+  ordering); both halves are already proven, only that full ordering is not yet driven on-chain.
+- Generalize the `swap_leg` interface so XRPL, Bitcoin, and Lightning/Fiber share one Mode B implementation,
+  and add liquidity/market-maker plumbing (Mode B is liquidity-based, not mint-based).
