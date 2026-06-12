@@ -61,9 +61,6 @@ async function main() {
   const aunts = buildAunts(items, index);
 
   const parts = [];
-  // pinned trusted validator-set hash (the anchor). BADPIN=1 pins a wrong one -> the real set is rejected.
-  const trusted = hx(H.validators_hash); if (process.env.BADPIN) trusted[0] ^= 0xff;
-  parts.push(trusted);
   parts.push(Buffer.from([leaves.length]));
   for (const l of leaves) parts.push(u16(l.length), l);
   const chainId = Buffer.from(H.chain_id, "utf8");
@@ -82,7 +79,9 @@ async function main() {
   const blob = Buffer.concat(parts);
 
   const data = ccc.hexFrom(new Uint8Array(fs.readFileSync(BIN)));
-  const lock = ccc.Script.from({ codeHash: ccc.hashCkb(data), hashType: "data1", args: "0x" });
+  // the trusted validator-set anchor is now the lock's script args (the cell commits to it). BADPIN flips it.
+  const trusted = hx(H.validators_hash); if (process.env.BADPIN) trusted[0] ^= 0xff;
+  const lock = ccc.Script.from({ codeHash: ccc.hashCkb(data), hashType: "data1", args: "0x" + trusted.toString("hex") });
   const scr = (s) => ({ code_hash: s.codeHash, hash_type: s.hashType, args: s.args });
   const PREV = { tx_hash: "0x" + "00".repeat(32), index: "0x0" }, DEP = { tx_hash: "0x" + "01".repeat(32), index: "0x0" };
   const wit = ccc.hexFrom(ccc.WitnessArgs.from({ lock: "0x" + blob.toString("hex") }).toBytes());

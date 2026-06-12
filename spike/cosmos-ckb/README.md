@@ -53,7 +53,14 @@ landed in a finalized block, for ~344M cycles.
   state). On real data: with the real anchor, `Run result: 0` (350.5M cycles, the valset Merkle adds ~6M); with
   a wrong anchor, `Run result: 9` (the set is rejected). So a relayer cannot fabricate a validator set; it must
   supply the chain's real set, which must match the pinned trusted set. The encoding (`SimpleValidator =
-  pub_key(PublicKey{ed25519}) ‖ voting_power`) matched the real `validators_hash` on the first try.
+  pub_key(PublicKey{ed25519}) ‖ voting_power`) matched the real `validators_hash` on the first try. The anchor
+  is the lock's script args, so a deployed cell commits to its trust anchor instead of reading it from the
+  witness.
+- **LIVE on CKB Pudge** (`live_cosmos_verify.mjs`): `tendermint_inclusion` is deployed (codeHash `0xf41efc6e`,
+  dep tx `0xea85cbef`). A cell was locked under the real cosmoshub-4 validator-set anchor (`0x404657c8`) and
+  then UNLOCKED by supplying the Cosmos tx-inclusion proof in the witness (unlock tx `0x18f519b6`). The spend
+  succeeded, so the live CKB-VM verified on-chain that a real Cosmos tx is in a finalized block. This is the
+  CKB side of the binding, live, not just ckb-debugger.
 
 ## How to run
 

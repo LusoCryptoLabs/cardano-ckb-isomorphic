@@ -1,0 +1,12 @@
+{
+  "txHash": "0xea85cbef7aaa7e1bbb72ff1f16e64b70c349303abf8512f1427d034fc1a918aa",
+  "index": 0,
+  "codeHash": "0xf41efc6e9f57e6637e59734dc4059fe759b2dd8271081e507b762050ec578046",
+  "dep": {
+    "outPoint": {
+      "txHash": "0xea85cbef7aaa7e1bbb72ff1f16e64b70c349303abf8512f1427d034fc1a918aa",
+      "index": 0
+    },
+    "depType": "code"
+  }
+}

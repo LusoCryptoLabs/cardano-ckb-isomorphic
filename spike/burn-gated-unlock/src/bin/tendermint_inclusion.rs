@@ -17,7 +17,7 @@
 #[cfg(test)] extern crate alloc;
 use alloc::vec::Vec;
 use ckb_std::ckb_constants::Source;
-use ckb_std::high_level::load_witness_args;
+use ckb_std::high_level::{load_witness_args, load_script};
 use ed25519_dalek::{Signature, VerifyingKey, Verifier};
 use sha2::{Sha256, Digest};
 #[cfg(not(test))] ckb_std::entry!(program_entry);
@@ -89,10 +89,11 @@ fn program_entry() -> i8 {
     let blob = match w.lock().to_opt() { Some(b) => b.raw_data(), None => return 2 };
     let mut r = R::new(&blob);
 
-    // 0) the PINNED trusted validator-set hash (the bridge's trust anchor; in a live deploy this comes from the
-    //    bridge cell's state, advanced as the set rotates, not from the witness).
-    let mut trusted_valset_hash = [0u8; 32];
-    { let t = r.take(32); if t.len() == 32 { trusted_valset_hash.copy_from_slice(t); } }
+    // 0) the PINNED trusted validator-set hash — from the LOCK SCRIPT ARGS, so the cell itself commits to its
+    //    trust anchor (advanced as the set rotates). NOT from the witness, which the relayer controls.
+    let sargs = match load_script() { Ok(s) => s.args().raw_data(), Err(_) => return 10 };
+    if sargs.len() < 32 { return 10; }
+    let mut trusted_valset_hash = [0u8; 32]; trusted_valset_hash.copy_from_slice(&sargs[0..32]);
 
     // 1) header leaves -> block_hash, data_hash
     let n_leaves = r.u8() as usize;
