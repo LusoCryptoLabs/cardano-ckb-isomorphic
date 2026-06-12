@@ -151,13 +151,17 @@ SHA256). The asymmetric constraint is always B1: can X's VM afford to verify the
 | B1 X-verifies-CKB | `cosmwasm-ckb/contract` | **LIVE osmo-test-5** (`VerifyCkbProof -> valid:true`, codeId 13217) |
 | Public-input binding | `VerifyCkbEvent` + `derive_inputs.mjs` | tested |
 | Replay registry (X side) | `RecordCkbEvent` (tag `chiral:cosmos-ckb:nf:`) | tested |
-| B2/B3 CKB->Cosmos release leg | none | NOT built (needs a burn circuit committing a Cosmos recipient) |
+| B2 CKB burn receipt | `xosmo_burn_receipt.rs` | ckb-debugger 0 + 3 fail-closed (burns χOSMO, binds amount+cosmos_recipient) |
+| B3 Cosmos release | `ReleaseOnCkbBurn` (cosmwasm-ckb) | tested (verify burn proof + nullify + BankMsg uosmo); LIVE release needs a real CKB-burn proof |
+| B2 burn-proving circuit | reuse the leap circuit family | NOT yet instantiated for the χOSMO burn (the residual: needs the CKB-state proving pipeline) |
 
 What is LIVE: the mutual verification (both directions) AND the full Direction A value flow, real OSMO locked on
 osmo-test-5 (escrow tx `13587CE7`, h60729382) -> real χOSMO minted on CKB Pudge (mint tx `0x8fbe7459…`), gated
 on the real Cosmos escrow proven in CKB-VM, bound 1:1 to the amount and recipient, replay-once recorded in the
-type-id nullifier registry. What remains: the entire Direction B release leg (B2 + B3), the genuinely new
-circuit work.
+type-id nullifier registry. Direction B is CODE-COMPLETE and tested (the `xosmo_burn_receipt` CKB script + the
+`ReleaseOnCkbBurn` Cosmos handler), with one residual for a LIVE release: a real Groth16 proof of the χOSMO
+burn, which needs the CKB-state proving pipeline (the window/checkpoint + arkworks prover + setup), the same
+infrastructure the forward CKB->Cardano leg runs.
 
 ## 7. Order of work for a new chain
 
