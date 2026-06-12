@@ -126,14 +126,13 @@ const blob = Buffer.concat(parts);
 // CKB scripts
 const data = ccc.hexFrom(new Uint8Array(fs.readFileSync(BIN)));
 const catomCodeHash = ccc.hashCkb(data);
-const ckptScript = ccc.Script.from({ codeHash: "0x" + "a1".repeat(32), hashType: "type", args: "0x" });
 const regScript = ccc.Script.from({ codeHash: "0x" + "b2".repeat(32), hashType: "type", args: "0x" });
-const ckptTypeHash = hexBuf(ckptScript.hash());
 const regTypeHash = hexBuf(regScript.hash());
 
-// catom_mint args = ckpt_type(32) || reg_type(32) || u8 denom_len || denom || escrow_to
+// catom_mint args = valset_anchor(32) || reg_type(32) || u8 denom_len || denom || escrow_to  (anchor baked in)
 const denomB = Buffer.from(DENOM), escrowB = Buffer.from(ESCROW);
-const catomArgs = Buffer.concat([ckptTypeHash, regTypeHash, Buffer.from([denomB.length]), denomB, escrowB]);
+const anchor = Buffer.from(valsetHash); if (process.env.BADPIN) anchor[0] ^= 0xff;
+const catomArgs = Buffer.concat([anchor, regTypeHash, Buffer.from([denomB.length]), denomB, escrowB]);
 const catomType = ccc.Script.from({ codeHash: catomCodeHash, hashType: "data1", args: "0x" + catomArgs.toString("hex") });
 
 // chiATOM output: data = amount(16 LE); BADAMOUNT mints a different amount than the escrow's.
@@ -142,10 +141,6 @@ const outData = Buffer.alloc(16); outData.writeBigUInt64LE(BigInt(mintedAmount),
 // BADRECIP: lock the output at a DIFFERENT lock than the memo's recipient.
 const realOutLock = process.env.BADRECIP ? ccc.Script.from({ codeHash: "0x" + "45".repeat(32), hashType: "type", args: "0x" }) : outLock;
 
-// checkpoint cell-dep data = "TMCP" || valset_hash || height(8); BADPIN flips the anchor.
-const anchor = Buffer.from(valsetHash); if (process.env.BADPIN) anchor[0] ^= 0xff;
-const ckptData = Buffer.concat([Buffer.from("TMCP"), anchor, u64(height)]);
-
 // registry nullifier key = b2b256(0x04 || sha256(tx))
 const nfKey = B2B(Buffer.concat([Buffer.from([0x04]), txHash]));
 
@@ -153,7 +148,7 @@ const scr = (s) => ({ code_hash: s.codeHash, hash_type: s.hashType, args: s.args
 const anyLock = scr(ccc.Script.from({ codeHash: "0x" + "55".repeat(32), hashType: "type", args: "0x" }));
 const OP = (h, i) => ({ tx_hash: "0x" + h, index: "0x" + i.toString(16) });
 const IN0 = OP("00".repeat(32), 0), IN1 = OP("11".repeat(32), 0);
-const DEP_CODE = OP("ce".repeat(32), 0), DEP_CKPT = OP("cf".repeat(32), 0);
+const DEP_CODE = OP("ce".repeat(32), 0);
 const cap = "0x2e90edd000";
 const depCap = "0x" + (BigInt((data.length - 2) / 2 + 100) * 100000000n).toString(16);
 
@@ -169,13 +164,12 @@ const mock = {
     ],
     cell_deps: [
       { cell_dep: { out_point: DEP_CODE, dep_type: "code" }, output: { capacity: depCap, lock: anyLock, type: null }, data, header: null },
-      { cell_dep: { out_point: DEP_CKPT, dep_type: "code" }, output: { capacity: cap, lock: anyLock, type: scr(ckptScript) }, data: "0x" + ckptData.toString("hex"), header: null },
     ],
     header_deps: [],
   },
   tx: {
     version: "0x0",
-    cell_deps: [{ out_point: DEP_CODE, dep_type: "code" }, { out_point: DEP_CKPT, dep_type: "code" }],
+    cell_deps: [{ out_point: DEP_CODE, dep_type: "code" }],
     header_deps: [],
     inputs: [{ since: "0x0", previous_output: IN0 }, { since: "0x0", previous_output: IN1 }],
     outputs: [{ capacity: cap, lock: scr(realOutLock), type: scr(catomType) }],

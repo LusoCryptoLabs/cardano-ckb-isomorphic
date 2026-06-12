@@ -15,9 +15,11 @@
 //!   memo == hex(the lock-hash all minted χATOM is locked to).
 //! The NEW code vs the two parents is the protobuf MsgSend reader; it is unit-tested below.
 //!
-//! args = cosmos_ckpt_type(32) ‖ reg_type(32) ‖ u8 denom_len ‖ denom ‖ escrow_to_address(rest)
+//! args = valset_anchor(32) ‖ reg_type(32) ‖ u8 denom_len ‖ denom ‖ escrow_to_address(rest)
 //! witness.input_type = the Cosmos inclusion blob (identical layout to tendermint_inclusion's witness).
-//! The cosmos checkpoint cell-dep (type == cosmos_ckpt_type) carries: "TMCP" ‖ valset_hash(32) ‖ height_le(8).
+//! The trusted Osmosis validator-set hash is BAKED into the policy args here (immutable, simplest for a single
+//! mint). The advanceable variant reads the anchor from a checkpoint cell-dep advanced by tendermint_advance /
+//! tendermint_skip; see those scripts and BRIDGE_TEMPLATE.md.
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), no_main)]
 #[cfg(test)] extern crate alloc;
@@ -197,29 +199,6 @@ fn hex_decode_32(s: &[u8]) -> Option<[u8; 32]> {
 }
 
 // ============================ mint binding (from xada_mint.rs) ============================
-fn cosmos_checkpoint(ckpt_type: &[u8; 32]) -> Result<([u8; 32], u64), i8> {
-    let mut found: Option<([u8; 32], u64)> = None;
-    let mut i = 0usize;
-    loop {
-        match load_cell_type_hash(i, Source::CellDep) {
-            Ok(Some(th)) if &th == ckpt_type => {
-                if let Ok(d) = load_cell_data(i, Source::CellDep) {
-                    if d.len() >= 44 && &d[0..4] == b"TMCP" {
-                        let mut vh = [0u8; 32]; vh.copy_from_slice(&d[4..36]);
-                        let mut hb = [0u8; 8]; hb.copy_from_slice(&d[36..44]);
-                        let cur = (vh, u64::from_le_bytes(hb));
-                        match &found { Some(prev) if *prev != cur => return Err(53), Some(_) => {}, None => found = Some(cur) }
-                    }
-                }
-                i += 1;
-            }
-            Ok(_) => { i += 1; }
-            Err(_) => break,
-        }
-        if i > 64 { break; }
-    }
-    found.ok_or(10)
-}
 fn registry_inserts_key(reg_type: &[u8; 32], key: &[u8; 32]) -> bool {
     let mut i = 0usize;
     loop {
@@ -259,7 +238,7 @@ fn outputs_all_at(recipient: &[u8]) -> Result<(), i8> {
 fn program_entry() -> i8 {
     let args = load_script().unwrap().args().raw_data();
     if args.len() < 64 + 1 { return 2; }
-    let mut ckpt_type = [0u8; 32]; ckpt_type.copy_from_slice(&args[0..32]);
+    let mut valset_anchor = [0u8; 32]; valset_anchor.copy_from_slice(&args[0..32]);
     let mut reg_type = [0u8; 32]; reg_type.copy_from_slice(&args[32..64]);
     let denom_len = args[64] as usize;
     if args.len() < 65 + denom_len + 1 { return 2; }
@@ -273,11 +252,8 @@ fn program_entry() -> i8 {
     let minted = out_sum - in_sum;
     if in_sum != 0 { return 18; }                 // a mint tx is mint-only
 
-    // gate: the pinned Cosmos validator-set anchor (advanced as the set rotates), via the checkpoint cell-dep.
-    let (valset_anchor, cheight) = match cosmos_checkpoint(&ckpt_type) { Ok(v) => v, Err(e) => return e };
-    if cheight == 0 { return 6; }
-
-    // the Cosmos inclusion proof: certifies the escrow tx is in a final block, returns its bytes.
+    // the Cosmos inclusion proof: certifies the escrow tx is in a final block (against the baked anchor),
+    // returns its bytes.
     let w = match load_witness_args(0, Source::GroupInput) {
         Ok(w) => w, Err(_) => match load_witness_args(0, Source::GroupOutput) { Ok(w) => w, Err(_) => return 3 } };
     let blob = match w.input_type().to_opt() { Some(l) => l.raw_data(), None => return 4 };

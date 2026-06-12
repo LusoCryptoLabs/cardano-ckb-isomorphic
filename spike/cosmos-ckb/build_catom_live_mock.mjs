@@ -106,24 +106,21 @@ async function main() {
   // ---- CKB mock cells ----
   const data = ccc.hexFrom(new Uint8Array(fs.readFileSync(BIN)));
   const catomCodeHash = ccc.hashCkb(data);
-  const ckptScript = ccc.Script.from({ codeHash: "0x" + "a1".repeat(32), hashType: "type", args: "0x" });
   const regScript = ccc.Script.from({ codeHash: "0x" + "b2".repeat(32), hashType: "type", args: "0x" });
-  const ckptTypeHash = hx(ckptScript.hash().replace(/^0x/, ""));
   const regTypeHash = hx(regScript.hash().replace(/^0x/, ""));
   const denomB = Buffer.from(E.denom), escrowB = Buffer.from(E.escrow);
-  const catomArgs = Buffer.concat([ckptTypeHash, regTypeHash, Buffer.from([denomB.length]), denomB, escrowB]);
+  const anchor = Buffer.from(valsetHash); if (process.env.BADPIN) anchor[0] ^= 0xff;   // baked anchor (args[0..32])
+  const catomArgs = Buffer.concat([anchor, regTypeHash, Buffer.from([denomB.length]), denomB, escrowB]);
   const catomType = ccc.Script.from({ codeHash: catomCodeHash, hashType: "data1", args: "0x" + catomArgs.toString("hex") });
   const outLock = ccc.Script.from(E.recipientLock);
 
   const outData = Buffer.alloc(16); outData.writeBigUInt64LE(BigInt(E.amount), 0);
-  const anchor = Buffer.from(valsetHash); if (process.env.BADPIN) anchor[0] ^= 0xff;
-  const ckptData = Buffer.concat([Buffer.from("TMCP"), anchor, u64(H)]);
   const nfKey = B2B(Buffer.concat([Buffer.from([0x04]), SHA(tx)]));
 
   const scr = (s) => ({ code_hash: s.codeHash, hash_type: s.hashType, args: s.args });
   const anyLock = scr(ccc.Script.from({ codeHash: "0x" + "55".repeat(32), hashType: "type", args: "0x" }));
   const OP = (h, i) => ({ tx_hash: "0x" + h, index: "0x" + i.toString(16) });
-  const IN0 = OP("00".repeat(32), 0), IN1 = OP("11".repeat(32), 0), DEP_CODE = OP("ce".repeat(32), 0), DEP_CKPT = OP("cf".repeat(32), 0);
+  const IN0 = OP("00".repeat(32), 0), IN1 = OP("11".repeat(32), 0), DEP_CODE = OP("ce".repeat(32), 0);
   const cap = "0x2e90edd000";
   const depCap = "0x" + (BigInt((data.length - 2) / 2 + 100) * 100000000n).toString(16);
   const wit0 = ccc.hexFrom(ccc.WitnessArgs.from({ inputType: "0x" + blob.toString("hex") }).toBytes());
@@ -137,19 +134,25 @@ async function main() {
       ],
       cell_deps: [
         { cell_dep: { out_point: DEP_CODE, dep_type: "code" }, output: { capacity: depCap, lock: anyLock, type: null }, data, header: null },
-        { cell_dep: { out_point: DEP_CKPT, dep_type: "code" }, output: { capacity: cap, lock: anyLock, type: scr(ckptScript) }, data: "0x" + ckptData.toString("hex"), header: null },
       ],
       header_deps: [],
     },
     tx: {
       version: "0x0",
-      cell_deps: [{ out_point: DEP_CODE, dep_type: "code" }, { out_point: DEP_CKPT, dep_type: "code" }],
+      cell_deps: [{ out_point: DEP_CODE, dep_type: "code" }],
       header_deps: [], inputs: [{ since: "0x0", previous_output: IN0 }, { since: "0x0", previous_output: IN1 }],
       outputs: [{ capacity: cap, lock: scr(outLock), type: scr(catomType) }], outputs_data: ["0x" + outData.toString("hex")], witnesses: [wit0, wit1],
     },
   };
   const out = process.env.BADPIN ? "catom_live_badpin.json" : "catom_live.json";
   fs.writeFileSync(path.join(HERE, out), JSON.stringify(mock, null, 2));
+  if (!process.env.BADPIN) {
+    // the raw pieces the on-chain mint (live_catom_mint.mjs) needs.
+    fs.writeFileSync(path.join(HERE, "catom_witness.json"), JSON.stringify({
+      height: H, blob: blob.toString("hex"), nfKey: nfKey.toString("hex"), anchor: valsetHash.toString("hex"),
+      recipient: E.recipient, recipientLock: E.recipientLock, amount: E.amount, denom: E.denom, escrow: E.escrow,
+    }, null, 2));
+  }
   console.log(`height ${H} | chain ${header.chain_id} | vals ${vals.length} | precommits ${pre.length} | txs ${txs.length} idx ${index} aunts ${aunts.length}`);
   console.log(`valset_hash ${valsetHash.toString("hex").slice(0, 16)} | block_hash OK | data_hash OK | minted ${E.amount} ${E.denom} -> recipient ${E.recipient.slice(0, 16)}`);
   console.log("wrote", out);

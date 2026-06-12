@@ -8,6 +8,7 @@
 import { DirectSecp256k1HdWallet, makeCosmoshubPath } from "@cosmjs/proto-signing";
 import { SigningStargateClient } from "@cosmjs/stargate";
 import { ccc } from "@ckb-ccc/core";
+import { signerOf, myLock } from "../../relayer/onchain/_signer.mjs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -23,8 +24,10 @@ const mnemonic = fs.readFileSync(KEYFILE, "utf8").trim();
 const wallet = await DirectSecp256k1HdWallet.fromMnemonic(mnemonic, { prefix: "osmo", hdPaths: [makeCosmoshubPath(0), makeCosmoshubPath(1)] });
 const [sender, escrow] = await wallet.getAccounts();
 
-// the CKB recipient lock; chiOSMO mints to its hash. memo = hex(recipient hash), 64 lowercase hex chars.
-const recipientLock = ccc.Script.from({ codeHash: "0x" + "44".repeat(32), hashType: "type", args: "0x" });
+// the CKB recipient lock; chiOSMO mints to its hash. We mint to the Pudge relayer's OWN lock so the token is
+// spendable. memo = hex(recipient hash), 64 lowercase hex chars.
+const { signer } = signerOf();
+const recipientLock = await myLock(signer);
 const recipient = recipientLock.hash().replace(/^0x/, "");
 
 const client = await SigningStargateClient.connectWithSigner(RPC, wallet);
