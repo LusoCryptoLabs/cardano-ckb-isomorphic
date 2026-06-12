@@ -65,12 +65,19 @@ path = "src/bin/xada_mint_owner.rs"
 name = "htlc_lock"
 path = "src/bin/htlc_lock.rs"
 
+# Cosmos <-> CKB isomorphic binding (spike/cosmos-ckb): CKB-VM verifies a Tendermint commit (>2/3 of the
+# validator set's ed25519 signatures over the canonical votes). The analog of the Mithril verifier.
+[[bin]]
+name = "tendermint_verify"
+path = "src/bin/tendermint_verify.rs"
+
 [dependencies]
 ckb-std = "0.16"
 blake2 = { version = "0.10", default-features = false }
 blake2b-ref = { version = "0.3", default-features = false }
 ckb-merkle-mountain-range = { version = "0.6", default-features = false }
 sha2 = { version = "0.10", default-features = false }
+ed25519-dalek = { version = "2", default-features = false, features = ["alloc"] }
 
 [profile.release]
 opt-level = "z"
