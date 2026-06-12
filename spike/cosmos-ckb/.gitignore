@@ -21,3 +21,9 @@ skip_mock_badnew.json
 skip_mock_badtrust.json
 catom_live.json
 catom_live_badpin.json
+reg_genesis.json
+reg_genesis_badtid.json
+reg_genesis_nonempty.json
+reg_spend.json
+reg_spend_double.json
+reg_spend_badwit.json

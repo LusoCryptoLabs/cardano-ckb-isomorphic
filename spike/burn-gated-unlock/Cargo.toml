@@ -96,6 +96,12 @@ path = "src/bin/catom_mint.rs"
 name = "tendermint_skip"
 path = "src/bin/tendermint_skip.rs"
 
+# Replay-once nullifier registry for the Cosmos legs: a type-id SINGLETON cell whose data is the set of consumed
+# 32-byte nullifiers. catom_mint inserts the certified Cosmos tx's key here exactly once.
+[[bin]]
+name = "cosmos_nullifier_registry"
+path = "src/bin/cosmos_nullifier_registry.rs"
+
 [dependencies]
 ckb-std = "0.16"
 blake2 = { version = "0.10", default-features = false }
