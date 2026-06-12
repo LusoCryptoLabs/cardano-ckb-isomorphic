@@ -46,6 +46,15 @@ linearly with the number of signatures checked (you can stop once 2/3 is reached
 This is the complete CKB-verifies-Cosmos direction: CKB-VM proves on-chain that a specific Cosmos transaction
 landed in a finalized block, for ~344M cycles.
 
+- **Validator-set anchoring** (`reconstruct_valset.mjs`, then in `tendermint_inclusion.rs`): the signing set is
+  no longer trusted from the witness. The verifier computes `validators_hash = MerkleRoot([SimpleValidator(v)])`
+  from the provided set and requires it to equal both the header's `validators_hash` (leaf[7], itself bound to
+  `block_hash`) AND a PINNED trusted anchor passed in (in a live deploy this anchor lives in the bridge cell's
+  state). On real data: with the real anchor, `Run result: 0` (350.5M cycles, the valset Merkle adds ~6M); with
+  a wrong anchor, `Run result: 9` (the set is rejected). So a relayer cannot fabricate a validator set; it must
+  supply the chain's real set, which must match the pinned trusted set. The encoding (`SimpleValidator =
+  pub_key(PublicKey{ed25519}) ‖ voting_power`) matched the real `validators_hash` on the first try.
+
 ## How to run
 
 ```
@@ -64,9 +73,12 @@ The CKB-verifies-Cosmos direction is now complete at the proof level: CKB-VM pro
 a finalized block (commit + header reconstruction + tx inclusion), `tendermint_inclusion.rs`, on real data.
 What remains to reach a full live Cosmos to CKB isomorphic binding:
 
-- **Validator-set lineage:** pin a trusted validator set and advance it as it rotates (the analog of the AVK
-  epoch advance in the Mithril leg), so the script trusts a known, advanced set rather than a witness-supplied
-  one. (Today the validator set is supplied in the witness; pinning it is the trust-minimizing step.)
+- **Validator-set lineage:** the BINDING is done (the set must hash to the header's `validators_hash` and to a
+  pinned trusted anchor, see above). What remains is the ADVANCEMENT: as validators rotate, move the pinned
+  anchor forward. The header already binds `next_validators_hash` (leaf[8]), so sequential advancement is
+  adopting leaf[8] after each verified block; cross-epoch gaps need the skipping check (>1/3 overlap of the
+  trusted set within the trust period). The anchor lives in the bridge cell's state, so advancement is a
+  state-update operation, the direct analog of the AVK epoch advance in the Mithril leg.
 - **The reverse verifier:** a CosmWasm contract that verifies the existing CKB-state proof (Cosmos verifies
   CKB), reusing the bridge's CKB-state circuit.
 - **Asset + registry wiring:** reuse the chain-agnostic asset binding and the replay-once registry for the

@@ -61,6 +61,9 @@ async function main() {
   const aunts = buildAunts(items, index);
 
   const parts = [];
+  // pinned trusted validator-set hash (the anchor). BADPIN=1 pins a wrong one -> the real set is rejected.
+  const trusted = hx(H.validators_hash); if (process.env.BADPIN) trusted[0] ^= 0xff;
+  parts.push(trusted);
   parts.push(Buffer.from([leaves.length]));
   for (const l of leaves) parts.push(u16(l.length), l);
   const chainId = Buffer.from(H.chain_id, "utf8");
@@ -89,7 +92,7 @@ async function main() {
       cell_deps: [{ cell_dep: { out_point: DEP, dep_type: "code" }, output: { capacity: depCap, lock: scr(ccc.Script.from({ codeHash: "0x" + "33".repeat(32), hashType: "type", args: "0x" })), type: null }, data, header: null }], header_deps: [] },
     tx: { version: "0x0", cell_deps: [{ out_point: DEP, dep_type: "code" }], header_deps: [], inputs: [{ since: "0x0", previous_output: PREV }], outputs: [{ capacity: "0x2e90edd000", lock: scr(lock), type: null }], outputs_data: ["0x"], witnesses: [wit] },
   };
-  const outName = process.env.TAMPER ? "inc_mock_bad.json" : "inc_mock.json";
+  const outName = process.env.TAMPER ? "inc_mock_badtx.json" : process.env.BADPIN ? "inc_mock_badpin.json" : "inc_mock.json";
   fs.writeFileSync(path.join(HERE, outName), JSON.stringify(mock, null, 2));
   console.log("height:", H.height, "| txs:", txs.length, "| aunts:", aunts.length, "| blob bytes:", blob.length, process.env.TAMPER ? "| TAMPERED tx" : "");
   console.log("wrote", outName);

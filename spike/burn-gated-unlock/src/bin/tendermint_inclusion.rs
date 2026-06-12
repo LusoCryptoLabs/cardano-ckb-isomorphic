@@ -59,6 +59,20 @@ fn compute_root(index: usize, total: usize, leaf: [u8; 32], aunts: &[[u8; 32]]) 
     else { inner_hash(&aunts[last], &compute_root(index - k, total - k, leaf, &aunts[..last])) }
 }
 
+// validators_hash = MerkleRoot([ SimpleValidator(v) ]); SimpleValidator = pub_key(PublicKey{ed25519}) ‖ voting_power.
+fn simple_validator(pk: &[u8; 32], power: u64) -> Vec<u8> {
+    let mut pubkey_msg = Vec::with_capacity(34); pubkey_msg.push(0x0a); pubkey_msg.push(0x20); pubkey_msg.extend_from_slice(pk);
+    let mut o = Vec::new();
+    o.push(0x0a); varint(pubkey_msg.len() as u64, &mut o); o.extend_from_slice(&pubkey_msg); // field 1 pub_key
+    o.push(0x10); varint(power, &mut o);                                                      // field 2 voting_power
+    o
+}
+fn valset_root(pubkeys: &[[u8; 32]], powers: &[u64]) -> [u8; 32] {
+    let items: Vec<Vec<u8>> = (0..pubkeys.len()).map(|i| simple_validator(&pubkeys[i], powers[i])).collect();
+    let refs: Vec<&[u8]> = items.iter().map(|v| v.as_slice()).collect();
+    merkle_root(&refs)
+}
+
 struct R<'a> { b: &'a [u8], i: usize, ok: bool }
 impl<'a> R<'a> {
     fn new(b: &'a [u8]) -> Self { R { b, i: 0, ok: true } }
@@ -74,6 +88,11 @@ fn program_entry() -> i8 {
     let w = match load_witness_args(0, Source::GroupInput) { Ok(w) => w, Err(_) => return 1 };
     let blob = match w.lock().to_opt() { Some(b) => b.raw_data(), None => return 2 };
     let mut r = R::new(&blob);
+
+    // 0) the PINNED trusted validator-set hash (the bridge's trust anchor; in a live deploy this comes from the
+    //    bridge cell's state, advanced as the set rotates, not from the witness).
+    let mut trusted_valset_hash = [0u8; 32];
+    { let t = r.take(32); if t.len() == 32 { trusted_valset_hash.copy_from_slice(t); } }
 
     // 1) header leaves -> block_hash, data_hash
     let n_leaves = r.u8() as usize;
@@ -98,6 +117,13 @@ fn program_entry() -> i8 {
     let mut total_power: u128 = 0;
     for _ in 0..n_vals { let pk = r.take(32); let mut a = [0u8; 32]; if pk.len() == 32 { a.copy_from_slice(pk); } pubkeys.push(a); let p = r.u64(); powers.push(p); total_power += p as u128; }
     if !r.ok || total_power == 0 { return 5; }
+
+    // bind the signing set: it must hash to the header's validators_hash (leaf[7], itself bound to block_hash)
+    // AND to the pinned trusted anchor. So the set is the chain's real set and the trusted one, not supplied.
+    let vh = valset_root(&pubkeys, &powers);
+    let vh_leaf = &leaves[7];
+    if vh_leaf.len() != 34 || vh_leaf[0] != 0x0a || vh_leaf[1] != 0x20 || vh_leaf[2..34] != vh[..] { return 8; }
+    if vh != trusted_valset_hash { return 9; }
 
     // 2) commit verify over the RECONSTRUCTED block_hash
     let n_pre = r.u16() as usize;
