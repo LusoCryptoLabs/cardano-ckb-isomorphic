@@ -40,6 +40,11 @@ is the atomicity: no custody, no trusted relayer for safety, only liveness (the 
   against the SAME `H`): CLAIM `Run result: 0`, REFUND `Run result: 0`, BADCLAIM (wrong preimage, no timelock)
   `Run result: 2` (rejected). The CKB live deploy is only a funding step (a code cell costs ~1 CKB per byte);
   the logic is proven in-VM exactly as the bridge's other contracts are validated before deploy.
+- **The relay, end to end** (`swap_relay.mjs`): runs the realistic choreography. Alice locks 10 XRP under `H`
+  (live), the CKB claim reveals `s` in its witness (`claim_live.json`, validated `Run result: 0`), the relay
+  reads that witness, extracts `s`, verifies `SHA256(s) == H`, reconstructs the XRPL fulfillment from `s`, and
+  finishes the escrow (live) so Bob receives the XRP. One secret settles both legs; the relay never holds funds.
+  Example run: lock tx `454D578A...`, finish tx `BF934714...`, Bob 100 -> 109.99 XRP, `s = 767e692e...`.
 
 ## How to run
 
@@ -66,9 +71,16 @@ This contrasts with the bridge's Mode A (verify-and-mint), where the destination
 (Mithril cert in CKB-VM, or a Groth16 proof of CKB on Cardano) and mints a wrapped asset. Stellar (Soroban) and
 Solana (alt_bn128) can host a verifier and so can join Mode A; XRPL cannot, and joins here via Mode B.
 
+## How to run the relay
+
+```
+cd spike/xrpl-htlc && node swap_relay.mjs     # live XRPL lock + finish, relay extracts s from the CKB claim
+wsl: ckb-debugger --tx-file spike/xrpl-htlc/claim_live.json --script-group-type lock --cell-type input --cell-index 0   # 0
+```
+
 ## Next steps (not built here)
 
-- A watcher/relay that observes the `EscrowFinish` fulfillment on XRPL and submits the CKB CLAIM (and the
-  mirror direction), with the timelock-ordering safety checks.
-- Live CKB deploy of `htlc_lock` (funding-gated) and a full on-chain round-trip.
+- Live CKB deploy of `htlc_lock` (funding-gated) and a full on-chain round-trip, plus the mirror direction
+  (watch the CKB claim on Pudge, submit the XRPL `EscrowFinish`) as a long-running daemon with the
+  timelock-ordering safety checks (`T1 < T2`) enforced before locking.
 - Generalize to a swap-leg interface so XRPL, Bitcoin, and Lightning/Fiber share one Mode B implementation.
