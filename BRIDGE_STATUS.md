@@ -4,6 +4,10 @@
 > component below is marked **BUILT / TESTED / DEPLOYED (hash) / GATED**. Detailed docs are linked, not
 > duplicated. Last verified: 2026-06-11 (commit `2284c9c`+).
 >
+> 🛠️ **Every runnable operation is indexed in [`BRIDGE_METHODS.md`](BRIDGE_METHODS.md)** (the methods runbook:
+> setup, deploys, AVK advance + checkpoint refresh, the Mithril leap toggle, the chi-ADA and chi-CKB legs,
+> troubleshooting, and the known unscripted gaps).
+>
 > 🔒 **Security:** see [`SECURITY_FIXES.md`](SECURITY_FIXES.md) — 2026-06-11 adversarial audit. 5 code fixes
 > shipped (singleton forge-cert guard, K_MIN floor, nullifier domain separation, escrow placeholder guard);
 > 4 operational remediations gate mainnet (real MPC setup, STM-pin+singleton redeploy, advance ceremony/K,
