@@ -19,3 +19,5 @@ skip_mock_lowtrust.json
 skip_mock_lownew.json
 skip_mock_badnew.json
 skip_mock_badtrust.json
+catom_live.json
+catom_live_badpin.json

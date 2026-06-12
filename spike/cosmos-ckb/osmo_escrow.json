@@ -1,0 +1,14 @@
+{
+  "txHash": "D5E8C3FB523EB89A4D0E4DC3D05296946C0E61F1639BE7F4DB852B6C1E4105DC",
+  "height": 60728144,
+  "escrow": "osmo1lwzgqs7lgh82u66c834hmuz5mgatw3xzly7pdq",
+  "sender": "osmo1gah6ew3l9vyy22xwzznrarfcmgcwhsjv39xelf",
+  "denom": "uosmo",
+  "amount": "1000000",
+  "recipient": "14afc4afb8917f4c9280ea4ec221a0bd66584849906ba0df2ec0bc852f96dfd3",
+  "recipientLock": {
+    "codeHash": "0x4444444444444444444444444444444444444444444444444444444444444444",
+    "hashType": "type",
+    "args": "0x"
+  }
+}
