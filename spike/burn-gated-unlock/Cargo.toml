@@ -102,6 +102,12 @@ path = "src/bin/tendermint_skip.rs"
 name = "cosmos_nullifier_registry"
 path = "src/bin/cosmos_nullifier_registry.rs"
 
+# χOSMO RETURN-leg burn receipt (CKB -> Cosmos): burning χOSMO self-enforces a real burn and binds (amount,
+# cosmos_recipient); the return circuit reads it and the Cosmos-side contract releases OSMO. Mirror of xada_burn_receipt.
+[[bin]]
+name = "xosmo_burn_receipt"
+path = "src/bin/xosmo_burn_receipt.rs"
+
 [dependencies]
 ckb-std = "0.16"
 blake2 = { version = "0.10", default-features = false }

@@ -29,3 +29,7 @@ reg_spend_double.json
 reg_spend_badwit.json
 
 catom_witness.json
+burn_mock.json
+burn_mock_wrongamount.json
+burn_mock_notburn.json
+burn_mock_badmagic.json
