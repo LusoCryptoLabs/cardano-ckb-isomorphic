@@ -23,6 +23,8 @@ use bls12_381::{G1Affine, G1Projective, Scalar};
 use blake2::digest::{Update, VariableOutput};
 use blake2::Blake2bVar;
 use cosmwasm_schema::cw_serde;
+#[allow(deprecated)]
+use cosmwasm_std::CosmosMsg;
 use cosmwasm_std::{entry_point, to_json_binary, Api, BankMsg, Binary, CanonicalAddr, Coin, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128};
 
 #[cw_serde]
@@ -78,6 +80,24 @@ pub enum ExecuteMsg {
         window_root: String, seal: String, amount: Uint128, recipient: String, tip_height: u64, k: u64,
         denom: String, proof: Proof, vk: Vk,
     },
+    /// FORWARD leg (CKB -> Cosmos): create the χCKB Osmosis token-factory denom (factory/<contract>/SUBDENOM).
+    /// One-time; the contract becomes the denom admin so it can mint. SUBDENOM e.g. "uchickb".
+    CreateChiCkbDenom { subdenom: String },
+    /// FORWARD leg: verify a proof that CKB value was locked, bound to this CKB event (window_root, seal, amount,
+    /// recipient[CKB], tip_height, K), nullify the seal replay-once, and MINT `amount` of the χCKB token-factory
+    /// denom to `to` (a Cosmos address). The mirror of catom_mint on the Cosmos side: a real wrapped-CKB token,
+    /// wallet/explorer-visible as a native bank denom.
+    MintChiCkb {
+        window_root: String, seal: String, amount: Uint128, recipient: String, tip_height: u64, k: u64,
+        subdenom: String, to: String, proof: Proof, vk: Vk,
+    },
+    /// MECHANISM DEMO of the forward leg with a proof whose raw event-preimage is not on hand (only its reduced
+    /// public inputs): verify the proof against raw public_inputs, nullify public_inputs[1] (the seal), and mint
+    /// `amount` χCKB to `to`. Unlike MintChiCkb this does NOT bind amount/recipient in-circuit (that is the
+    /// event-bound production path), so it is for the live mint demonstration only.
+    MintChiCkbRaw {
+        public_inputs: Vec<String>, subdenom: String, to: String, amount: Uint128, proof: Proof, vk: Vk,
+    },
 }
 
 #[cw_serde]
@@ -93,7 +113,7 @@ pub fn instantiate(_d: DepsMut, _e: Env, _i: MessageInfo, _m: InstantiateMsg) ->
 }
 
 #[entry_point]
-pub fn execute(deps: DepsMut, _env: Env, _info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
+pub fn execute(deps: DepsMut, env: Env, _info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
     match msg {
         ExecuteMsg::RecordCkbEvent { window_root, seal, amount, recipient, tip_height, k, proof, vk } => {
             let pubs = derive_event_inputs(&window_root, &seal, amount.u128(), &recipient, tip_height, k).map_err(StdError::generic_err)?;
@@ -123,6 +143,37 @@ pub fn execute(deps: DepsMut, _env: Env, _info: MessageInfo, msg: ExecuteMsg) ->
             let send = BankMsg::Send { to_address: to.to_string(), amount: vec![Coin { denom, amount }] };
             Ok(Response::new().add_message(send).add_attribute("action", "release_on_ckb_burn").add_attribute("to", to.to_string()).add_attribute("amount", amount))
         }
+        ExecuteMsg::CreateChiCkbDenom { subdenom } => {
+            // the contract becomes the admin of factory/<contract>/<subdenom>; one-time.
+            #[allow(deprecated)]
+            let msg = CosmosMsg::Stargate { type_url: "/osmosis.tokenfactory.v1beta1.MsgCreateDenom".into(), value: msg_create_denom(env.contract.address.as_str(), &subdenom) };
+            Ok(Response::new().add_message(msg).add_attribute("action", "create_chickb_denom").add_attribute("denom", format!("factory/{}/{}", env.contract.address, subdenom)))
+        }
+        ExecuteMsg::MintChiCkb { window_root, seal, amount, recipient, tip_height, k, subdenom, to, proof, vk } => {
+            // 1) verify the proof is bound to THIS CKB lock event (amount + recipient committed in-circuit).
+            let pubs = derive_event_inputs(&window_root, &seal, amount.u128(), &recipient, tip_height, k).map_err(StdError::generic_err)?;
+            let valid = verify_scalars(deps.api, &proof.a, &proof.b, &proof.c, &vk.alpha, &vk.beta, &vk.gamma, &vk.delta, &vk.ic, &pubs).map_err(StdError::generic_err)?;
+            if !valid { return Err(StdError::generic_err("CKB lock proof did not verify")); }
+            // 2) replay-once on the seal.
+            let seal_bytes = raw(&seal, 32).map_err(StdError::generic_err)?;
+            record_nullifier(deps.storage, &seal_bytes)?;
+            // 3) mint `amount` of the χCKB token-factory denom to `to`.
+            let denom = format!("factory/{}/{}", env.contract.address, subdenom);
+            #[allow(deprecated)]
+            let msg = CosmosMsg::Stargate { type_url: "/osmosis.tokenfactory.v1beta1.MsgMint".into(), value: msg_mint(env.contract.address.as_str(), &denom, &amount.to_string(), &to) };
+            Ok(Response::new().add_message(msg).add_attribute("action", "mint_chickb").add_attribute("denom", denom).add_attribute("to", to).add_attribute("amount", amount))
+        }
+        ExecuteMsg::MintChiCkbRaw { public_inputs, subdenom, to, amount, proof, vk } => {
+            if public_inputs.len() < 2 { return Err(StdError::generic_err("need >=2 public inputs")); }
+            let pubs: Vec<Scalar> = public_inputs.iter().map(|h| scalar_canonical(h)).collect::<Result<_, _>>().map_err(StdError::generic_err)?;
+            let valid = verify_scalars(deps.api, &proof.a, &proof.b, &proof.c, &vk.alpha, &vk.beta, &vk.gamma, &vk.delta, &vk.ic, &pubs).map_err(StdError::generic_err)?;
+            if !valid { return Err(StdError::generic_err("CKB proof did not verify")); }
+            record_nullifier(deps.storage, &pubs[1].to_bytes())?;          // seal = pi[1]
+            let denom = format!("factory/{}/{}", env.contract.address, subdenom);
+            #[allow(deprecated)]
+            let msg = CosmosMsg::Stargate { type_url: "/osmosis.tokenfactory.v1beta1.MsgMint".into(), value: msg_mint(env.contract.address.as_str(), &denom, &amount.to_string(), &to) };
+            Ok(Response::new().add_message(msg).add_attribute("action", "mint_chickb_raw").add_attribute("denom", denom).add_attribute("to", to).add_attribute("amount", amount))
+        }
     }
 }
 
@@ -134,6 +185,24 @@ fn record_nullifier(storage: &mut dyn cosmwasm_std::Storage, seal: &[u8]) -> Std
     }
     storage.set(&key, &[1u8]);
     Ok(())
+}
+
+// ---- minimal protobuf encoder for the Osmosis tokenfactory messages (sent as CosmosMsg::Any) ----
+fn pb_varint(mut v: u64, out: &mut Vec<u8>) { while v > 0x7f { out.push((v as u8 & 0x7f) | 0x80); v >>= 7; } out.push(v as u8); }
+fn pb_field_bytes(field: u32, b: &[u8], out: &mut Vec<u8>) { pb_varint(((field as u64) << 3) | 2, out); pb_varint(b.len() as u64, out); out.extend_from_slice(b); }
+/// Coin { 1: denom, 2: amount(decimal string) }
+fn pb_coin(denom: &str, amount: &str) -> Vec<u8> { let mut o = Vec::new(); pb_field_bytes(1, denom.as_bytes(), &mut o); pb_field_bytes(2, amount.as_bytes(), &mut o); o }
+/// MsgCreateDenom { 1: sender, 2: subdenom }
+fn msg_create_denom(sender: &str, subdenom: &str) -> Binary {
+    let mut o = Vec::new(); pb_field_bytes(1, sender.as_bytes(), &mut o); pb_field_bytes(2, subdenom.as_bytes(), &mut o); Binary::new(o)
+}
+/// MsgMint { 1: sender, 2: amount(Coin), 3: mintToAddress }
+fn msg_mint(sender: &str, denom: &str, amount: &str, to: &str) -> Binary {
+    let mut o = Vec::new();
+    pb_field_bytes(1, sender.as_bytes(), &mut o);
+    pb_field_bytes(2, &pb_coin(denom, amount), &mut o);
+    pb_field_bytes(3, to.as_bytes(), &mut o);
+    Binary::new(o)
 }
 
 #[entry_point]
@@ -405,6 +474,51 @@ mod tests {
         for (i, exp) in expected.iter().enumerate() {
             assert_eq!(hex::encode(pubs[i].to_bytes()), *exp, "burn public input {i} differs from the off-chain reference");
         }
+    }
+
+    /// Forward leg: MintChiCkb is fail-closed (a proof not matching the claimed lock event is rejected, no mint),
+    /// and the tokenfactory MsgMint is well-formed (protobuf: sender, Coin{denom,amount}, mintToAddress).
+    #[test]
+    fn mint_chickb_fail_closed_and_msg_shape() {
+        use cosmwasm_std::testing::mock_env;
+        use cosmwasm_std::{Addr, CosmosMsg, MessageInfo, Uint128};
+        let mut deps = mock_dependencies();
+        let i = load();
+        let vk = Vk { alpha: i.alpha.clone(), beta: i.beta.clone(), gamma: i.gamma.clone(), delta: i.delta.clone(), ic: i.ic.clone() };
+        let proof = Proof { a: i.a.clone(), b: i.b.clone(), c: i.c.clone() };
+        let info = MessageInfo { sender: Addr::unchecked("anyone"), funds: vec![] };
+        // mismatched event vs proof -> rejected, nothing minted.
+        let msg = ExecuteMsg::MintChiCkb {
+            window_root: "ff".repeat(32), seal: (0u8..32).map(|x| format!("{:02x}", x)).collect(),
+            amount: Uint128::new(123456789), recipient: "aa".repeat(28), tip_height: 21388353, k: 12,
+            subdenom: "uchickb".into(), to: "osmo1recipient".into(), proof, vk,
+        };
+        assert!(execute(deps.as_mut(), mock_env(), info, msg).is_err(), "a mint with a non-matching proof must be rejected");
+
+        // the MsgMint protobuf is well-formed and decodes to the expected fields (independent decoder).
+        fn pb_first<'a>(b: &'a [u8], field: u32) -> Option<&'a [u8]> {
+            let mut i = 0usize;
+            while i < b.len() {
+                let (mut key, mut sh) = (0u64, 0u32);
+                loop { let by = b[i]; i += 1; key |= ((by & 0x7f) as u64) << sh; if by & 0x80 == 0 { break; } sh += 7; }
+                let f = (key >> 3) as u32; let wire = key & 7;
+                if wire == 2 {
+                    let (mut len, mut s2) = (0u64, 0u32);
+                    loop { let by = b[i]; i += 1; len |= ((by & 0x7f) as u64) << s2; if by & 0x80 == 0 { break; } s2 += 7; }
+                    let len = len as usize;
+                    if f == field { return Some(&b[i..i + len]); }
+                    i += len;
+                } else { return None; }
+            }
+            None
+        }
+        let m = msg_mint("osmo1contract", "factory/osmo1contract/uchickb", "777", "osmo1to");
+        let b = m.as_slice();
+        assert_eq!(pb_first(b, 1).unwrap(), b"osmo1contract");                       // sender
+        let coin = pb_first(b, 2).unwrap();
+        assert_eq!(pb_first(coin, 1).unwrap(), b"factory/osmo1contract/uchickb");     // Coin.denom
+        assert_eq!(pb_first(coin, 2).unwrap(), b"777");                               // Coin.amount
+        assert_eq!(pb_first(b, 3).unwrap(), b"osmo1to");                              // mintToAddress
     }
 
     /// ReleaseOnCkbBurn is fail-closed: a proof that does not match the claimed burn event is rejected, and
