@@ -6,6 +6,12 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = []
+# Fallback for chains whose wasmvm lacks the BLS12-381 host functions (e.g. osmo-test-5): do the whole Groth16
+# pairing in wasm. Pulls in the bls12_381 `pairings` code that the default host-fn build leaves out.
+inwasm = ["bls12_381/pairings"]
+
 [dependencies]
 cosmwasm-std = "2.2"
 cosmwasm-schema = "2.2"

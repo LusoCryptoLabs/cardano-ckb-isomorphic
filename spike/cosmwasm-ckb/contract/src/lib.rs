@@ -62,6 +62,15 @@ pub enum ExecuteMsg {
         window_root: String, seal: String, amount: Uint128, recipient: String, tip_height: u64, k: u64,
         proof: Proof, vk: Vk,
     },
+    /// Verify a Groth16 proof against raw public inputs as a TX (not a query), so the heavy pairing runs under a
+    /// payable gas budget rather than the low smart-query gas cap. The tx SUCCEEDS iff the proof verifies, so a
+    /// confirmed tx is itself the on-chain proof verification. Used for the in-wasm-pairing build on chains
+    /// without the BLS host functions.
+    AssertCkbProof {
+        a: String, b: String, c: String,
+        alpha: String, beta: String, gamma: String, delta: String,
+        ic: Vec<String>, public_inputs: Vec<String>,
+    },
 }
 
 #[cw_serde]
@@ -86,6 +95,12 @@ pub fn execute(deps: DepsMut, _env: Env, _info: MessageInfo, msg: ExecuteMsg) ->
             let seal_bytes = raw(&seal, 32).map_err(StdError::generic_err)?;
             record_nullifier(deps.storage, &seal_bytes)?;
             Ok(Response::new().add_attribute("action", "record_ckb_event").add_attribute("seal", seal.trim_start_matches("0x")))
+        }
+        ExecuteMsg::AssertCkbProof { a, b, c, alpha, beta, gamma, delta, ic, public_inputs } => {
+            let pubs: Vec<Scalar> = public_inputs.iter().map(|h| scalar_canonical(h)).collect::<Result<_, _>>().map_err(StdError::generic_err)?;
+            let valid = verify_scalars(deps.api, &a, &b, &c, &alpha, &beta, &gamma, &delta, &ic, &pubs).map_err(StdError::generic_err)?;
+            if !valid { return Err(StdError::generic_err("CKB-state proof did not verify")); }
+            Ok(Response::new().add_attribute("action", "assert_ckb_proof").add_attribute("verified", "true"))
         }
     }
 }
@@ -171,7 +186,9 @@ pub fn derive_event_inputs(window_root: &str, seal: &str, amount: u128, recipien
     ])
 }
 
-/// vk_x = ic[0] + sum(pub_i * ic[i+1]), returned compressed (48 bytes). The only EC arithmetic done in wasm.
+/// vk_x = ic[0] + sum(pub_i * ic[i+1]), returned compressed (48 bytes). The only EC arithmetic done in wasm
+/// for the host-function path.
+#[cfg(not(feature = "inwasm"))]
 fn compute_vk_x(ic: &[String], pubs: &[Scalar]) -> Result<[u8; 48], String> {
     if ic.len() != pubs.len() + 1 { return Err("ic/pubs length".into()); }
     let mut acc = G1Projective::from(g1(&ic[0])?);
@@ -184,6 +201,7 @@ fn compute_vk_x(ic: &[String], pubs: &[Scalar]) -> Result<[u8; 48], String> {
 /// Groth16 over BLS12-381, final pairing via the host function:
 /// e(alpha,beta) * e(vk_x,gamma) * e(C,delta) == e(A,B).
 /// ps (G1, 48B each) = alpha || vk_x || C ; qs (G2, 96B each) = beta || gamma || delta ; r = A ; s = B.
+#[cfg(not(feature = "inwasm"))]
 pub fn verify_scalars(api: &dyn Api, a: &str, b: &str, c: &str, alpha: &str, beta: &str, gamma: &str, delta: &str, ic: &[String], pubs: &[Scalar]) -> Result<bool, String> {
     let vk_x = compute_vk_x(ic, pubs)?;
     let mut ps = Vec::with_capacity(48 * 3);
@@ -197,6 +215,32 @@ pub fn verify_scalars(api: &dyn Api, a: &str, b: &str, c: &str, alpha: &str, bet
     let r = raw(a, 48)?;
     let s = raw(b, 96)?;
     api.bls12_381_pairing_equality(&ps, &qs, &r, &s).map_err(|e| e.to_string())
+}
+
+/// In-wasm pairing fallback for chains whose wasmvm lacks the BLS12-381 host functions (e.g. osmo-test-5): the
+/// whole Groth16 check runs in wasm via the bls12_381 crate's Miller loop (`inwasm` feature pulls in `pairings`).
+/// Same math, larger/slower, but self-contained, no host call. Identical equation to the host-fn path.
+#[cfg(feature = "inwasm")]
+fn g2(h: &str) -> Result<bls12_381::G2Affine, String> {
+    let arr: [u8; 96] = raw(h, 96)?.try_into().map_err(|_| "g2 len")?;
+    Option::from(bls12_381::G2Affine::from_compressed(&arr)).ok_or_else(|| "g2 point".to_string())
+}
+#[cfg(feature = "inwasm")]
+pub fn verify_scalars(_api: &dyn Api, a: &str, b: &str, c: &str, alpha: &str, beta: &str, gamma: &str, delta: &str, ic: &[String], pubs: &[Scalar]) -> Result<bool, String> {
+    use bls12_381::{multi_miller_loop, G2Prepared, Gt};
+    if ic.len() != pubs.len() + 1 { return Err("ic/pubs length".into()); }
+    let a = g1(a)?; let b = g2(b)?; let c = g1(c)?;
+    let alpha = g1(alpha)?; let beta = g2(beta)?; let gamma = g2(gamma)?; let delta = g2(delta)?;
+    let mut vk_x = G1Projective::from(g1(&ic[0])?);
+    for i in 0..pubs.len() { vk_x += G1Projective::from(g1(&ic[i + 1])?) * pubs[i]; }
+    let vk_x = G1Affine::from(vk_x);
+    let ml = multi_miller_loop(&[
+        (&a, &G2Prepared::from(b)),
+        (&(-vk_x), &G2Prepared::from(gamma)),
+        (&(-c), &G2Prepared::from(delta)),
+        (&(-alpha), &G2Prepared::from(beta)),
+    ]);
+    Ok(ml.final_exponentiation() == Gt::identity())
 }
 
 /// Convenience wrapper for raw-scalar public inputs given as 32-byte LE hex.

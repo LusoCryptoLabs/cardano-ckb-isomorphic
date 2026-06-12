@@ -36,6 +36,19 @@ e(A, B) == e(alpha, beta) * e(vk_x, gamma) * e(C, delta),   vk_x = ic[0] + sum(p
 So a Cosmos chain can verify the bridge's CKB-state proof on-chain, in the cheap production form, with the same
 math Cardano runs.
 
+- **LIVE on Osmosis testnet (osmo-test-5).** The contract is deployed and a real Cosmos node verified the
+  bridge's CKB-state proof on-chain: query `VerifyCkbProof` with the real redeemer returned `{"valid": true}`.
+  codeId `13217`, contract `osmo1h9wvlfh7jfqpd5rtylqf0apnxt0d6at3nyxseh7ls9vsj6ht475sqkzt22`, store tx
+  `2231F979…`, instantiate tx `8E45B590…` (see `osmo_deploy.json`). This is the reverse-direction analog of the
+  live Pudge deploy that already does CKB-verifies-Cosmos, so the binding is now LIVE both ways.
+  Two build notes were needed to land it: (1) osmo-test-5's wasmvm does NOT expose the BLS12-381 host functions
+  (the host-fn build returns `not implemented: unknown request`), so the live build uses the `inwasm` cargo
+  feature (the whole pairing in wasm, via `verify_ckb_proof.mjs`'s equation); (2) Rust 1.96 emits bulk-memory
+  opcodes the chain rejects, so the wasm is lowered to MVP with `wasm-opt --llvm-memory-copy-fill-lowering
+  --signext-lowering`. The default host-fn build stays the production form for chains that do expose the host
+  functions (e.g. Neutron). `AssertCkbProof` is an execute variant that runs the same verify as a gas-paid tx
+  (succeeds iff the proof verifies), the fallback if a chain's query gas cap is too low for the in-wasm pairing.
+
 - **Bound to a concrete CKB event** (`VerifyCkbEvent`, `derive_inputs.mjs`): verifying a proof is not enough,
   the contract must gate on a NAMED event so a relayer cannot present a valid proof and then claim different
   public inputs. So the contract takes the event fields (window_root, seal, amount, recipient, tip_height, K)
@@ -64,7 +77,13 @@ cd spike/cosmwasm-ckb && npm install
 node verify_ckb_proof.mjs        # off-chain: e(A,B) == e(alpha,beta)*e(vk_x,gamma)*e(C,delta) -> true
 node derive_inputs.mjs           # off-chain reference: event fields -> the 5 public inputs (the test's vectors)
 wsl: cd contract && cargo test --release   # host-fn verify + in-wasm cross-check + event-binding derivation
-wsl: RUSTFLAGS="-C link-arg=--allow-undefined" cargo build --release --target wasm32-unknown-unknown --lib   # -> ckb_verifier.wasm (~332 KB)
+wsl: RUSTFLAGS="-C link-arg=--allow-undefined" cargo build --release --target wasm32-unknown-unknown --lib   # host-fn -> ckb_verifier.wasm (~332 KB)
+
+# live deploy on osmo-test-5 (in-wasm pairing, since this chain lacks the BLS host fns)
+node gen_osmo_wallet.mjs            # deployer address (mnemonic in ~/.chiral, never printed); fund at faucet.testnet.osmosis.zone
+wsl: RUSTFLAGS="-C link-arg=--allow-undefined" cargo build --release --target wasm32-unknown-unknown --lib --features inwasm
+wsl: wasm-opt ckb_verifier.wasm --enable-bulk-memory --enable-sign-ext --llvm-memory-copy-fill-lowering --signext-lowering --strip-target-features -o ckb_verifier.mvp.wasm
+node deploy_osmo.mjs               # store + instantiate + live VerifyCkbProof -> {"valid": true}
 ```
 
 ## Where this sits, and what is left
