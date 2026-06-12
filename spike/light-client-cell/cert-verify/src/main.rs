@@ -33,6 +33,7 @@ const STM_K: usize = match option_env!("CHIRAL_STM_K"){ Some(s)=>cdec(s) as usiz
 const STM_M: u64   = match option_env!("CHIRAL_STM_M"){ Some(s)=>cdec(s),          None=>16948 };
 
 struct Signer { sigma: Vec<u8>, mvk: Vec<u8>, stake: u64, idx: Vec<u32> }
+#[allow(dead_code)] // some fields (e.g. tx_root) are read only in deploy/txset mode, not in advance/standalone
 struct Cert {
     signed_message: Vec<u8>, avk_root: Vec<u8>, total: u64, k: usize,
     parts: Vec<(Vec<u8>,Vec<u8>)>, signers: Vec<Signer>,
@@ -70,6 +71,7 @@ fn compute_target(stake:u64,total:u64)->BigInt{
     loop{ n+=1; t=&t*&xa; t=&t/&xb; t=&t/&BigInt::from(n); if t==BigInt::from(0u8){break;} acc+=&t; if n>400{break;} }
     let e=&acc>>(SHIFT-512); (BigInt::from(1u8)<<512)-e
 }
+#[allow(deprecated)] // sha2 0.9 GenericArray::as_slice (view, behavior-identical); upgrade generic-array to drop
 fn check_m1(ct:&Cert)->bool{
     let mut h=Sha256::new(); for(k,v)in &ct.parts{ sha2::Digest::update(&mut h,k); sha2::Digest::update(&mut h,v); }
     let d=h.finalize();
@@ -127,6 +129,7 @@ fn check_merkle(ct:&Cert)->bool{
     }
     leaves.len()==1 && leaves[0]==ct.avk_root
 }
+#[allow(dead_code)] // used by the deploy/txset + advance program_entry; not by the embedtest fixture mode
 fn witness_from_celldep()->Option<Vec<u8>>{
     let mut i=0usize;
     loop{ match load_cell_data(i,Source::CellDep){
@@ -156,9 +159,12 @@ fn verify(ct:&Cert)->bool{
 
 // ---- AdvanceCert: extract the NEXT avk (root+total) from the signed next_aggregate_verification_key part ----
 fn part_val<'a>(ct:&'a Cert, key:&[u8])->Option<&'a [u8]>{ for (k,v) in &ct.parts { if k.as_slice()==key { return Some(v); } } None }
+#[allow(dead_code)] // AdvanceCert helper: used only by the cfg("advance") program_entry; dead in deploy/txset
 fn hexdec(a:&[u8])->Vec<u8>{ fn nyb(c:u8)->u8{ match c { b'0'..=b'9'=>c-b'0', b'a'..=b'f'=>c-b'a'+10, b'A'..=b'F'=>c-b'A'+10, _=>0 } } let mut o=Vec::with_capacity(a.len()/2); let mut i=0; while i+1<a.len(){ o.push((nyb(a[i])<<4)|nyb(a[i+1])); i+=2; } o }
+#[allow(dead_code)] // AdvanceCert helper (cfg("advance") only)
 fn find(h:&[u8], n:&[u8])->Option<usize>{ if n.len()>h.len(){return None;} let mut i=0; while i+n.len()<=h.len(){ if &h[i..i+n.len()]==n { return Some(i); } i+=1; } None }
 fn parse_uint(b:&[u8], mut i:usize)->(u64,usize){ let mut v=0u64; while i<b.len() && b[i]>=b'0' && b[i]<=b'9' { v=v*10+(b[i]-b'0')as u64; i+=1; } (v,i) }
+#[allow(dead_code)] // AdvanceCert helper (cfg("advance") only)
 fn extract_next(json:&[u8])->Option<([u8;32],u64)>{
     let pat_root:&[u8]=&[34,114,111,111,116,34,58,91];           // "root":[
     let pat_total:&[u8]=&[34,116,111,116,97,108,95,115,116,97,107,101,34,58]; // "total_stake":
@@ -172,10 +178,13 @@ fn extract_next(json:&[u8])->Option<([u8;32],u64)>{
     let t0=find(json, pat_total)?+pat_total.len(); let (total,_)=parse_uint(json,t0);
     Some((root,total))
 }
+#[allow(dead_code)] // AdvanceCert helper (cfg("advance") only)
 fn read_ck(src:Source)->Option<(u64,[u8;32],u64)>{ let d=load_cell_data(0,src).ok()?; if d.len()!=48 {return None;} let mut e=[0u8;8]; e.copy_from_slice(&d[0..8]); let mut r=[0u8;32]; r.copy_from_slice(&d[8..40]); let mut t=[0u8;8]; t.copy_from_slice(&d[40..48]); Some((u64::from_le_bytes(e), r, u64::from_le_bytes(t))) }
+#[allow(dead_code)] // AdvanceCert helper (cfg("advance") only)
 fn epoch_of(ct:&Cert)->Option<u64>{ let v=part_val(ct,b"current_epoch")?; let (e,_)=parse_uint(v,0); Some(e) }
 // The ONE canonical trusted genesis (epoch 1319, avk 0f3c0c7f.., total). Pinning it means a fake-avk
 // checkpoint chain CANNOT be created — so any cell carrying this type traces to the real Cardano stake.
+#[allow(dead_code)] // read only by the cfg("advance") program_entry (genesis branch); dead in deploy/txset
 const PINNED_GENESIS: [u8;48] = [39,5,0,0,0,0,0,0,15,60,12,127,134,236,178,138,205,194,254,3,103,90,12,67,234,0,244,85,46,131,188,98,13,67,41,100,111,63,233,218,61,139,157,218,67,58,0,0];
 #[cfg(feature="advance")]
 fn program_entry()->i8{

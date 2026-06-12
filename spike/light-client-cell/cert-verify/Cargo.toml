@@ -22,3 +22,4 @@ codegen-units = 1
 standalone = []
 embedtest = []
 advance = []
+native-simulator = []   # declared so ckb-std's entry! cfg(feature="native-simulator") check is recognized (silences unexpected_cfgs); unused in the on-chain build

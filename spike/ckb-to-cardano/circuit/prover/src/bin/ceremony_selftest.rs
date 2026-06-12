@@ -4,7 +4,7 @@
 //!   B. derive_pk matches ark-groth16's QAP (instance_map_with_evaluation) element-wise, gamma=delta=1.
 //!   C. full run_ceremony (PoT + phase-2) -> prove -> arkworks verify == true.
 //! If these pass, the in-exponent key derivation is exactly arkworks', and the ceremony pipeline is sound.
-use ark_bls12_381::{Bls12_381, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
+use ark_bls12_381::{Bls12_381, Fr, G1Affine, G1Projective, G2Affine};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, One, UniformRand};
 use ark_groth16::r1cs_to_qap::{LibsnarkReduction, R1CSToQAP};

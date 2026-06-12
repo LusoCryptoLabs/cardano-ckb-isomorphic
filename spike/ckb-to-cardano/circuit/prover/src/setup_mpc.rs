@@ -25,7 +25,7 @@
 //! transcript. That residual (independence) is a social property, flagged honestly in the transcript.
 
 use ark_bls12_381::{Bls12_381, Fr, Fq, G1Affine, G1Projective, G2Affine, G2Projective};
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, Group, VariableBaseMSM};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{BigInteger, Field, One, PrimeField, UniformRand, Zero};
 use ark_groth16::{Proof, ProvingKey, VerifyingKey};
 use ark_poly::{EvaluationDomain, GeneralEvaluationDomain};
