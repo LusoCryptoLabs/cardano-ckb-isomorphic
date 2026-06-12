@@ -147,7 +147,8 @@ SHA256). The asymmetric constraint is always B1: can X's VM afford to verify the
 | A1 CKB-VM Tendermint inclusion | `burn-gated-unlock/src/bin/tendermint_inclusion.rs` | LIVE on Pudge (unlock tx `0x18f519b6`) |
 | A3 anchor advance | `tendermint_advance.rs` | ckb-debugger 0/21 |
 | A3 skip (non-adjacent) | `tendermint_skip.rs` | ckb-debugger 0 + 4 fail-closed |
-| A2 χATOM wrapped mint | `catom_mint.rs` | **LIVE on Pudge**: χOSMO minted from a real osmo-test-5 lock, mint tx `0x8fbe7459…`, token id `0xf98bad86…` |
+| A2 χATOM wrapped mint | `catom_mint.rs` | **LIVE on Pudge**: χOSMO minted from a real osmo-test-5 lock, mint tx `0x8fbe7459…` (bespoke type) |
+| A2' χOSMO as displayable xUDT | `catom_mint_owner.rs` | **LIVE**: standard xUDT + Unique cell (Chiral OSMO/xOSMO/6), token id `0x8059cdb0…`, mint tx `0xb25d8e42…` |
 | B1 X-verifies-CKB | `cosmwasm-ckb/contract` | **LIVE osmo-test-5** (`VerifyCkbProof -> valid:true`, codeId 13217) |
 | Public-input binding | `VerifyCkbEvent` + `derive_inputs.mjs` | tested |
 | Replay registry (X side) | `RecordCkbEvent` (tag `chiral:cosmos-ckb:nf:`) | tested |

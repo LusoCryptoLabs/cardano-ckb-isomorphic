@@ -96,6 +96,18 @@ landed in a finalized block, for ~344M cycles.
   `0x6bbc4af3…`). The anchor is baked into the policy args for this single mint; the advanceable variant uses a
   checkpoint cell-dep with `tendermint_advance` / `tendermint_skip`. See `relayer/onchain/catom_mint_live.json`.
 
+- **Displayable xUDT χOSMO** (`catom_mint_owner.rs`, `relayer/onchain/live_catom_owner_mint.mjs`): the first mint
+  above produced a bespoke-typed cell the explorer cannot show as a token (only standard xUDT + a Unique cell
+  are indexed). So `catom_mint_owner` re-homes the Cosmos verification into an xUDT OWNER LOCK: χOSMO is the
+  canonical xUDT (`xUDT(args = this lock's hash)`), minted via xUDT owner mode, with the Unique token-info cell
+  (Chiral OSMO / xOSMO / 6) issued IN the mint tx. **LIVE on Pudge from a real osmo-test-5 escrow**: token id
+  `0x8059cdb0…`, mint tx `0xb25d8e425a6bf6c78e2e6afdd4a8ee1ce4e24695f8df16a52caca8cb7f19d597`; verified on-chain
+  as a standard-xUDT cell with the Unique cell decoding to decimals 6 / Chiral OSMO / xOSMO. This is the χADA
+  display fix applied to the Cosmos leg. NOTE on capacity: a code cell costs ~1 CKB/byte; on a heavily-loaded
+  deployer lock the public RPC's 10 MB cell-scan cap breaks CCC's auto input-gathering, so the orchestration is
+  idempotent (never redeploys), picks funding via the indexer's empty-data filter, and `recover_paginated.mjs`
+  enumerates the lock in small pages to reuse orphaned code instead of re-paying for deploys.
+
 ## How to run
 
 ```
