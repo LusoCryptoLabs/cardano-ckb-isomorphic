@@ -33,3 +33,6 @@ burn_mock.json
 burn_mock_wrongamount.json
 burn_mock_notburn.json
 burn_mock_badmagic.json
+catom_owner.json
+catom_owner_badpin.json
+catom_owner_badrecip.json

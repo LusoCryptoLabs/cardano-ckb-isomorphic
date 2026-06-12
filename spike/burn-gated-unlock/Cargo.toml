@@ -108,6 +108,13 @@ path = "src/bin/cosmos_nullifier_registry.rs"
 name = "xosmo_burn_receipt"
 path = "src/bin/xosmo_burn_receipt.rs"
 
+# χOSMO xUDT OWNER lock — makes χOSMO a STANDARD displayable xUDT (canonical code hash) instead of a bespoke
+# type script. The catom_mint verification (Cosmos inclusion + MsgSend binding + replay) is re-homed into this
+# lock, which authorizes xUDT owner-mode minting. Supersedes catom_mint.rs for explorer/wallet display.
+[[bin]]
+name = "catom_mint_owner"
+path = "src/bin/catom_mint_owner.rs"
+
 [dependencies]
 ckb-std = "0.16"
 blake2 = { version = "0.10", default-features = false }
