@@ -84,6 +84,12 @@ path = "src/bin/tendermint_inclusion.rs"
 name = "tendermint_advance"
 path = "src/bin/tendermint_advance.rs"
 
+# χATOM FORWARD-mint (Cosmos -> CKB): the Cosmos-leg mirror of xada_mint. Mints wrapped ATOM gated on a
+# finalized Cosmos escrow (tendermint_inclusion proof) + parsing the escrow MsgSend in CKB-VM + replay-once.
+[[bin]]
+name = "catom_mint"
+path = "src/bin/catom_mint.rs"
+
 [dependencies]
 ckb-std = "0.16"
 blake2 = { version = "0.10", default-features = false }
