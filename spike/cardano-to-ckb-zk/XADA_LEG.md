@@ -125,6 +125,8 @@ no wallet/DEX/explorer recognizes it. **Redone as a proper xUDT** (the ecosystem
 amount = lovelace, 1:1, **decimals 6** (1 ADA = 1,000,000 units), mirroring χCKB's decimals 8 (shannons).
 Decimals/ticker/logo are off-chain xUDT metadata (CKB token-info cell), same as the χCKB token-registry note.
 
+**Explorer display (2026-06-12).** The on-chain identity is correct, but the Magickbase explorer never names token id `0xe3a8d7be`. From the ckb-explorer source (`new_node_data_processor.rb` build_udts!), the indexer fills a token's name, symbol and decimals only once, at its FIRST on-chain sighting, gated by `unless Udt.exists?`, with no owner-lock requirement. χADA's first sighting (mint `0x98f9383d`) carried no Unique cell, so an empty record was written and every later Unique cell is ignored. The id is therefore permanently un-namable on-chain. Fix: re-issue under a NEW token id whose first transaction includes the Unique cell. A logic-neutral 1-byte salt prefix added to `xada_mint_owner.rs` args yields a new owner hash with identical bridge logic; redeployed (owner code `0x4e596253`, codeHash `0x8c4b0210`, owner hash `0xa5313f32`) by reclaiming the old owner code cell, giving the **new χADA token id `0xc05c0e09…`**. The new owner carries the `0x01` leg tag, so the mint runs with `CHIRAL_NULL_TAG=01` against a fresh escrow (`331d8fe9`, nonce 4), pending Mithril certification.
+
 ## 5. Status / phasing
 - [x] **P1** this spec (XADA_LEG.md).
 - [x] **P2** `xada_mint.rs` (forward mint keystone) — BUILT + TESTED. `spike/burn-gated-unlock/src/bin/xada_mint.rs`

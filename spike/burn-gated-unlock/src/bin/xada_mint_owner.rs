@@ -246,10 +246,16 @@ fn xada_outputs_at(owner:&[u8;32], recipient:&[u8]) -> Result<(),i8> {
 
 fn program_entry()->i8{
     let args = load_script().unwrap().args().raw_data();
-    if args.len() < 64+1 { return 2; }
-    let mut lckp_type=[0u8;32]; lckp_type.copy_from_slice(&args[0..32]);
-    let mut reg_type=[0u8;32];  reg_type.copy_from_slice(&args[32..64]);
-    let escrow_addr=&args[64..];
+    // args = salt(1) ‖ lckp_type(32) ‖ reg_type(32) ‖ escrow_addr(rest). args[0] is a logic-neutral salt/version
+    // byte: it lets a fresh owner instance take a DISTINCT lock hash → a DISTINCT χADA xUDT token id WITHOUT
+    // touching the bridge verification. Needed because Magickbase fixes a token's info at its FIRST on-chain
+    // sighting; the original χADA id was first seen without an info cell, so it is permanently un-namable. Same
+    // bridge logic, new identity. (The salt is parsed but never used below.)
+    if args.len() < 1+64+1 { return 2; }
+    let _salt = args[0];
+    let mut lckp_type=[0u8;32]; lckp_type.copy_from_slice(&args[1..33]);
+    let mut reg_type=[0u8;32];  reg_type.copy_from_slice(&args[33..65]);
+    let escrow_addr=&args[65..];
     // owner = THIS lock's script hash == the χADA xUDT's args.
     let owner = match load_script_hash() { Ok(h)=>h, Err(_)=>return 1 };
 

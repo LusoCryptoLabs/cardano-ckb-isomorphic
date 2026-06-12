@@ -34,7 +34,7 @@ DEMO_MAX = 5_000_000  # lovelace (5 ADA) — the most that may be locked at a pl
 # χADA recipient on CKB = the relayer's CKB lock hash (where xada_mint mints χADA). 32 bytes.
 CKB_RECIPIENT = bytes.fromhex("7a971a3b730d3e5b69f73ac7add6dcd2396cab9523176132ed23e17500c820c7")
 AMOUNT = 3_000_000      # 3 ADA in lovelace -> mints 3,000,000 χADA xUDT (a fresh escrow for the proper-xUDT mint).
-NONCE  = 3              # fresh escrow (prev nonces 1,2 minted) -> a different tx -> a fresh registry key.
+NONCE  = 4              # fresh escrow (prev nonces 1,2,3 minted) -> a different tx -> a fresh registry key.
 TN = pc.Network.TESTNET
 
 def constr(i, fs): return cbor2.CBORTag(121 + i, fs)
