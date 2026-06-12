@@ -22,8 +22,13 @@ const bin = fs.readFileSync(BIN);
 console.log("owner-lock binary:", bin.length, "bytes | balance:", (await balance(client, lock)) / 100000000n, "CKB");
 const r = await deployCodeCell(client, signer, bin, "xada_owner_code");
 
-// owner lock = Script{ owner_code, data1, args = LCKP(32) ‖ reg(32) ‖ escrow_addr }; its hash = the xUDT args.
-const ownerArgs = "0x" + strip(LCKP) + strip(REGTH) + strip(ESCROW_ADDR);
+// owner lock = Script{ owner_code, data1, args = salt(1) ‖ LCKP(32) ‖ reg(32) ‖ escrow_addr }; its hash = the
+// xUDT args. SALT (logic-neutral, parsed-but-unused in xada_mint_owner.rs) gives this owner a DISTINCT lock
+// hash → a DISTINCT χADA token id. Required because Magickbase fixes a token's name/symbol/decimals at its
+// FIRST on-chain sighting, and the original id 0xe3a8d7be was first seen (mint 0x98f9383d) without an info
+// cell → permanently un-namable. Same bridge verification (same LCKP/registry/escrow), new identity.
+const SALT = process.env.CHIRAL_OWNER_SALT || "01";
+const ownerArgs = "0x" + SALT + strip(LCKP) + strip(REGTH) + strip(ESCROW_ADDR);
 const ownerLock = ccc.Script.from({ codeHash: r.codeHash, hashType: "data1", args: ownerArgs });
 const ownerHash = ownerLock.hash();
 // the χADA token = canonical xUDT(args = ownerHash).
