@@ -59,11 +59,18 @@ path = "src/bin/xada_burn_receipt.rs"
 name = "xada_mint_owner"
 path = "src/bin/xada_mint_owner.rs"
 
+# Multi-chain Mode B (HTLC) spike: a minimal hashlock + since-timelock CKB lock that pairs with an XRPL
+# PreimageSha256 escrow under the SAME SHA256(preimage) hashlock (spike/xrpl-htlc).
+[[bin]]
+name = "htlc_lock"
+path = "src/bin/htlc_lock.rs"
+
 [dependencies]
 ckb-std = "0.16"
 blake2 = { version = "0.10", default-features = false }
 blake2b-ref = { version = "0.3", default-features = false }
 ckb-merkle-mountain-range = { version = "0.6", default-features = false }
+sha2 = { version = "0.10", default-features = false }
 
 [profile.release]
 opt-level = "z"
