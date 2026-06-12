@@ -2,3 +2,5 @@ node_modules/
 package-lock.json
 tm_mock.json
 tm_mock_bad.json
+inc_mock.json
+inc_mock_bad.json

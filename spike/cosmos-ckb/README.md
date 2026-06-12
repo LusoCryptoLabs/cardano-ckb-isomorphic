@@ -33,6 +33,19 @@ zero-omission) and each precommit carries its own timestamp.
 So verifying a 180-validator Tendermint commit in CKB-VM costs ~344M cycles. Affordable, and it scales roughly
 linearly with the number of signatures checked (you can stop once 2/3 is reached).
 
+- **Full "tx in a final block" verifier** (`tendermint_inclusion.rs`, `build_inclusion_mock.mjs`): extends the
+  keystone to the complete chain in one CKB-VM script. It (1) reconstructs `block_hash` as the Merkle root of
+  the 14 header leaves and parses `data_hash` from leaf[6], so `data_hash` is BOUND not trusted (any faked leaf
+  changes `block_hash` and the commit signatures then fail), (2) verifies the commit over that reconstructed
+  `block_hash`, (3) verifies a tx inclusion proof `computeRoot(index, total, leafHash(SHA256(tx)), aunts) ==
+  data_hash`. On real cosmoshub-4 data (height 31539885, a 2-tx block): `Run result: 0` at **344.5M cycles**;
+  a tampered tx gives `Run result: 21` (its leaf no longer reaches `data_hash`). The header and inclusion
+  encodings were pinned off-chain first (`reconstruct_header.mjs`, `verify_tx_inclusion.mjs`); the tx-tree leaf
+  is `leafHash(SHA256(tx))`, not the raw tx.
+
+This is the complete CKB-verifies-Cosmos direction: CKB-VM proves on-chain that a specific Cosmos transaction
+landed in a finalized block, for ~344M cycles.
+
 ## How to run
 
 ```
@@ -47,17 +60,26 @@ TAMPER=1 node build_witness_mock.mjs  # then ckb-debugger tm_mock_bad.json -> 20
 
 ## Where this sits, and what is left
 
-This is verifier 1 of 2 for the binding, and only its consensus core. To reach a full Cosmos to CKB isomorphic
-binding:
+The CKB-verifies-Cosmos direction is now complete at the proof level: CKB-VM proves a specific Cosmos tx is in
+a finalized block (commit + header reconstruction + tx inclusion), `tendermint_inclusion.rs`, on real data.
+What remains to reach a full live Cosmos to CKB isomorphic binding:
 
-- **Merkle inclusion proof:** after proving the block is final, prove a specific event or tx is in it (the
-  header's data/app hash plus the Tendermint Merkle proof). That binds an actual Cosmos action to the CKB side.
 - **Validator-set lineage:** pin a trusted validator set and advance it as it rotates (the analog of the AVK
-  epoch advance in the Mithril leg), so the script trusts a known set rather than a witness-supplied one.
+  epoch advance in the Mithril leg), so the script trusts a known, advanced set rather than a witness-supplied
+  one. (Today the validator set is supplied in the witness; pinning it is the trust-minimizing step.)
 - **The reverse verifier:** a CosmWasm contract that verifies the existing CKB-state proof (Cosmos verifies
   CKB), reusing the bridge's CKB-state circuit.
 - **Asset + registry wiring:** reuse the chain-agnostic asset binding and the replay-once registry for the
-  Cosmos to CKB pair.
+  Cosmos to CKB pair, plus a deploy of `tendermint_inclusion` as a live code cell.
 
 The keystone, the piece that was unknown and could have killed the design (can CKB-VM verify Tendermint
-affordably), is done. Ethereum, Stellar, and Solana are backlogged behind this template.
+affordably, and bind a real tx to it), is done at ~344M cycles. Ethereum, Stellar, and Solana are backlogged
+behind this template.
+
+```
+# full verifier
+wsl: cargo build --release --bin tendermint_inclusion
+node build_inclusion_mock.mjs         # header leaves + commit + tx inclusion proof for a real block
+wsl: ckb-debugger --max-cycles 5000000000 --tx-file inc_mock.json --script-group-type lock --cell-type input --cell-index 0   # 0
+TAMPER=1 node build_inclusion_mock.mjs  # then ckb-debugger inc_mock_bad.json -> 21 (tx not in block)
+```

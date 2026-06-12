@@ -71,6 +71,13 @@ path = "src/bin/htlc_lock.rs"
 name = "tendermint_verify"
 path = "src/bin/tendermint_verify.rs"
 
+# The full verifier: reconstruct the header (block_hash = Merkle root of its 14 fields, binding data_hash),
+# verify the commit over it, and verify a tx inclusion proof against data_hash. Proves "this Cosmos tx is in a
+# final block" in CKB-VM.
+[[bin]]
+name = "tendermint_inclusion"
+path = "src/bin/tendermint_inclusion.rs"
+
 [dependencies]
 ckb-std = "0.16"
 blake2 = { version = "0.10", default-features = false }
