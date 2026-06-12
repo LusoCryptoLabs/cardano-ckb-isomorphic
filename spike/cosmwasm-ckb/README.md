@@ -20,29 +20,36 @@ e(A, B) == e(alpha, beta) * e(vk_x, gamma) * e(C, delta),   vk_x = ic[0] + sum(p
 - **Off-chain** (`verify_ckb_proof.mjs`, `@noble/curves`): loads the real proof + vk + 5 public inputs
   (`leap_bound_windowed_redeemer.json`) and the equation holds, `verifies: true`. This pins the equation and
   confirms the proof is real before porting.
-- **CosmWasm contract** (`contract/`, `cosmwasm-std` 2.2 + the `bls12_381` crate): a real contract with
-  `instantiate` and a `VerifyCkbProof` query. The native `cargo test` verifies the real proof and REJECTS a
-  tampered public input (fail-closed). It compiles to the wasm32 CosmWasm target (`ckb_verifier.wasm`, ~468 KB),
-  so it is a deployable Cosmos contract.
+- **CosmWasm contract** (`contract/`, `cosmwasm-std` 2.2): a real contract with `instantiate` and a
+  `VerifyCkbProof` query. The native `cargo test` verifies the real proof and REJECTS a tampered public input
+  (fail-closed). It compiles to the wasm32 CosmWasm target, so it is a deployable Cosmos contract.
+- **Production form: the pairing runs in the host, not the wasm.** The contract computes `vk_x = ic[0] +
+  sum(pub_i * ic[i+1])` in wasm (G1 scalar muls only) and delegates the four-pairing check
+  `e(alpha,beta) * e(vk_x,gamma) * e(C,delta) == e(A,B)` to CosmWasm 2.x's native
+  `bls12_381_pairing_equality(ps, qs, r, s)` host function (`ps = alpha‖vk_x‖C`, `qs = beta‖gamma‖delta`,
+  `r = A`, `s = B`), which runs the chain's audited BLS implementation. The test exercises this through
+  `MockApi` (the same `cosmwasm-crypto` BLS the chain runs) and cross-checks it against the original
+  all-in-wasm Miller-loop equation, both on the real proof and a tampered one; the two agree. Dropping the
+  in-wasm pairing shrank the artifact from ~468 KB to **~304 KB** (`ckb_verifier.wasm`, 311536 bytes) and makes
+  the on-chain pairing cheap (a host call) instead of a heavy in-wasm Miller loop and final exponentiation.
 
-So a Cosmos chain can verify the bridge's CKB-state proof on-chain. The reverse direction is feasible and the
-math is the same one Cardano runs.
+So a Cosmos chain can verify the bridge's CKB-state proof on-chain, in the cheap production form, with the same
+math Cardano runs.
 
 ## How to run
 
 ```
 cd spike/cosmwasm-ckb && npm install
 node verify_ckb_proof.mjs        # off-chain: e(A,B) == e(alpha,beta)*e(vk_x,gamma)*e(C,delta) -> true
-wsl: cd contract && cargo test   # verifies the real proof, rejects a tampered input
-wsl: RUSTFLAGS="-C link-arg=--allow-undefined" cargo build --release --target wasm32-unknown-unknown --lib   # -> ckb_verifier.wasm
+wsl: cd contract && cargo test --release   # host-fn path verifies + rejects tampered, and matches the in-wasm reference
+wsl: RUSTFLAGS="-C link-arg=--allow-undefined" cargo build --release --target wasm32-unknown-unknown --lib   # -> ckb_verifier.wasm (~304 KB)
 ```
 
 ## Where this sits, and what is left
 
-- **Gas / size optimization:** the contract does the full pairing in-wasm via the `bls12_381` crate (~468 KB,
-  heavy gas). CosmWasm 2.x exposes BLS12-381 host functions (`bls12_381_pairing_equality`, G1 aggregate), so a
-  production version would do the scalar muls for `vk_x` in-wasm and the final pairing via the host function,
-  much smaller and cheaper. The feasibility (it verifies, it compiles to wasm) is what is proven here.
+- **Gas / size optimization: done.** The contract now does the scalar muls for `vk_x` in wasm and the final
+  pairing via CosmWasm's `bls12_381_pairing_equality` host function (~304 KB, cheap host pairing instead of an
+  in-wasm Miller loop). The all-in-wasm version remains as a test-only cross-check reference.
 - **Deploy + bind:** instantiate the contract on a CosmWasm testnet (Neutron, Osmosis), and bind the proof's
   public inputs to a concrete CKB event (the window root, the locked/burned amount, the recipient), so a Cosmos
   action is gated on a verified CKB state, the mirror of how the CKB side gates on a verified Cosmos tx.
