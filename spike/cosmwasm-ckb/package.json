@@ -1,1 +1,1 @@
-{"name":"cosmwasm-ckb-spike","version":"0.0.1","private":true,"type":"module","description":"Cosmos verifies CKB: verify the bridge's BLS12-381 Groth16 CKB-state proof (off-chain, then CosmWasm).","dependencies":{"@noble/curves":"^2.2.0"}}
+{"name":"cosmwasm-ckb-spike","version":"0.0.1","private":true,"type":"module","description":"Cosmos verifies CKB: verify the bridge's BLS12-381 Groth16 CKB-state proof (off-chain, then CosmWasm).","dependencies":{"@cosmjs/cosmwasm-stargate":"^0.38.1","@cosmjs/proto-signing":"^0.39.0","@noble/curves":"^2.2.0"}}
