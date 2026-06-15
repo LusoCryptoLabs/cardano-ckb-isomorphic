@@ -25,15 +25,21 @@ It polls `/api/leap/status` every 12s; the server refreshes that snapshot in the
 | `GET /api/config` | deployed code hashes + explorer bases + side (state files) |
 | `GET /api/leap/status` | cached live both-chain snapshot (`leap_orchestrator.mjs status --json`) |
 | `GET /api/leap/history` | recent legs (`leap_log.jsonl`), newest first |
+| `POST /api/leap/leg` `{recipient?,verify?}` | start the ONE next leg; -> `{jobId}` (one job at a time) |
+| `POST /api/leap/toggle` `{recipient?,verify?}` | start a full round-trip; -> `{jobId}` |
+| `GET /api/leap/jobs` | the current/last job summary |
+| `GET /api/leap/jobs/:id` | a job's live progress: phase, legs (tx links), error, log tail |
 
 ## Roadmap
 
 - **Phase 1 (done): read-only dashboard.** Live state + history, no actions.
-- **Phase 2: drive a leap.** An async job runner that spawns `leap_orchestrator.mjs leg`/`toggle` as a
-  background child, parses its structured log into steps (build → submit → await-cert → cardano-tx →
-  ckb-confirm), and exposes `POST /api/leap/{leg,toggle}` + `GET /api/leap/jobs/:id`; the UI's two buttons
-  (currently disabled) drive it with a live step tracker.
-- **Phase 3: polish.** Error surfacing, the optional Groth16 χCKB value-mint tab.
+- **Phase 2 (done): drive a leap.** An async job runner spawns `leap_orchestrator.mjs leg`/`toggle` as a
+  background child, parses its `[INFO]/[WARN]/[ERROR]` log into phases (funding → cardano → cert → ckb → done)
+  and pulls each completed leg's full record (cardano_tx, ckb_tx, cert_s) from `leap_log.jsonl`. One job at a
+  time (concurrent legs would conflict on-chain). The UI's two buttons drive it (with a confirm dialog: it is a
+  real testnet leap, ~6-8 min/leg) and a live step tracker (phase chips + per-leg tx links + a log tail);
+  reloading mid-leap resumes the tracker.
+- **Phase 3: polish.** Error surfacing, the optional Groth16 χCKB value-mint tab, a verify-mode checkbox.
 
 Not in scope (that is the post-audit self-custody dApp): wallet-connect, user signing, the `/submit` finalize
 path, real value.

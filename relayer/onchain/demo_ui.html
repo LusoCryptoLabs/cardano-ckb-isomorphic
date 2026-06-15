@@ -41,6 +41,16 @@
   td a { color:var(--ada); text-decoration:none; } td a:hover { text-decoration:underline; }
   .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
   .empty { color:var(--dim); padding:14px 0; }
+  .badge { font-size:11px; padding:2px 9px; border-radius:20px; border:1px solid var(--line); color:var(--dim); vertical-align:middle; }
+  .badge.running{color:var(--warn);border-color:var(--warn)} .badge.done{color:var(--ok);border-color:var(--ok)} .badge.failed{color:var(--bad);border-color:var(--bad)}
+  .phases { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 14px; }
+  .chip { font-size:12px; padding:6px 12px; border-radius:20px; border:1px solid var(--line); color:var(--dim); }
+  .chip.done { color:var(--ok); border-color:var(--ok); } .chip.active { color:var(--warn); border-color:var(--warn); box-shadow:0 0 0 1px var(--warn) inset; }
+  #jobLegs { margin-bottom:12px; }
+  .legrow { display:flex; gap:14px; align-items:center; padding:7px 0; font-size:13px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .legrow .lg { font-weight:700; width:28px; color:var(--fg); }
+  .joblog { background:#0a0d12; border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:11.5px; line-height:1.5; max-height:200px; overflow:auto; color:var(--dim); white-space:pre-wrap; word-break:break-word; margin:0; }
+  .joblog .err { color:var(--bad); } .joblog .warn { color:var(--warn); }
   footer { color:var(--dim); font-size:11px; text-align:center; padding:20px; border-top:1px solid var(--line); margin-top:30px; }
 </style>
 </head>
@@ -67,10 +77,17 @@
   <div class="grid" id="grid"></div>
 
   <div class="controls">
-    <button id="btnLeg" disabled>Leap next leg</button>
-    <button id="btnToggle" class="alt" disabled>Full round-trip</button>
-    <span class="note">actions land in Phase 2 (this is the read-only dashboard)</span>
+    <button id="btnLeg">Leap next leg</button>
+    <button id="btnToggle" class="alt">Full round-trip</button>
+    <span class="note" id="ctrlNote">real testnet on-chain leap, operator-signed, ~6-8 min per leg</span>
   </div>
+
+  <section id="jobPanel" style="display:none">
+    <h2>Live leap <span id="jobState" class="badge"></span></h2>
+    <div class="phases" id="phases"></div>
+    <div id="jobLegs"></div>
+    <pre class="joblog" id="jobLog"></pre>
+  </section>
 
   <h2>Recent leaps</h2>
   <table><thead><tr><th>when</th><th>leg</th><th>Cardano tx</th><th>CKB tx</th><th>cert</th></tr></thead>
@@ -129,9 +146,60 @@ async function loadHistory() {
     <td>${e.cert_s != null ? e.cert_s+"s" : "—"}</td></tr>`).join("");
 }
 
+// ---- Phase 2: drive a leap + live job tracker ----
+let jobTimer = null;
+const PHASE_LABEL = { funding:"Funding", cardano:"Cardano tx", cert:"Mithril cert", ckb:"CKB tx", done:"Done" };
+const escapeHtml = (s) => String(s).replace(/[<>&]/g, (c) => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;" }[c]));
+const setBusy = (b) => { $("btnLeg").disabled = b; $("btnToggle").disabled = b; };
+
+async function startLeap(kind) {
+  const what = kind === "toggle" ? "a full round-trip (CkbOwned → CardanoBound → CkbOwned, 2 legs)" : "the next leg";
+  if (!confirm(`Start ${what}?\n\nThis is a REAL testnet on-chain leap, signed with the operator's keys. It moves the bound cell, costs testnet fees, and takes ~6-8 min per leg (Mithril cert wait).`)) return;
+  setBusy(true); $("ctrlNote").textContent = "starting…";
+  let r;
+  try { r = await (await fetch("/api/leap/" + kind, { method:"POST", headers:{ "content-type":"application/json" }, body:"{}" })).json(); }
+  catch (e) { $("ctrlNote").textContent = "failed to start: " + e; setBusy(false); return; }
+  if (r.error) { $("ctrlNote").textContent = r.error; setBusy(false); return; }
+  $("ctrlNote").textContent = "";
+  trackJob(r.jobId);
+}
+
+function trackJob(id) {
+  $("jobPanel").style.display = "block";
+  clearInterval(jobTimer);
+  const tick = async () => {
+    let j; try { j = await (await fetch("/api/leap/jobs/" + id)).json(); } catch { return; }
+    renderJob(j);
+    if (j.state && j.state !== "running") { clearInterval(jobTimer); setBusy(false); $("ctrlNote").textContent = j.state === "done" ? "leap complete ✓" : "leap " + j.state; poll(); loadHistory(); }
+  };
+  tick(); jobTimer = setInterval(tick, 2500);
+}
+
+function renderJob(j) {
+  $("jobState").textContent = (j.state || "") + (j.currentLeg ? " · " + j.currentLeg : "");
+  $("jobState").className = "badge " + (j.state || "");
+  const cur = (j.phases || []).indexOf(j.phase);
+  $("phases").innerHTML = (j.phases || []).map((p, i) => {
+    const cls = j.state === "done" ? "done" : i < cur ? "done" : i === cur ? "active" : "";
+    return `<span class="chip ${cls}">${PHASE_LABEL[p] || p}</span>`;
+  }).join("");
+  const legs = (j.legs || []).map((e) => `<div class="legrow"><span class="lg">${e.leg}</span>
+    <span>Cardano ${txLink(CFG.cardanoExplorer || "#", e.cardano_tx)}</span>
+    <span>CKB ${txLink(CFG.ckbExplorer || "#", e.ckb_tx)}</span>
+    <span style="color:var(--dim)">cert ${e.cert_s}s</span></div>`).join("");
+  const pending = j.pendingCardanoTx ? `<div class="legrow"><span class="lg">${j.currentLeg || ""}</span><span>Cardano ${txLink(CFG.cardanoExplorer || "#", j.pendingCardanoTx)}</span><span style="color:var(--warn)">awaiting Mithril cert…</span></div>` : "";
+  $("jobLegs").innerHTML = legs + pending;
+  $("jobLog").innerHTML = (j.log || []).map((l) => `<div class="${l.level === "ERROR" ? "err" : l.level === "WARN" ? "warn" : ""}">${l.level === "INFO" ? "" : "[" + l.level + "] "}${escapeHtml(l.msg)}</div>`).join("");
+  $("jobLog").scrollTop = $("jobLog").scrollHeight;
+}
+
 (async () => {
   await loadConfig();
+  $("btnLeg").onclick = () => startLeap("leg");
+  $("btnToggle").onclick = () => startLeap("toggle");
   await poll(); await loadHistory();
+  // resume an in-progress job if the page was reloaded mid-leap
+  try { const cur = await (await fetch("/api/leap/jobs")).json(); if (cur && cur.id && cur.state === "running") { setBusy(true); trackJob(cur.id); } } catch {}
   setInterval(poll, 12000);
   setInterval(loadHistory, 30000);
 })();
