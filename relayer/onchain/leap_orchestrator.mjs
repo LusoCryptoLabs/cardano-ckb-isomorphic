@@ -96,6 +96,28 @@ async function status() {
   return { s, h };
 }
 
+// machine-readable snapshot for the demo server (the same data status() prints, as a plain object).
+async function statusData() {
+  const s = leapState();
+  const h = await ckbHealth();
+  const reg = loadJSON(REG_STATE, { keys: [] });
+  const cn = cardanoHealth();
+  const cell = s.st.bound || s.st.cardanoBound || null;
+  const fundLow = !h.plain.length || h.plain[0] < FUND_FLOOR;
+  const toN = (x) => Number(x / BigInt(1e8));
+  return {
+    ts: now(), phase: s.phase, next: s.next,
+    cell: cell ? { txHash: cell.txHash, state: cell.state ?? null, side: s.phase } : null,
+    ckb: { totalCKB: toN(h.total), plainTopCKB: h.plain.length ? toN(h.plain[0]) : 0, plainCells: h.plain.length,
+           checkpointsParked: h.ckptN, checkpointCKB: toN(h.ckptCap), missingCodeCells: h.missing },
+    registry: { keys: reg.keys.length, root: reg.root || null },
+    cardano: cn.error ? { error: cn.error } : { tada: cn.tada ?? null, collateral: cn.collateral ?? null, seal: cn.seal || null },
+    fundingFloorCKB: toN(FUND_FLOOR),
+    health: h.missing.length ? "code-cell-missing" : fundLow ? "funding-low" : "ok",
+    recent: readLog().slice(-5).reverse(),
+  };
+}
+
 function readLog() { try { return fs.readFileSync(LOG_PATH, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)); } catch { return []; } }
 function appendLog(e) { fs.appendFileSync(LOG_PATH, JSON.stringify({ ts: now(), ...e }) + "\n"); }
 
@@ -182,7 +204,7 @@ async function main() {
   const cmd = pos[0] || "status";
   const recipient = (pos.find((a) => /^[0-9a-fx]{64,66}$/i.test(a)) || "").replace(/^0x/, "") || undefined;
 
-  if (cmd === "status") { await status(); }
+  if (cmd === "status") { if (argv.includes("--json")) console.log(JSON.stringify(await statusData())); else await status(); }
   else if (cmd === "leg") { await doLeg(recipient, flags); await status(); }
   else if (cmd === "toggle") { await doToggle(recipient, flags); await status(); }
   else if (cmd === "run") {
