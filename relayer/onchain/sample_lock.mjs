@@ -46,11 +46,29 @@ async function pickFunding(minCap) {
 
 const bridge = ccc.Script.from({ codeHash: BL.bridge_code_hash, hashType: "data1", args: "0x" + "00".repeat(32) });
 const data = "0x" + Buffer.concat([Buffer.from("BRG1"), Buffer.from([0]), u64(AMOUNT), Buffer.alloc(8), Buffer.from(RECIPIENT, "hex")]).toString("hex"); // 49 bytes
+
+// BG3 (receipt reclaim hole): the receipt LOCK. Default = the user's secp lock (the demo / reclaimable). With
+// --burn-gated it locks the receipt under burn_gated_unlock_v2 so it releases ONLY on a Mithril-certified
+// chiCKB burn of the bound amount (closes the reclaim hole). A lock only runs on SPEND, so creating the receipt
+// here needs nothing; RELEASING it later needs the burn_gated code cell deployed + the PRODUCTION (STM-pinned)
+// Mithril checkpoint. Per RETURN_TRIP.md, do NOT use --burn-gated before those are live (funds would strand).
+const BURN_GATED_CODE = "0x771f7fa31fd21ea6807747fd120ad06dbcbecce21425ca630d7262951e4ce9b4"; // burn_gated_unlock_v2 (deploy via deploy_burn_gated.mjs)
+const LCKP_TH = "a055798e911a4f7ed074d5e1ee6273683e9a446c70d3e22adab680d70eea5b74"; // Mithril checkpoint type hash (pre-STM-pin; production swap audit-gated)
+const REG_TH = "dc18fd562bca1834536c926ce8c9d94f608318c3a79a43959c0c46a84265a24e"; // burn nullifier registry type hash
+const CHICKB_POLICY = "ed5b37a60f2f4c7b846d0ae4b7748650fcc2890bb8e761cd015035f8"; // leap_mint_guard policy (UPDATE per cascade: the policy that mints chiCKB for this lock)
+const CHICKB_NAME = "cf87434b42"; // chiCKB FT name
+const u128le = (n) => { const b = Buffer.alloc(16); let v = BigInt(n); b.writeBigUInt64LE(v & 0xffffffffffffffffn, 0); b.writeBigUInt64LE(v >> 64n, 8); return b; };
+const burnGatedArgs = "0x" + Buffer.concat([Buffer.from(LCKP_TH, "hex"), u128le(AMOUNT), Buffer.from(CHICKB_POLICY, "hex"), Buffer.from(REG_TH, "hex"), Buffer.from(CHICKB_NAME, "hex")]).toString("hex");
+const receiptLock = process.argv.includes("--burn-gated")
+  ? ccc.Script.from({ codeHash: BURN_GATED_CODE, hashType: "data1", args: burnGatedArgs })
+  : lock;
+if (process.argv.includes("--burn-gated")) console.log("RECEIPT LOCKED UNDER burn_gated_unlock_v2 (release needs a certified chiCKB burn)");
+
 const fund = await pickFunding(AMOUNT + FEE + 100n * CKB);
 const secpDeps = (await client.getKnownScript(ccc.KnownScript.Secp256k1Blake160)).cellDeps.map((cd) => cd.cellDep);
 const tx = ccc.Transaction.from({
   inputs: [{ previousOutput: fund.outPoint, since: 0n }],
-  outputs: [{ lock, type: bridge, capacity: AMOUNT }, { lock, capacity: BigInt(fund.cellOutput.capacity) - AMOUNT - FEE }],
+  outputs: [{ lock: receiptLock, type: bridge, capacity: AMOUNT }, { lock, capacity: BigInt(fund.cellOutput.capacity) - AMOUNT - FEE }],
   outputsData: [data, "0x"],
   cellDeps: [...secpDeps, { outPoint: { txHash: BL.bridge_code_tx, index: 0 }, depType: "code" }],
 });
