@@ -22,7 +22,7 @@ CKBC = json.load(open(os.path.join(PRE, "ckbcert-genesis.json")))
 RED = json.load(open(os.path.join(HERE, "..", "circuit", "ceremony", "leap_bound_windowed_redeemer.json")))
 VK = RED["vk"]; FIN_VK = json.load(open(os.path.join(HERE, "..", "circuit", "ceremony", "finalize_windowed_redeemer.json")))["vk"]
 
-SEAL = bytes.fromhex("77ded628c8a08d640ca95a45939039cb77d58b739e5ab93143685a7674b81c88")  # the redeployed sample-lock tx (bridge 0x48548a94)
+SEAL = bytes.fromhex("e86b1ceffa985264defbd099ce76af43c187c7ea5448eb919206094324314318")  # AC4 fresh lock @ height 21435552 (advanced-window leap)
 AMOUNT = 20000000000
 RECIPIENT = bytes.fromhex("2df44c71a4312463ba31315c5aa7725b6ad44cd544a055a3dde915a6")
 NEW_STATE = AMOUNT.to_bytes(16, "little") + RECIPIENT
@@ -111,12 +111,6 @@ def main():
 
     # ---- LEAP ----
     live = "--live" in sys.argv
-    # GUARD: the leap proof's window_root (PI[0]) + tip (PI[3]) MUST bind the CURRENT pinned checkpoint, else
-    # cardano_bound.inputs_bind_w fails on-chain. After a checkpoint re-genesis the leap proof must be regenerated.
-    assert PI[0] == field_of_le(CKBC["pinned"]["window_root"]), \
-        "leap proof window_root != pinned checkpoint; regenerate leap_bound_windowed_redeemer.json for the new checkpoint window"
-    assert PI[3] == int(CKBC["pinned"]["tip_height"]), \
-        f"leap proof tip {PI[3]} != pinned checkpoint tip {CKBC['pinned']['tip_height']}; regenerate the leap proof"
     refs = json.load(open(REFF))
     refu = lambda nm: pc.UTxO(pc.TransactionInput(pc.TransactionId(bytes.fromhex(refs[nm]["tx"])), refs[nm]["ix"]),
                               pc.TransactionOutput(a, pc.Value(60_000_000), script=S[nm]))
@@ -130,6 +124,14 @@ def main():
     pol_ref = find(ctx, addr(M["policy_script"]), M["policy_nft"])
     print("bound_in:", bool(bound_in), "reg_in:", bool(reg_in), "rl_in:", bool(rl_in), "ckpt_ref:", bool(ckpt_ref), "pol_ref:", bool(pol_ref))
     assert all([bound_in, reg_in, rl_in, ckpt_ref, pol_ref]), "missing a cell"
+    # GUARD: the leap proof's window_root (PI[0]) + tip (PI[3]) MUST bind the LIVE checkpoint datum that
+    # cardano_bound reads (the ADVANCED cell, not the genesis pin), else inputs_bind_w fails on-chain.
+    _d = ckpt_ref.output.datum
+    _raw = _d.to_cbor() if hasattr(_d, "to_cbor") else (_d.cbor if hasattr(_d, "cbor") else bytes(_d))
+    _cp = cbor2.loads(_raw).value                        # Checkpoint{chain_root, total_difficulty, window_root, tip_height}
+    assert PI[0] == field_of_le(_cp[2].hex()), f"leap window_root != live checkpoint window_root; advance the checkpoint or regenerate the proof"
+    assert PI[3] == int(_cp[3]), f"leap tip {PI[3]} != live checkpoint tip {int(_cp[3])}; advance to {PI[3]} or regenerate"
+    print(f"[guard] leap binds the live checkpoint: window_root {_cp[2].hex()[:16]} tip {int(_cp[3])}")
 
     pr = RED["proof"]
     transition = pc.RawPlutusData(constr(0, [constr(0, [bytes.fromhex(pr["a"]), ByteString(bytes.fromhex(pr["b"])), bytes.fromhex(pr["c"])]), NEW_STATE, PI]))
