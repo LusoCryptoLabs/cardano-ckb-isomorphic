@@ -3,9 +3,10 @@
 
 Mints the one-shot ckbcert_thread NFT (consuming a wallet outpoint) onto a checkpoint cell at the
 advance_ckbcert address, carrying the PINNED Checkpoint datum {chain_root, total_difficulty, window_root,
-tip_height}. The window_root/tip are the REAL CKB window state the leap proof binds (validate_window_binding.py
-proved field_of(window_root)==PI[0]). chain_root/total_difficulty are zeroed (advance not exercised in the demo;
-advancing needs the advance ceremony + redeploy). Manual ExUnits (Koios has no tx-eval), generous-but-safe.
+tip_height}. The window_root/tip are the REAL CKB window state the leap proof binds. chain_root == the anchor
+tip's CKB block hash (header-chain follower, advance_live.rs), total_difficulty anchored at 0; AdvanceCKBCert is
+baked with the ADVANCE ceremony vk so the checkpoint is ADVANCEABLE (advance_relayer.py drives it). Manual
+ExUnits (Koios has no tx-eval), generous-but-safe.
 
   python3 genesis_ckbcert.py            # dry: parameterize + print the would-be tx (no submit)
   python3 genesis_ckbcert.py --live     # build + sign + submit, then verify on Koios
@@ -21,10 +22,16 @@ import cardano_net
 import d6_deploy as d6
 
 CER = os.path.join(HERE, "..", "circuit", "ceremony")
-VK = json.load(open(os.path.join(CER, "leap_bound_windowed_redeemer.json")))["vk"]
+# AdvanceCKBCert is parameterized with the ADVANCE circuit vk (advance_live, header-chain follower: 7 public
+# inputs / ic len 8), NOT the leap vk -- the validator binds a 7-input advance proof, so the leap vk (5 inputs)
+# could never verify one. Use the CEREMONY vk (toxic waste destroyed; a seeded vk would let anyone forge advances).
+VK = json.load(open(os.path.join(CER, "advance_live_ceremony_redeemer.json")))["vk"]
 WINDOW_ROOT = os.environ.get("CHIRAL_WINDOW_ROOT", "6f01df31e1fe4b799e95d7e59f5ae8ce57f3cf94945bcf5f76c67da050cf2f85")
 TIP_HEIGHT  = int(os.environ.get("CHIRAL_TIP_HEIGHT", "21388353"))
-CHAIN_ROOT, TOTAL_DIFF = "00" * 32, "00" * 32
+# header-chain follower: chain_root == the anchor tip's CKB block hash (NOT zero); total_difficulty anchored at 0
+# (cumulative work is summed from here by each advance). Set CHIRAL_CHAIN_ROOT from `advance_relayer.py init`.
+CHAIN_ROOT = os.environ.get("CHIRAL_CHAIN_ROOT", "00" * 32)
+TOTAL_DIFF = "00" * 32
 THREAD_NAME = bytes.fromhex("636b62636572742d746872656164")             # "ckbcert-thread"
 OUT_ADA = 5_000_000
 EXU = pc.ExecutionUnits(6_000_000, 2_000_000_000)                       # generous; well under per-tx limits
@@ -39,6 +46,11 @@ def compiled(label, n, name):
 
 def main():
     live = "--live" in sys.argv
+    # header-chain follower: a real anchor tip hash is MANDATORY for --live (a silent 00*32 chain_root would
+    # pin an un-anchored lineage forever). Dry runs may keep the placeholder.
+    if live and "CHIRAL_CHAIN_ROOT" not in os.environ:
+        sys.exit("set CHIRAL_CHAIN_ROOT to the anchor tip CKB block hash (advance_relayer.py init -> state.chain_root) before --live")
+    assert len(bytes.fromhex(CHAIN_ROOT)) == 32 and len(bytes.fromhex(WINDOW_ROOT)) == 32, "CHAIN_ROOT/WINDOW_ROOT must be 32 bytes"
     ctx = cardano_net.chain_context()
     sk, vk, addr = cardano_net.account()
     print("address:", addr)

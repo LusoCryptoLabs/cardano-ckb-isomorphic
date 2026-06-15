@@ -33,6 +33,8 @@ TN = pc.Network.TESTNET
 
 def addr(h): return pc.Address(payment_part=pc.ScriptHash(bytes.fromhex(h)), network=TN)
 def constr(i, fs): return cbor2.CBORTag(121 + i, fs)
+FR_ORDER = 52435875175126190479447740508185965837690552500527637822603658699938581184513
+def field_of_le(hexstr): return int.from_bytes(bytes.fromhex(hexstr), "little") % FR_ORDER
 
 # ---- SMT: empty siblings + the new root after inserting `seal` ----
 def h2(l, r): return blake2b(l + r, digest_size=32).digest()
@@ -109,6 +111,12 @@ def main():
 
     # ---- LEAP ----
     live = "--live" in sys.argv
+    # GUARD: the leap proof's window_root (PI[0]) + tip (PI[3]) MUST bind the CURRENT pinned checkpoint, else
+    # cardano_bound.inputs_bind_w fails on-chain. After a checkpoint re-genesis the leap proof must be regenerated.
+    assert PI[0] == field_of_le(CKBC["pinned"]["window_root"]), \
+        "leap proof window_root != pinned checkpoint; regenerate leap_bound_windowed_redeemer.json for the new checkpoint window"
+    assert PI[3] == int(CKBC["pinned"]["tip_height"]), \
+        f"leap proof tip {PI[3]} != pinned checkpoint tip {CKBC['pinned']['tip_height']}; regenerate the leap proof"
     refs = json.load(open(REFF))
     refu = lambda nm: pc.UTxO(pc.TransactionInput(pc.TransactionId(bytes.fromhex(refs[nm]["tx"])), refs[nm]["ix"]),
                               pc.TransactionOutput(a, pc.Value(60_000_000), script=S[nm]))

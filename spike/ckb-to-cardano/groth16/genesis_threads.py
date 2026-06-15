@@ -21,7 +21,7 @@ CER = os.path.join(HERE, "..", "circuit", "ceremony")
 VK = json.load(open(os.path.join(CER, "leap_bound_windowed_redeemer.json")))["vk"]
 FIN_VK = json.load(open(os.path.join(CER, "finalize_windowed_redeemer.json")))["vk"]
 CKBC = json.load(open(os.path.join(ROOT, "deployed", "cardano", "preview", "ckbcert-genesis.json")))
-CHECKPOINT_NFT = CKBC["checkpoint_nft"]                                   # e66554ae (already live)
+CHECKPOINT_NFT = CKBC["checkpoint_nft"]                                   # read at runtime from ckbcert-genesis.json (picks up a fresh re-genesis)
 EMPTY_ROOT = "923d2522a06a9d91e5e045a357cbb594cf1c39a44f050841154ae67f3acd6cbf"   # == seal_set.empty_root() (DEPTH=128, recomputed; old 8a95af78 was for the pre-128 tree)
 THREAD_NAME = bytes.fromhex("636b62636572742d746872656164")
 MAX_AMOUNT = 10_000_000_000_000        # 100,000 CKB per-leap cap (within d6 caps; 200 CKB leap fits)

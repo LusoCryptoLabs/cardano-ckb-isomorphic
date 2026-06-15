@@ -17,7 +17,7 @@ per-leap proof binds membership against the SAME window_root this advance mainta
   advance_relayer.py init  <RPC> <H0> <state.json>        # anchor at height H0 from real CKB headers
   advance_relayer.py step  <RPC> <state.json> <step.json> # emit the next header (tip+1) for advance_live
   advance_relayer.py apply <state.json> <step.json> <new_state.json>   # native transition (no SNARK)
-  advance_relayer.py check <state.json> <redeemer.json>   # assert advance_live's new_state == native next state
+  advance_relayer.py check <state.json> <step.json> <redeemer.json>    # assert SNARK new_state == native next state
 env: CHIRAL_WINDOW_DEPTH=6
 """
 import sys, os, json, time, urllib.request, hashlib
@@ -138,15 +138,17 @@ def apply(state_path, step_path, out):
     print(f"apply: tip {st['tip_height']} -> {ns['tip_height']}  chain_root={ns['chain_root'][:16]}  window_root={ns['window_root'][:16]}  -> {out}")
 
 
-def check(state_path, redeemer_path):
+def check(state_path, step_path, redeemer_path):
+    """Safety gate: the SNARK's emitted new_state MUST equal the relayer's native transition, field by field."""
     st = json.load(open(state_path))
+    step = json.load(open(step_path))
     rd = json.load(open(redeemer_path))
-    # advance_live emits new_state; the relayer must agree (chain_root/total/window_root/tip)
+    ns = native_next(st, step)
     snark = rd["new_state"]
-    # rebuild the native next state from the same step (the step header is implied by the proof's new chain_root)
-    assert snark["chain_root"], "redeemer has no new_state"
-    print("redeemer new_state:", json.dumps(snark, indent=1))
-    print("OK: relayer should set state := redeemer.new_state (+ window_leaves[h%W]=new chain_root)")
+    keys = ["chain_root", "total_difficulty", "window_root", "tip_height"]
+    bad = [k for k in keys if str(ns[k]) != str(snark[k])]
+    assert not bad, f"relayer native_next != SNARK new_state on {bad}: native={ {k: ns[k] for k in bad} } snark={ {k: snark[k] for k in bad} }"
+    print(f"check OK: SNARK new_state == relayer native_next (tip {ns['tip_height']}, window_root {ns['window_root'][:16]})")
 
 
 if __name__ == "__main__":
@@ -160,7 +162,7 @@ if __name__ == "__main__":
     elif cmd == "apply":
         apply(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == "check":
-        check(sys.argv[2], sys.argv[3])
+        check(sys.argv[2], sys.argv[3], sys.argv[4])
     else:
         print(__doc__)
         sys.exit(1)

@@ -155,6 +155,12 @@ fn main(){
         let height=u64::from_le_bytes(raw[16..24].try_into().unwrap());
         let slot=(height % wsize as u64) as usize;
         let bh=ckbhash(&[raw.as_slice(),nonce.as_slice()].concat());
+        // cross-assert the recomputed block hash against the relayer-reported RPC hash (mirror
+        // leap_bound_windowed.rs): both sides MUST derive chain_root from the same field bytes, or the
+        // on-chain checkpoint (circuit's value) would diverge from the relayer's bookkeeping.
+        if let Some(rep)=step["block_hash"].as_str() {
+            assert_eq!(hexs(&bh), rep.trim_start_matches("0x"), "computed block hash != relayer-reported block_hash");
+        }
         let new_total=add_be(&old_total,&diff_be);
         let old_slot_leaf=wleaves[slot];
         let (old_wroot,wp)=window_root_path(&wleaves,slot);
