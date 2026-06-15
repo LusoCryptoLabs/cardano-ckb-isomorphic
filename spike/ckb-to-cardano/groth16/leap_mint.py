@@ -22,7 +22,7 @@ CKBC = json.load(open(os.path.join(PRE, "ckbcert-genesis.json")))
 RED = json.load(open(os.path.join(HERE, "..", "circuit", "ceremony", "leap_bound_windowed_redeemer.json")))
 VK = RED["vk"]; FIN_VK = json.load(open(os.path.join(HERE, "..", "circuit", "ceremony", "finalize_windowed_redeemer.json")))["vk"]
 
-SEAL = bytes.fromhex("cfaaf1778e1e6b381c679ed6d44395c7a589267f0bea7816c9f05b58a9176c77")
+SEAL = bytes.fromhex("77ded628c8a08d640ca95a45939039cb77d58b739e5ab93143685a7674b81c88")  # the redeployed sample-lock tx (bridge 0x48548a94)
 AMOUNT = 20000000000
 RECIPIENT = bytes.fromhex("2df44c71a4312463ba31315c5aa7725b6ad44cd544a055a3dde915a6")
 NEW_STATE = AMOUNT.to_bytes(16, "little") + RECIPIENT
