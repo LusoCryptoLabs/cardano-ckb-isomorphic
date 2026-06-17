@@ -53,7 +53,7 @@ const data = "0x" + Buffer.concat([Buffer.from("BRG1"), Buffer.from([0]), u64(AM
 // here needs nothing; RELEASING it later needs the burn_gated code cell deployed + the PRODUCTION (STM-pinned)
 // Mithril checkpoint. Per RETURN_TRIP.md, do NOT use --burn-gated before those are live (funds would strand).
 const BURN_GATED_CODE = "0x771f7fa31fd21ea6807747fd120ad06dbcbecce21425ca630d7262951e4ce9b4"; // burn_gated_unlock_v2 (deploy via deploy_burn_gated.mjs)
-const LCKP_TH = "a055798e911a4f7ed074d5e1ee6273683e9a446c70d3e22adab680d70eea5b74"; // Mithril checkpoint type hash (pre-STM-pin; production swap audit-gated)
+const LCKP_TH = "cae4326684d06d3cdad0d5f683c4c33d066862b0fa0a753bc58791df5987552a"; // STM-pinned + singleton-guarded LCKP (Gate 1 cutover; under new cv_deploy 0x52bdcbcb)
 const REG_TH = "dc18fd562bca1834536c926ce8c9d94f608318c3a79a43959c0c46a84265a24e"; // burn nullifier registry type hash
 const CHICKB_POLICY = "ed5b37a60f2f4c7b846d0ae4b7748650fcc2890bb8e761cd015035f8"; // leap_mint_guard policy (UPDATE per cascade: the policy that mints chiCKB for this lock)
 const CHICKB_NAME = "cf87434b42"; // chiCKB FT name

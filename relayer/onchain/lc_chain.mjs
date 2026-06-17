@@ -127,17 +127,18 @@ async function main() {
   }
   if (phase === "advance") return fin(client, lock);
 
-  // 3) DEPLOY authenticated tx-set checkpoint (re-fetch current CT cert so the published root is fresh)
+  // 3) DEPLOY authenticated tx-set checkpoint — M2 44-byte LCKP||root||height, taken from the
+  // off-chain-validated chain.json (build_chain_pinned.py exported deploy.out_data + deploy.witness).
   if (!st.deploy) {
-    const { txroot, witFile } = await refreshCtCert();
+    const witFile = META.deploy.witness;   // wit_<TO>.bin (cert at the target epoch)
+    const outData = META.deploy.out_data;   // 44-byte LCKP||root||height, validated off-chain
     const wc = await makeWitnessCell(client, signer, lock, witFile, st.witness);
     st.witness = wc; saveState(st);
-    const outData = "0x4c434b50" + txroot;
     const h = await buildSend(client, signer, lock, {
       outs: [{ type: cvDepScript, data: outData, cap: minCap(outData, true) + BigInt(50e8) }],
       cellDeps: [depDep, { outPoint: wc, depType: "code" }, { outPoint: st.ckpt.outpoint, depType: "code" }],
-    }, "DEPLOY authenticated tx-set checkpoint");
-    st.deploy = { txHash: h, index: 0, txRoot: "0x" + txroot, checkpointData: outData }; saveState(st);
+    }, "DEPLOY authenticated tx-set checkpoint (M2 44-byte)");
+    st.deploy = { txHash: h, index: 0, root: META.deploy.tx_root, height: META.deploy.height, checkpointData: outData }; saveState(st);
   } else console.log("deploy: done", st.deploy.txHash);
 
   console.log("\n=== LIGHT-CLIENT CHAIN LIVE ON PUDGE ===");

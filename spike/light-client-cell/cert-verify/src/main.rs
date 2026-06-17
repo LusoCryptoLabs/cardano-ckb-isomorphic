@@ -18,7 +18,7 @@ use ckb_std::error::SysError;
 // mode (cfg-gated so it can't change the advance binary's own codeHash). The avk is trusted ONLY from a
 // checkpoint cell carrying this type, so it traces to the one pinned genesis chain, not an attacker cell.
 #[cfg(all(not(feature="standalone"),not(feature="embedtest"),not(feature="advance")))]
-const ADV_TYPEHASH: [u8;32] = [89,239,217,157,130,172,73,119,149,148,206,127,155,153,212,239,94,81,207,233,246,199,200,7,179,166,122,178,120,105,21,91]; // = type-hash of the canonical advance verifier
+const ADV_TYPEHASH: [u8;32] = [61,46,217,28,220,35,177,114,122,24,154,143,88,60,80,37,36,200,137,112,46,65,80,40,251,149,205,87,41,246,49,40]; // = type-hash of the canonical advance verifier (re-baked for the STM-pinned + singleton-guarded cv_advance 0x97c650d0)
 ckb_std::entry!(program_entry);
 ckb_std::default_alloc!();
 
