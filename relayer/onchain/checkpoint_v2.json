@@ -1,22 +1,14 @@
 {
   "checkpoint": {
-    "txHash": "0x5a1e9dd8d78a059708ccc57a92b6aaa5cd0e166e3d4e112a99b339a7922f832e",
+    "txHash": "0x57e4b98fec12c84b801a21f1a604c748567b6b80caad208d6f4c0d06c8efcd15",
     "index": 0
   },
-  "root": "0x89878a41a026524fd125c4f3037de2ae917b4c1bb2d667e39fea8c0ccf7aff2d",
-  "height": "4391054",
-  "data": "0x4c434b5089878a41a026524fd125c4f3037de2ae917b4c1bb2d667e39fea8c0ccf7aff2d8e00430000000000",
+  "root": "0x2be7e9ceba6458643c733373e78d849ee0a4cddd87e7d0e5f0de27ed1101de20",
+  "height": "4391384",
+  "data": "0x4c434b502be7e9ceba6458643c733373e78d849ee0a4cddd87e7d0e5f0de27ed1101de20d801430000000000",
   "witnessCell": {
-    "txHash": "0xd3e29db1e5479bd2ec867281ea546f2fd059fb0b3a3e65c073da8d0b23d2a3b3",
+    "txHash": "0x181ca617d271cccbdde47fd30b921e780d0fdb1baf2a91ec96041d790d7c7f00",
     "index": 0
   },
-  "lckpTypeHash": "0xcae4326684d06d3cdad0d5f683c4c33d066862b0fa0a753bc58791df5987552a",
-  "avkCheckpoint": {
-    "txHash": "0x333e694a3c7aa0d750364ec55eccf4f91d39c785a52838e04329a5874d8dcb0e",
-    "index": 0,
-    "epoch": 1331
-  },
-  "cvDeployCodeHash": "0x52bdcbcb3e72a703f0ba6875f5eefaef2dd46b1ba3123924361ba19f753b44e4",
-  "cvAdvanceCodeHash": "0x97c650d01f8fad9d17c0130e6f2a8d3a3e312895796a067e453ba57556528458",
-  "note": "STM-pinned + singleton-guarded cv_* lineage (Gate 1). LCKP under new cv_deploy 0x52bdcbcb; AVK under new cv_advance 0x97c650d0."
+  "lckpTypeHash": "0xcae4326684d06d3cdad0d5f683c4c33d066862b0fa0a753bc58791df5987552a"
 }
