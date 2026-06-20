@@ -16,6 +16,7 @@
 use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
+use cardano/address
 use cardano/assets.{Value}
 use cardano/transaction.{Transaction, OutputReference, Output, Input, InlineDatum}
 use g16/ckbcert.{Checkpoint, lineage_token}
