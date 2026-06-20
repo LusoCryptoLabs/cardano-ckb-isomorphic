@@ -1,0 +1,20 @@
+[Unit]
+Description=Chiral WARM prover (resident leap_bound_windowed; holds the ~480MB ceremony key for ~8s returns)
+After=network.target
+
+[Service]
+Type=simple
+# adjust the paths if you cloned elsewhere (must match CHIRAL_REPO_SH in the env file)
+EnvironmentFile=/opt/chiral/deploy/.env
+# CHIRAL_SERVE lives ONLY here (never in .env) so the dapp's cold-fallback prover can't inherit it and flip
+# into serve-mode. Must equal CHIRAL_WARM_SOCK in .env (the dapp's health probe + warm_prove.py default).
+Environment=CHIRAL_SERVE=/tmp/chiral_warm.sock
+ExecStart=/opt/chiral/spike/ckb-to-cardano/circuit/prover/target/release/leap_bound_windowed
+Restart=on-failure
+RestartSec=10
+# loads the ceremony key into a multi-GB resident set; cap so a runaway can't OOM the box (KVM2 = 8GB).
+MemoryMax=6G
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

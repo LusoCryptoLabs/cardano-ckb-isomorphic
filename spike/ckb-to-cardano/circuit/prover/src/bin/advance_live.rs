@@ -134,7 +134,63 @@ fn g2c(p:&ArkG2)->String{ let (x,y)=p.xy().unwrap(); let mut u=[0u8;192]; u[0..4
 fn hexs(b:impl AsRef<[u8]>)->String{ b.as_ref().iter().map(|x| format!("{:02x}",x)).collect() }
 fn fr_dec(x:&Fr)->String{ x.into_bigint().to_string() }
 
+// CHIRAL_SERVE=<unix socket>: WARM advance prover — load the ceremony pk ONCE and prove many advance steps so
+// the χCKB light-client advance never reloads the ~426MB key per block. Request (one JSON line):
+//   {state:<checkpoint-state.json>, step:<step.json with header>, depth?:6, out:<redeemer path>}.
+// Writes the SAME {vk,proof,public_inputs_dec,new_state} JSON the cold path prints, to `out`. The cold path
+// (env CHIRAL_ADVANCE_STATE/STEP -> stdout) is UNTOUCHED below; this only adds a warm mode. catch_unwind in
+// serve_warm keeps one bad request from crashing the resident service; the in-process verify guards drift.
+#[cfg(unix)]
+fn serve(sock:&str){
+    let depth0: usize = std::env::var("WINDOW_DEPTH").ok().and_then(|s| s.parse().ok()).unwrap_or(6);
+    let pk_path=std::env::var("CEREMONY_PK").expect("CHIRAL_SERVE needs CEREMONY_PK (the advance ceremony key)");
+    ckb_consensus_circuit::setup_mpc::serve_warm(sock, &pk_path, move |req, pk, vk| {
+        let sp=req["state"].as_str().ok_or("missing state")?;
+        let tp=req["step"].as_str().ok_or("missing step")?;
+        let out=req["out"].as_str().ok_or("missing out")?;
+        let depth=req["depth"].as_u64().map(|x| x as usize).unwrap_or(depth0);
+        let wsize=1usize<<depth;
+        let st:Value=serde_json::from_reader(std::fs::File::open(sp).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        let step:Value=serde_json::from_reader(std::fs::File::open(tp).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        let old_root=hx32(st["chain_root"].as_str().ok_or("state.chain_root")?);
+        let old_total=hx32(st["total_difficulty"].as_str().ok_or("state.total_difficulty")?);
+        let wleaves:Vec<[u8;32]>=st["window_leaves"].as_array().ok_or("state.window_leaves")?.iter().map(|x| hx32(x.as_str().unwrap())).collect();
+        if wleaves.len()!=wsize { return Err("window_leaves != W".into()); }
+        let (raw,nonce)=raw_of_json(&step["header"]);
+        if raw[32..64]!=old_root[..] { return Err("step header parent_hash != state chain_root (not the tip's child)".into()); }
+        let compact=u32::from_le_bytes(raw[4..8].try_into().unwrap());
+        let diff_be=ndiff(compact);
+        let height=u64::from_le_bytes(raw[16..24].try_into().unwrap());
+        let slot=(height % wsize as u64) as usize;
+        let bh=ckbhash(&[raw.as_slice(),nonce.as_slice()].concat());
+        if let Some(rep)=step["block_hash"].as_str() { if hexs(&bh)!=rep.trim_start_matches("0x") { return Err("computed block hash != relayer-reported block_hash".into()); } }
+        let new_total=add_be(&old_total,&diff_be);
+        let old_slot_leaf=wleaves[slot];
+        let (old_wroot,wp)=window_root_path(&wleaves,slot);
+        let w_siblings:Vec<[u8;32]>=wp.iter().map(|(s,_)|*s).collect();
+        let mut nl=wleaves.clone(); nl[slot]=bh;
+        let (new_wroot,_)=window_root_path(&nl,slot);
+        let circ=AdvanceLive{raw,nonce,diff_be,old_root,new_root:bh,old_total,new_total,old_wroot,new_wroot,old_slot_leaf,w_siblings};
+        let mut rng=ark_std::rand::rngs::StdRng::seed_from_u64(7);
+        let proof=Groth16::<Bls12_381>::prove(pk,circ.clone(),&mut rng).map_err(|e| format!("{e:?}"))?;
+        let inputs=vec![Fr::from_le_bytes_mod_order(&circ.old_root),Fr::from_le_bytes_mod_order(&circ.old_total),
+                        Fr::from_le_bytes_mod_order(&circ.new_root),Fr::from_le_bytes_mod_order(&circ.new_total),
+                        Fr::from_le_bytes_mod_order(&circ.old_wroot),Fr::from_le_bytes_mod_order(&circ.new_wroot),
+                        Fr::from(height)];
+        if !Groth16::<Bls12_381>::verify(vk,&inputs,&proof).map_err(|e| format!("{e:?}"))? { return Err("warm advance proof did not verify under ceremony vk".into()); }
+        let ic:Vec<String>=vk.gamma_abc_g1.iter().map(g1c).collect();
+        let red=format!("{{ \"vk\": {{ \"alpha_g1\":\"{}\",\"beta_g2\":\"{}\",\"gamma_g2\":\"{}\",\"delta_g2\":\"{}\",\"ic\":[{}] }}, \"proof\": {{ \"a\":\"{}\",\"b\":\"{}\",\"c\":\"{}\" }}, \"public_inputs_dec\": [{}], \"new_state\": {{ \"chain_root\":\"{}\",\"total_difficulty\":\"{}\",\"window_root\":\"{}\",\"tip_height\":{} }} }}",
+            g1c(&vk.alpha_g1),g2c(&vk.beta_g2),g2c(&vk.gamma_g2),g2c(&vk.delta_g2), ic.iter().map(|s| format!("\"{s}\"")).collect::<Vec<_>>().join(","),
+            g1c(&proof.a),g2c(&proof.b),g1c(&proof.c), inputs.iter().map(|x| format!("\"{}\"",fr_dec(x))).collect::<Vec<_>>().join(","),
+            hexs(&bh), hexs(&circ.new_total), hexs(&circ.new_wroot), height);
+        std::fs::write(out, &red).map_err(|e| e.to_string())?;
+        Ok(out.to_string())
+    });
+}
+
 fn main(){
+    #[cfg(unix)]
+    if let Ok(sock)=std::env::var("CHIRAL_SERVE") { serve(&sock); return; }
     let depth: usize = std::env::var("WINDOW_DEPTH").ok().and_then(|s| s.parse().ok()).unwrap_or(6);
     let wsize=1usize<<depth;
 

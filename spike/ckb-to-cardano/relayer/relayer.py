@@ -23,6 +23,10 @@ def hdr_fields(h):
 
 tip = int(rpc("get_tip_header", [])["number"], 16)
 TARGET_TX = os.environ.get("TARGET_TX"); TARGET_BLOCK = os.environ.get("TARGET_BLOCK")
+if TARGET_TX and not TARGET_BLOCK:
+    # derive the confirmed block from the tx itself, so a caller need only supply TARGET_TX
+    st = rpc("get_transaction", [TARGET_TX]); bh = (st.get("tx_status") or {}).get("block_hash")
+    if bh: TARGET_BLOCK = str(int(rpc("get_header", [bh])["number"], 16))
 if TARGET_TX and TARGET_BLOCK:
     # LIVE value-binding proof: prove on a SPECIFIC bridge-receipt tx in its block.
     T = int(TARGET_BLOCK); block = rpc("get_block_by_number", [hex(T)])

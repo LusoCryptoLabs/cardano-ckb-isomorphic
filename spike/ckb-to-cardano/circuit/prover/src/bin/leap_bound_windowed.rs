@@ -17,8 +17,9 @@
 //! as the leap_windowed demo for the window itself (in production AdvanceCKBCert maintains the real window
 //! root); the header, CBMT, body, amount/recipient and the K-floor are all REAL/enforced.
 //!
-//!   cargo run --release --bin leap_bound_windowed              # is_satisfied + 5-case differential audit
-//!   PROVE=1 cargo run --release --bin leap_bound_windowed      # + full Groth16 setup/prove/verify + redeemer
+//!   CHIRAL_AUDIT=1 cargo run --release --bin leap_bound_windowed   # is_satisfied + 5-case differential audit
+//!   PROVE=1 cargo run --release --bin leap_bound_windowed          # full Groth16 setup/prove/verify + redeemer
+//!                                                                  # (audit is OFF unless CHIRAL_AUDIT=1)
 use ark_bls12_381::{Bls12_381, Fr};
 use ark_ff::PrimeField;
 use ark_groth16::Groth16;
@@ -157,7 +158,87 @@ impl ConstraintSynthesizer<Fr> for BoundWindowedLeap {
 
 fn sat(c:&BoundWindowedLeap)->bool{ let cs=ConstraintSystem::<Fr>::new_ref(); c.clone().generate_constraints(cs.clone()).unwrap(); cs.is_satisfied().unwrap() }
 
+// Assemble the BoundWindowedLeap instance from the relayer artifacts (witness_bridge + bridge_lock_live +
+// optional real window). Mirrors the cold main()'s inline assembly EXACTLY so the warm serve loop produces the
+// identical circuit (=> the same ceremony vk verifies it). Used only by the warm path; the cold path is
+// untouched. A drifted assembly would simply fail the in-process Groth16::verify under the ceremony vk.
+fn build_circuit(wpath:&str, bpath:&str, window:Option<&str>, depth:usize, k_override:Option<u64>, kmin:u64, tip_offset:u64) -> BoundWindowedLeap {
+    let wsize = 1usize << depth;
+    let v:Value=serde_json::from_reader(std::fs::File::open(wpath).unwrap()).unwrap();
+    let lj:Value=serde_json::from_reader(std::fs::File::open(bpath).unwrap()).unwrap();
+    let hs=v["headers"].as_array().unwrap();
+    let (raw,nonce)=raw_of(&hs[3]);
+    let block_hash=ckbhash(&[raw.as_slice(),nonce.as_slice()].concat());
+    assert_eq!(block_hash.iter().map(|x|format!("{:02x}",x)).collect::<String>(), hs[3]["hash"].as_str().unwrap().trim_start_matches("0x"), "block hash mismatch");
+    let cb=&v["cbmt"]; let mut node=u64::from_str_radix(cb["indices"][0].as_str().unwrap().trim_start_matches("0x"),16).unwrap();
+    let mut cbmt_path=Vec::new(); for l in cb["lemmas"].as_array().unwrap() { cbmt_path.push((hx32(l.as_str().unwrap()), node%2==1)); node=(node-1)/2; }
+    let cbmt_leaf=hx32(v["tx_hash"].as_str().unwrap()); let wit=hx32(cb["witnesses_root"].as_str().unwrap());
+    let seal=cbmt_leaf;
+    let body=hx(lj["body_hex"].as_str().unwrap());
+    let bridge_code=hx32(lj["bridge_code_hash"].as_str().unwrap());
+    let off=&lj["offsets"]; let type_off=off["type_code"].as_u64().unwrap() as usize;
+    let amount_off=off["amount"].as_u64().unwrap() as usize; let recip_off=off["recipient"].as_u64().unwrap() as usize;
+    assert_eq!(ckbhash(&body).iter().map(|x|format!("{:02x}",x)).collect::<String>(),
+               seal.iter().map(|x|format!("{:02x}",x)).collect::<String>(), "captured body does not hash to the proven tx");
+    let height: u64 = u64::from_le_bytes(raw[16..24].try_into().unwrap());
+    let slot = (height % wsize as u64) as usize;
+    let (mut leaves, tip_height) = if let Some(wp)=window {
+        let wj:Value=serde_json::from_reader(std::fs::File::open(wp).unwrap()).unwrap();
+        assert_eq!(wj["window_depth"].as_u64().unwrap() as usize, depth, "CHIRAL_WINDOW depth != depth");
+        assert_eq!(wj["receipt_height"].as_u64().unwrap(), height, "CHIRAL_WINDOW receipt height != proven header");
+        let lv:Vec<[u8;32]>=wj["leaves"].as_array().unwrap().iter().map(|x| hx32(x.as_str().unwrap())).collect();
+        assert_eq!(lv.len(), wsize, "CHIRAL_WINDOW leaf count != W");
+        (lv, wj["tip_height"].as_u64().unwrap())
+    } else {
+        let mut lv=vec![[0u8;32]; wsize]; for kk in 0..wsize { lv[kk]=ckbhash(&((kk as u64)+1).to_le_bytes()); }
+        (lv, height + tip_offset)
+    };
+    if window.is_some() { assert_eq!(leaves[slot], block_hash, "real window leaf at slot != the proven block hash"); }
+    else { leaves[slot]=block_hash; }
+    let k = k_override.unwrap_or(kmin);
+    let (window_root, wpath_off)=window_root_path(&leaves, slot);
+    let siblings:Vec<[u8;32]>=wpath_off.iter().map(|(s,_)|*s).collect();
+    BoundWindowedLeap{ raw,nonce,cbmt_leaf,cbmt_path,wit,seal,window_root,siblings,tip_height,k,kmin,body,bridge_code,type_off,amount_off,recip_off }
+}
+
+// the 5 public inputs (window_root, seal, commitment[native], tip_height, K) of a circuit instance.
+fn inputs_of(c:&BoundWindowedLeap)->Vec<Fr>{
+    let amt=&c.body[c.amount_off..c.amount_off+16]; let rcp=&c.body[c.recip_off..c.recip_off+28];
+    let mut ns=amt.to_vec(); ns.extend_from_slice(rcp); let mut cc=ns; cc.extend_from_slice(&c.seal); let commitment=b2b(&cc);
+    vec![Fr::from_le_bytes_mod_order(&c.window_root), Fr::from_le_bytes_mod_order(&c.seal),
+         Fr::from_le_bytes_mod_order(&commitment), Fr::from(c.tip_height), Fr::from(c.k)]
+}
+
+// CHIRAL_SERVE=<unix socket>: load the (~480MB) ceremony pk ONCE and prove many requests, so a return no
+// longer reloads the key (~5 min) every time. Request (one JSON line): {wit,bridge,window?,depth?,k?,kmin?,out}.
+// Response: {"ok":true,"out":...} | {"error":...}; the redeemer is written to `out`. This is the warm prover.
+fn serve(sock:&str){
+    let depth0: usize = std::env::var("WINDOW_DEPTH").ok().and_then(|s| s.parse().ok()).unwrap_or(6);
+    let kmin0: u64 = std::env::var("CHIRAL_K_MIN").ok().and_then(|s| s.parse().ok()).unwrap_or(12);
+    let pk_path=std::env::var("CEREMONY_PK").expect("CHIRAL_SERVE needs CEREMONY_PK (the ceremony proving key)");
+    // The socket loop + ping/shutdown + catch_unwind live in setup_mpc::serve_warm; here we only supply the
+    // leap-specific assembly (build_circuit + inputs_of), so the forward/advance legs reuse the same loop.
+    ckb_consensus_circuit::setup_mpc::serve_warm(sock, &pk_path, move |req, pk, vk| {
+        let wit=req["wit"].as_str().ok_or("missing wit")?;
+        let bridge=req["bridge"].as_str().ok_or("missing bridge")?;
+        let out=req["out"].as_str().ok_or("missing out")?;
+        let window=req["window"].as_str();
+        let d=req["depth"].as_u64().map(|x| x as usize).unwrap_or(depth0);
+        let km=req["kmin"].as_u64().unwrap_or(kmin0);
+        let kov=req["k"].as_u64();
+        let circ=build_circuit(wit,bridge,window,d,kov,km,km);
+        let inputs=inputs_of(&circ);
+        let mut rng=ark_std::rand::rngs::StdRng::seed_from_u64(7);
+        let proof=Groth16::<Bls12_381>::prove(pk,circ.clone(),&mut rng).map_err(|e| format!("{e:?}"))?;
+        if !Groth16::<Bls12_381>::verify(vk,&inputs,&proof).map_err(|e| format!("{e:?}"))? { return Err("warm proof did not verify under ceremony vk".into()); }
+        let red=ckb_consensus_circuit::setup_mpc::emit_redeemer(vk,&proof,&inputs);
+        std::fs::write(out, serde_json::to_string_pretty(&red).unwrap()).map_err(|e| e.to_string())?;
+        Ok(out.to_string())
+    });
+}
+
 fn main(){
+    if let Ok(sock)=std::env::var("CHIRAL_SERVE") { serve(&sock); return; }
     let wpath=std::env::args().nth(1).unwrap_or("/tmp/witness_bridge.json".into());
     let bpath=std::env::args().nth(2).unwrap_or("/mnt/c/Users/telmo/chiral-study/relayer/onchain/bridge_lock_live.json".into());
     let v:Value=serde_json::from_reader(std::fs::File::open(&wpath).unwrap()).unwrap();
@@ -215,25 +296,30 @@ fn main(){
         tip_height:tip,k,kmin,body,bridge_code:bridge,type_off,amount_off,recip_off };
     let real=mk(k,kmin,tip_height,body.clone(),bridge_code);
 
-    // ---- DIFFERENTIAL AUDIT (fast; no proving) ----
-    let pos = sat(&real);
-    eprintln!("[audit] positive (real receipt, K={k} kmin={kmin} diff={})        is_satisfied={pos}", tip_height-height);
-    assert!(pos, "real value-bound windowed leap must be satisfiable");
-    // 1) inflate/redirect: flip a byte in the receipt body's amount field -> body no longer hashes to seal
-    let mut tb=body.clone(); tb[amount_off]^=1;
-    let n1=sat(&mk(k,kmin,tip_height,tb,bridge_code));
-    eprintln!("[audit] tamper body amount (inflate/redirect)                      is_satisfied={n1}"); assert!(!n1);
-    // 2) non-bridge receipt: pin a wrong bridge_lock code-hash
-    let mut wc=bridge_code; wc[0]^=1;
-    let n2=sat(&mk(k,kmin,tip_height,body.clone(),wc));
-    eprintln!("[audit] non-bridge receipt (wrong type code-hash)                  is_satisfied={n2}"); assert!(!n2);
-    // 3) GOV-1 floor: K=0 below the pinned K_MIN
-    let n3=sat(&mk(0,kmin,tip_height,body.clone(),bridge_code));
-    eprintln!("[audit] K=0 (below pinned K_MIN={kmin})                            is_satisfied={n3}"); assert!(!n3);
-    // 4) shallow reorg: tip == height (diff=0) with K=kmin -> diff < K
-    let n4=sat(&mk(k,kmin,height,body.clone(),bridge_code));
-    eprintln!("[audit] shallow (diff=0 < K={k})                                   is_satisfied={n4}"); assert!(!n4);
-    eprintln!("[audit] ALL 5 CASES OK: 1 accept + 4 reject (inflate/redirect, non-bridge, K=0, shallow)");
+    // ---- DIFFERENTIAL AUDIT (no proving) — GATED behind CHIRAL_AUDIT. It re-verifies FIXED circuit
+    // properties (soundness of reject cases), not the request, so re-running it on every cold prove just
+    // re-synthesizes ~1.39M constraints 5x for nothing. A bad witness still fails in `prove` below. Opt in
+    // with CHIRAL_AUDIT=1 during development; production cold proves skip it.
+    if std::env::var("CHIRAL_AUDIT").is_ok() {
+        let pos = sat(&real);
+        eprintln!("[audit] positive (real receipt, K={k} kmin={kmin} diff={})        is_satisfied={pos}", tip_height-height);
+        assert!(pos, "real value-bound windowed leap must be satisfiable");
+        // 1) inflate/redirect: flip a byte in the receipt body's amount field -> body no longer hashes to seal
+        let mut tb=body.clone(); tb[amount_off]^=1;
+        let n1=sat(&mk(k,kmin,tip_height,tb,bridge_code));
+        eprintln!("[audit] tamper body amount (inflate/redirect)                      is_satisfied={n1}"); assert!(!n1);
+        // 2) non-bridge receipt: pin a wrong bridge_lock code-hash
+        let mut wc=bridge_code; wc[0]^=1;
+        let n2=sat(&mk(k,kmin,tip_height,body.clone(),wc));
+        eprintln!("[audit] non-bridge receipt (wrong type code-hash)                  is_satisfied={n2}"); assert!(!n2);
+        // 3) GOV-1 floor: K=0 below the pinned K_MIN
+        let n3=sat(&mk(0,kmin,tip_height,body.clone(),bridge_code));
+        eprintln!("[audit] K=0 (below pinned K_MIN={kmin})                            is_satisfied={n3}"); assert!(!n3);
+        // 4) shallow reorg: tip == height (diff=0) with K=kmin -> diff < K
+        let n4=sat(&mk(k,kmin,height,body.clone(),bridge_code));
+        eprintln!("[audit] shallow (diff=0 < K={k})                                   is_satisfied={n4}"); assert!(!n4);
+        eprintln!("[audit] ALL 5 CASES OK: 1 accept + 4 reject (inflate/redirect, non-bridge, K=0, shallow)");
+    }
 
     if std::env::var("PROVE").is_err() { return; }
     // ---- FULL GROTH16: MPC ceremony (CEREMONY_OUT => production VK) / load (CEREMONY_PK) / test setup ----

@@ -1,0 +1,9 @@
+{
+  "burnReceiptCode": {
+    "txHash": "0xb490930f4348f529b1b7d888f72634e17a86c3c296f653f4abf50a578dc90bd8",
+    "index": 0,
+    "codeHash": "0x794587aea07c23984a5391946f69e74a3bc9737760053dedea6855014f6f5ee3",
+    "size": 22008
+  },
+  "xadaTokenId": "0xcc873b978e36f9bbdaf33284d4a16acb30484468b93f24b183259bbeb596ef28"
+}

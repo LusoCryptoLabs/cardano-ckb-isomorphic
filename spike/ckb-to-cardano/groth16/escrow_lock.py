@@ -23,18 +23,28 @@ import cbor2, pycardano as pc, cardano_net, d6_deploy as d6
 
 PRE = os.path.join(ROOT, "deployed", "cardano", "preview")
 M = json.load(open(os.path.join(PRE, "groth16-deploy.json")))
+# the ada_escrow Release reads the CKB-header checkpoint by this NFT; CHIRAL_CHECKPOINT_NFT re-points it at a
+# RE-ANCHORED checkpoint (the return proof binds that window_root/tip_height). Default = the forward deploy's.
+if os.environ.get("CHIRAL_CHECKPOINT_NFT"):
+    M["checkpoint_nft"] = os.environ["CHIRAL_CHECKPOINT_NFT"]
 RED = json.load(open(os.path.join(HERE, "..", "circuit", "ceremony", "leap_bound_windowed_redeemer.json")))
 LEAP_VK = RED["vk"]   # the forward leap vk
-VK = LEAP_VK     # PLACEHOLDER return-vk (forward leg does not verify it; P5 swaps in the real burn-vk)
+# P5: the REAL return (burn) vk from the burn-instance ceremony. Set CHIRAL_RETURN_VK to xada_burn_redeemer.json
+# to deploy the SOUND, non-drainable escrow — the Release path then verifies a real χADA-burn proof against it.
+_rv = os.environ.get("CHIRAL_RETURN_VK")
+VK = json.load(open(_rv))["vk"] if _rv else LEAP_VK   # placeholder leap vk only if no real burn-vk supplied
 # SEC (audit #4): while VK is the leap PLACEHOLDER, the escrow's Release path verifies a vk whose proving key +
 # prover are ON DISK (circuit/ceremony/) — so a self-bound leap proof can drain the escrow with NO real χADA
 # burn. Until P5 deploys the real burn-vk, refuse to lock more than a trivial demo amount at this address.
 DEMO_MAX = 5_000_000  # lovelace (5 ADA) — the most that may be locked at a placeholder-vk escrow
 
-# χADA recipient on CKB = the relayer's CKB lock hash (where xada_mint mints χADA). 32 bytes.
-CKB_RECIPIENT = bytes.fromhex("7a971a3b730d3e5b69f73ac7add6dcd2396cab9523176132ed23e17500c820c7")
-AMOUNT = 3_000_000      # 3 ADA in lovelace -> mints 3,000,000 χADA xUDT (a fresh escrow for the proper-xUDT mint).
-NONCE  = 4              # fresh escrow (prev nonces 1,2,3 minted) -> a different tx -> a fresh registry key.
+# χADA recipient on CKB = the CKB lock HASH where xada_mint mints χADA (32 bytes). Default: the relayer's own
+# lock (the original self-mint demo). SELF-SERVE: the dapp passes the USER's CKB lock hash via env so the
+# minted χADA is owned by the user — the owner lock enforces output.lock_hash == this recipient in-VM.
+CKB_RECIPIENT = bytes.fromhex(os.environ.get("CHIRAL_XADA_RECIPIENT",
+    "7a971a3b730d3e5b69f73ac7add6dcd2396cab9523176132ed23e17500c820c7"))
+AMOUNT = int(os.environ.get("CHIRAL_XADA_AMOUNT", "3000000"))   # lovelace -> mints AMOUNT χADA 1:1
+NONCE  = int(os.environ.get("CHIRAL_XADA_NONCE",  "4"))         # fresh nonce -> a distinct tx -> a fresh registry key
 TN = pc.Network.TESTNET
 
 def constr(i, fs): return cbor2.CBORTag(121 + i, fs)
@@ -58,7 +68,9 @@ def main():
     try:
         _owner = json.load(open(os.path.join(ROOT, "relayer", "onchain", "xada_owner_deploy.json")))
         _expected = _owner.get("escrowAddr")
-        if _expected and _expected != addr_hex:
+        # CHIRAL_ESCROW_NO_OVERRIDE=1: lock at the FRESHLY-DERIVED address (e.g. the sound burn-vk RETURN escrow,
+        # whose hash legitimately differs from the forward owner-lock-expected one) instead of forcing the old addr.
+        if _expected and _expected != addr_hex and not os.environ.get("CHIRAL_ESCROW_NO_OVERRIDE"):
             print(f"NOTE: derived escrow {addr_hex} != owner-lock-expected {_expected}; locking at the expected addr "
                   f"(ada_escrow.ak changed since deploy). Same token id preserved.")
             addr_hex = _expected
@@ -97,9 +109,12 @@ def main():
         "ckb_recipient": CKB_RECIPIENT.hex(), "amount": AMOUNT, "nonce": NONCE,
         "note": "forward-demo escrow; return-vk is a PLACEHOLDER (P5 redeploys). xada_mint args escrow_addr = escrow_addr_hex.",
     }
-    json.dump(state, open(os.path.join(PRE, "xada-escrow.json"), "w"), indent=2)
+    # CHIRAL_ESCROW_OUT: write the RETURN escrow (orchestrator) to a SEPARATE file so it never clobbers the
+    # static FORWARD escrow config (deployed/cardano/preview/xada-escrow.json) the dapp serves to testers.
+    esc_out = os.path.join(PRE, os.environ.get("CHIRAL_ESCROW_OUT", "xada-escrow.json"))
+    json.dump(state, open(esc_out, "w"), indent=2)
     print("\nLOCKED", AMOUNT/1_000_000, "ADA at escrow:", txid, "@", escrow_addr)
-    print("wrote", os.path.join(PRE, "xada-escrow.json"))
+    print("wrote", esc_out)
 
 if __name__ == "__main__":
     main()

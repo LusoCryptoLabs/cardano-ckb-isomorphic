@@ -10,7 +10,12 @@ import { signerOf, myLock, deployCodeCell, balance } from "./_signer.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.resolve(HERE, "../../spike/burn-gated-unlock/target/riscv64imac-unknown-none-elf/release/xada_mint_owner");
-const LCKP = JSON.parse(fs.readFileSync(path.join(HERE, "deployed.json"))).cv_deploy_v2.lckpTypeHash;
+// LCKP = the checkpoint type the owner lock reads. Pin to the LIVE WORKING lineage — the one the burn-gated
+// release leg uses (burn_gated_live.json.lckp_type_hash = cae43266, refreshed by bg_refresh.mjs). The older
+// cv_deploy_v2 type (a055798e) was orphaned by the Gate-1 cert-verify re-bake, so a token pinned to it can't
+// be minted. Overridable via CHIRAL_XADA_LCKP for a future re-pin.
+const LCKP = process.env.CHIRAL_XADA_LCKP
+  || JSON.parse(fs.readFileSync(path.join(HERE, "burn_gated_live.json"))).lckp_type_hash;
 const REGTH = JSON.parse(fs.readFileSync(path.join(HERE, "v2_registry.json"))).chiralRegTh;
 const ESC = JSON.parse(fs.readFileSync(path.resolve(HERE, "../../deployed/cardano/preview/xada-escrow.json")));
 const ESCROW_ADDR = ESC.escrow_addr_hex; // 707a6be98e… (the ada_escrow address; new escrows lock at the same addr)

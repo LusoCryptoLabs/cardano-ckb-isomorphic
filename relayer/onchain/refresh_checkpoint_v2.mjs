@@ -58,7 +58,10 @@ export async function refreshCheckpointV2() {
   let prev = null;
   try { prev = JSON.parse(fs.readFileSync(OUT, "utf8")).witnessCell; } catch {}
   let prevCap = 0n, prevInput = [];
-  if (prev) { try { prevCap = BigInt((await client.getCell(prev)).cellOutput.capacity); prevInput = [{ previousOutput: prev, since: 0n }]; } catch {} }
+  // recycle the prior witness cell ONLY if it is still LIVE — a stale checkpoint_v2.json can point at a cell a
+  // later refresh/leg already spent; getCellLive returns null for that (getCell would return the dead cell and
+  // make us reference a spent input → TransactionFailedToResolve). Dead/absent → just fund a fresh witness cell.
+  if (prev) { try { const pc = await client.getCellLive(prev, false); if (pc) { prevCap = BigInt(pc.cellOutput.capacity); prevInput = [{ previousOutput: prev, since: 0n }]; } } catch {} }
   const need = wcCap + FEE + BigInt(61e8) - prevCap;
   const f1 = await pickPlain(client, lock, need > 0n ? need : BigInt(61e8));
   const wtx = ccc.Transaction.from({

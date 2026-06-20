@@ -1,6 +1,6 @@
 {
   "bridge_code_hash": "0x48548a94cfb7971e27cc63ce5785681e0e5ba64bab9095b5754108b20ce7a9f1",
-  "bridge_code_tx": "0x03fceef4184a0ea9a420182a253ffc14f01c5db9be2d402dffcde6595f276c49",
+  "bridge_code_tx": "0xd91502252d0ce0e38a2938be844a3903b72f399a6c1c720f246b3ead134b59c3",
   "lock_txid": "0xe86b1ceffa985264defbd099ce76af43c187c7ea5448eb919206094324314318",
   "amount": "20000000000",
   "recipient": "2df44c71a4312463ba31315c5aa7725b6ad44cd544a055a3dde915a6",

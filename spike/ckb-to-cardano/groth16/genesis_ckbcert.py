@@ -59,8 +59,12 @@ def main():
     pure = sorted([u for u in us if not u.output.amount.multi_asset], key=lambda u: int(u.output.amount.coin))
     if len(pure) < 2:
         sys.exit("need >=2 pure-ADA UTxOs (a gref+funding and a collateral); split the wallet first")
-    collateral = pure[0]
-    seed = pure[-1]
+    seed = pure[-1]                                   # largest pure UTxO funds the mint + change
+    # collateral must cover the min collateral (~3.82 ADA); the smallest pure UTxO can be too tiny (leftover
+    # change), so pick the smallest pure UTxO that is >= 5 ADA and is NOT the seed.
+    collateral = next((u for u in pure if int(u.output.amount.coin) >= 5_000_000 and u.input != seed.input), None)
+    if collateral is None:
+        sys.exit("need a pure-ADA UTxO >= 5 ADA (distinct from the seed) for collateral; consolidate the wallet")
     gref_txid = str(seed.input.transaction_id); gref_ix = seed.input.index
     print(f"gref {gref_txid[:16]}#{gref_ix}  collateral {str(collateral.input.transaction_id)[:16]}#{collateral.input.index}  seed {int(seed.output.amount.coin)/1e6:.1f} tADA")
 

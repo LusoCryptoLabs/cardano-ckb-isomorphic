@@ -6,11 +6,14 @@
 ////
 //// AMOUNT/NAME BINDING (closes the prior gap, with NO change to the circuit / trusted setup):
 ////  - public_inputs are [field_of(checkpoint_root), field_of(seal), field_of(commitment)] (== cardano_bound.ak).
-////  - the redeemer reveals the committed `state` (whose first 8 bytes are the locked amount, big-endian)
-////    and the `seal`; the policy recomputes commitment = blake2b256(state ++ seal) and requires
-////    field_of(commitment) == public_inputs[2] and field_of(seal) == public_inputs[1]. Since the circuit
-////    binds `commitment` to the CKB seal-spend (R4), the amount carried in `state` is transitively bound
-////    to the real CKB lock — the relayer cannot mint an amount the lock did not commit to.
+////  - the redeemer reveals the committed `state` and the `seal`; the policy recomputes
+////    commitment = blake2b256(state ++ seal) and requires field_of(commitment) == public_inputs[2] and
+////    field_of(seal) == public_inputs[1]. Since the circuit binds `commitment` to the CKB seal-spend (R4),
+////    the amount carried in `state` is transitively bound to the real CKB lock — the relayer cannot mint
+////    an amount the lock did not commit to.
+////  - STATE LAYOUT (== relay_bind's in-circuit `new_state`): amount(16 bytes, LITTLE-endian) ‖
+////    recipient_credential(28). So the qty the relayer can mint is exactly the shannon amount the CKB
+////    receipt locked, and the asset name (commitment[0:28]) is additionally bound to the recipient.
 ////  - the asset name is pinned to the commitment (first 28 bytes), and the policy enforces that EXACTLY
 ////    one asset under this policy is minted, with quantity == the committed amount.
 use aiken/builtin
@@ -38,28 +41,34 @@ fn commitment(state: ByteArray, seal: ByteArray) -> ByteArray {
   builtin.blake2b_256(builtin.append_bytearray(state, seal))
 }
 
+// amount = first 16 bytes of `state`, LITTLE-endian — identical to relay_bind's in-circuit encoding
+// (new_state = amount(16 LE) ‖ recipient(28)), so the policy's committed amount matches the prover's.
 fn amount_of(state: ByteArray) -> Int {
-  builtin.bytearray_to_integer(True, builtin.slice_bytearray(0, 8, state))
+  builtin.bytearray_to_integer(False, builtin.slice_bytearray(0, 16, state))
 }
 
-/// Pure binding check: the minted (name, qty) under `policy` match the amount/name the proof committed to.
+/// Pure binding check: the minted (name, qty) under `policy` match the amount the proof committed to.
+/// The proof binding (pi_comm == field_of(blake2b(state++seal))) ties `state` — hence the amount in its
+/// first 16 LE bytes and the recipient in the next 28 — to the real CKB lock. The minted NAME is a fixed
+/// `ft_name` param (the fungible wrapped token, e.g. "chiCKB"), so it matches the burn-gated CKB lock that
+/// releases against a burn of that exact (policy, name) — and all leaps mint the SAME fungible asset.
 pub fn bindings_ok(
   public_inputs: List<Int>,
   state: ByteArray,
   seal: ByteArray,
   mint: Value,
   policy: PolicyId,
+  ft_name: ByteArray,
 ) -> Bool {
   let comm = commitment(state, seal)
   let amount = amount_of(state)
-  let name = builtin.slice_bytearray(0, 28, comm)
   let pi_ok =
     when public_inputs is {
       [_root, pi_seal, pi_comm] -> pi_seal == field_of(seal) && pi_comm == field_of(comm)
       _ -> False
     }
   let minted = tokens(mint, policy)
-  let mint_ok = dict.size(minted) == 1 && dict.get(minted, name) == Some(amount)
+  let mint_ok = dict.size(minted) == 1 && dict.get(minted, ft_name) == Some(amount)
   pi_ok && mint_ok && amount > 0
 }
 
@@ -71,13 +80,13 @@ fn is_pure_burn(mint: Value, policy: PolicyId) -> Bool {
 
 // SEC B1: `vk` is now a COMPILE-TIME parameter (the deployed CKB-consensus circuit's verifying key),
 // NOT a redeemer field — so an attacker can no longer supply their own vk + a self-made proof.
-validator zk_chiral_mint(vk: VerifyingKey) {
+validator zk_chiral_mint(vk: VerifyingKey, ft_name: ByteArray) {
   mint(redeemer: MintRedeemer, policy_id: PolicyId, tx: Transaction) {
     let MintRedeemer { proof, public_inputs, state, seal } = redeemer
     if is_pure_burn(tx.mint, policy_id) {
       True
     } else {
-      verify(vk, proof, public_inputs) && bindings_ok(public_inputs, state, seal, tx.mint, policy_id)
+      verify(vk, proof, public_inputs) && bindings_ok(public_inputs, state, seal, tx.mint, policy_id, ft_name)
     }
   }
 
@@ -89,35 +98,34 @@ validator zk_chiral_mint(vk: VerifyingKey) {
 // ---- tests for the binding logic (the proof path is covered by leap_test/verifier_test) ----
 const p_policy: PolicyId = #"8f11f2b176c143f1aaba0e48662052b0b8c3830161c73194eb60df2a"
 const p_seal: ByteArray = #"0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
-// state: amount = 100000 (0x0186a0) in the first 8 bytes (big-endian), then an app tag
-const p_state: ByteArray = #"00000000000186a0626f756e642d6173736574"
+// state: amount = 100000 (0x0186a0) in the first 16 bytes LITTLE-endian, then a 28-byte recipient cred
+// (== relay_bind layout: amount(16 LE) ‖ recipient(28)).
+const p_state: ByteArray = #"a086010000000000000000000000000033333333333333333333333333333333333333333333333333333333"
+
+const p_ftname: ByteArray = #"636869434b42" // "chiCKB" — the fixed fungible wrapped-token name
 
 fn pi_for(state: ByteArray, seal: ByteArray) -> List<Int> {
   [12345, field_of(seal), field_of(commitment(state, seal))]
 }
 
-fn name_for(state: ByteArray, seal: ByteArray) -> ByteArray {
-  builtin.slice_bytearray(0, 28, commitment(state, seal))
-}
-
 test binding_accepts_committed_amount_and_name() {
-  let mint = from_asset(p_policy, name_for(p_state, p_seal), 100000)
-  bindings_ok(pi_for(p_state, p_seal), p_state, p_seal, mint, p_policy)
+  let mint = from_asset(p_policy, p_ftname, 100000)
+  bindings_ok(pi_for(p_state, p_seal), p_state, p_seal, mint, p_policy, p_ftname)
 }
 
 test binding_rejects_wrong_amount() {
-  let mint = from_asset(p_policy, name_for(p_state, p_seal), 999999)
-  !bindings_ok(pi_for(p_state, p_seal), p_state, p_seal, mint, p_policy)
+  let mint = from_asset(p_policy, p_ftname, 999999)
+  !bindings_ok(pi_for(p_state, p_seal), p_state, p_seal, mint, p_policy, p_ftname)
 }
 
 test binding_rejects_wrong_name() {
   let mint = from_asset(p_policy, #"deadbeef", 100000)
-  !bindings_ok(pi_for(p_state, p_seal), p_state, p_seal, mint, p_policy)
+  !bindings_ok(pi_for(p_state, p_seal), p_state, p_seal, mint, p_policy, p_ftname)
 }
 
 test binding_rejects_unbound_public_inputs() {
-  let mint = from_asset(p_policy, name_for(p_state, p_seal), 100000)
-  !bindings_ok([12345, 1, 2], p_state, p_seal, mint, p_policy)
+  let mint = from_asset(p_policy, p_ftname, 100000)
+  !bindings_ok([12345, 1, 2], p_state, p_seal, mint, p_policy, p_ftname)
 }
 
 test is_pure_burn_detects_burn() {

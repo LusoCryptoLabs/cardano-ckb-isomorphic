@@ -39,5 +39,5 @@ assert fold(ZERO,key,sib)==old_root, "non-membership check failed"
 new_root=fold(PRESENT,key,sib)
 assert subtree(256,keys+[key])==new_root, "insert check failed"
 out={"key":"0x"+key.hex(),"witness":"0x"+(key+b"".join(sib)).hex(),"old_root":"0x"+old_root.hex(),"new_root":"0x"+new_root.hex(),"n_keys":len(keys),"tx_body_len":n}
-json.dump(out, open("/mnt/c/Users/telmo/chiral-study/relayer/onchain/bg_reg_wit.json","w"))
+json.dump(out, open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "onchain", "bg_reg_wit.json"), "w"))
 print("key",key.hex()[:16],"| tx_body",n,"B | old_root",old_root.hex()[:16],"-> new_root",new_root.hex()[:16],"| n_keys",len(keys))

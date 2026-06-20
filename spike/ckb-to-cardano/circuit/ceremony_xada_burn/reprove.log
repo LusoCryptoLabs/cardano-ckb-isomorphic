@@ -1,0 +1,13 @@
+[window] REAL CKB headers W=64 slot=59 tip=21467143 diff=12
+[audit] positive (real receipt, K=12 kmin=12 diff=12)        is_satisfied=true
+Constraint trace requires enabling `ConstraintLayer`
+[audit] tamper body amount (inflate/redirect)                      is_satisfied=false
+Constraint trace requires enabling `ConstraintLayer`
+[audit] non-bridge receipt (wrong type code-hash)                  is_satisfied=false
+Constraint trace requires enabling `ConstraintLayer`
+[audit] K=0 (below pinned K_MIN=12)                            is_satisfied=false
+Constraint trace requires enabling `ConstraintLayer`
+[audit] shallow (diff=0 < K=12)                                   is_satisfied=false
+[audit] ALL 5 CASES OK: 1 accept + 4 reject (inflate/redirect, non-bridge, K=0, shallow)
+loading ceremony key from circuit/ceremony_xada_burn/leap_bound_windowed_pk.bin
+arkworks verify = true (BOUND_WINDOWED_LEAP_OK depth=6 K=12 amount 3000000 recipient 7a971a3b730d3e5b69f73ac7add6dcd2396cab9523176132ed23e175)

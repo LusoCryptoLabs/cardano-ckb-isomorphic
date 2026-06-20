@@ -17,3 +17,12 @@ deployed/**/keys/
 relayer/node_modules/
 relayer/package-lock.json
 .chiral/
+# session scratch / debug artifacts — targeted patterns so the real _-prefixed tooling
+# (relayer/onchain/_rt.mjs, _restore_code_cell.mjs) is NOT ignored.
+_shot_*.png
+_capture.mjs
+*_out.txt
+_throwaway*
+*.bak-*
+_*_test.*
+_*_drive.*

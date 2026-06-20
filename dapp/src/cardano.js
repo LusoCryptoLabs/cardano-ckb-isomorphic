@@ -15,6 +15,8 @@ export function listCardanoWallets() {
     .map((k) => ({ key: k, name: w[k].name || k, icon: w[k].icon }));
 }
 
+const STORE = "chiral.cardano.wallet";
+
 export async function connectCardano(key) {
   const provider = window.cardano?.[key];
   if (!provider) throw new Error("wallet not found: " + key);
@@ -25,5 +27,32 @@ export async function connectCardano(key) {
     try { const a = await get(); if (a && a.length) { addressHex = a[0]; break; } } catch { /* keep trying */ }
   }
   if (!addressHex) { try { addressHex = await api.getChangeAddress(); } catch { /* ignore */ } }
+  try { localStorage.setItem(STORE, key); } catch { /* private mode */ }   // remember for auto-reconnect
   return { api, key, name: provider.name || key, icon: provider.icon, networkId, addressHex };
 }
+
+// Auto-reconnect on page load: re-enable the last-used wallet WITHOUT a popup if the dApp is still
+// authorized (CIP-30 `isEnabled()`). Wallet extensions inject window.cardano asynchronously, so poll briefly.
+export async function reconnectCardano(tries = 24, gapMs = 250) {
+  let key; try { key = localStorage.getItem(STORE); } catch { return null; }
+  if (!key) return null;
+  for (let i = 0; i < tries; i++) {
+    const provider = window.cardano?.[key];
+    if (provider) {
+      // keep retrying isEnabled — some wallets report false for a moment right after injecting.
+      try { if (await provider.isEnabled()) return await connectCardano(key); } catch { /* retry */ }
+    }
+    await new Promise((r) => setTimeout(r, gapMs));   // wait for the extension to inject / settle
+  }
+  return null;   // remembered but not silently authorizable — the UI offers a one-click reconnect
+}
+
+// The last-used wallet (if any) so the UI can offer a single-click "Reconnect <name>" instead of re-picking.
+export function rememberedWallet() {
+  let key; try { key = localStorage.getItem(STORE); } catch { return null; }
+  if (!key) return null;
+  const w = typeof window !== "undefined" ? window.cardano?.[key] : null;
+  return { key, name: w?.name || key, icon: w?.icon, present: !!w };
+}
+
+export function forgetCardano() { try { localStorage.removeItem(STORE); } catch { /* ignore */ } }

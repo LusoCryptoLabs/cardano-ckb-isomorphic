@@ -261,9 +261,14 @@ fn program_entry()->i8{
 
     let in_sum  = match sum_xada(Source::Input,  &owner) { Some(v)=>v, None=>return 16 };
     let out_sum = match sum_xada(Source::Output, &owner) { Some(v)=>v, None=>return 17 };
-    // This owner lock authorizes ONLY mints (xUDT owner mode bypasses xUDT's amount check, so the exact mint
-    // is enforced HERE). A non-mint spend of an owner-locked cell is rejected — no free unlock.
-    if out_sum <= in_sum { return 18; }
+    // BURN path (χADA RETURN leg): a NET REDUCTION of χADA is PERMISSIONLESS — burning tokens you already hold
+    // needs no authorization here. The cross-chain release is enforced DOWNSTREAM (the xada_burn_receipt type
+    // script self-enforces Σin−Σout == the receipt's bound amount; the return Groth16 proof + ada_escrow release
+    // the ADA against a replay-once seal), NOT in this lock. So owner mode may carry a burn — no mint check.
+    if out_sum < in_sum { return 0; }
+    // Otherwise this owner lock authorizes ONLY mints (xUDT owner mode bypasses xUDT's amount check, so the exact
+    // mint is enforced HERE). out==in (owner mode, no net change) is not a mint → reject (no free unlock).
+    if out_sum == in_sum { return 18; }
     let minted = out_sum - in_sum;
     if in_sum != 0 { return 19; }                       // mint-only tx (no χADA inputs)
 

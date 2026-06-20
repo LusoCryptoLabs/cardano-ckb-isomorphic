@@ -375,8 +375,71 @@ pub fn save_pk(pk: &ProvingKey<Bls12_381>, path: &str) {
     }
 }
 pub fn load_pk(path: &str) -> ProvingKey<Bls12_381> {
+    // The ceremony proving key is OUR OWN output (trusted), so the validity checks the *checked*
+    // deserializers run — per-point subgroup membership (a scalar-mul over millions of points) and, for the
+    // compressed form, y-recovery by sqrt — are the bulk of the ~391s cold load and are wasted work here.
+    let uc = format!("{path}.uc");
+    if std::path::Path::new(&uc).exists() {
+        // Fastest: an uncompressed, unchecked sidecar loads in seconds (no decompression, no subgroup check).
+        let buf = std::fs::read(&uc).unwrap();
+        return ProvingKey::<Bls12_381>::deserialize_uncompressed_unchecked(&buf[..]).unwrap();
+    }
+    // Default: load the existing compressed key UNCHECKED — same file on disk, skips only the subgroup check.
     let buf = std::fs::read(path).unwrap();
-    ProvingKey::<Bls12_381>::deserialize_compressed(&buf[..]).unwrap()
+    let pk = ProvingKey::<Bls12_381>::deserialize_compressed_unchecked(&buf[..]).unwrap();
+    // One-off: CHIRAL_BAKE_UC=1 writes the uncompressed sidecar (~2x disk) so every later load takes the fast
+    // path above. Run once on the VPS after transferring the keys; subsequent warm-prover restarts load in seconds.
+    if std::env::var("CHIRAL_BAKE_UC").is_ok() && !std::path::Path::new(&uc).exists() {
+        let mut b = Vec::new();
+        if pk.serialize_uncompressed(&mut b).is_ok() {
+            match std::fs::write(&uc, &b) {
+                Ok(_) => eprintln!("[load_pk] baked uncompressed sidecar -> {uc} ({} bytes)", b.len()),
+                Err(e) => eprintln!("[load_pk] WARN: could not write {uc}: {e}"),
+            }
+        }
+    }
+    pk
+}
+
+/// Generic WARM prover: load the ceremony proving key ONCE, then serve many prove requests over a unix
+/// socket so a leg never reloads the (~480MB) key per request. `handle` does the circuit-specific work —
+/// assemble its instance from the request JSON, prove under `pk`, write the redeemer — and returns the path
+/// it wrote (echoed to the caller). ping/shutdown are handled here; each request runs under catch_unwind so a
+/// single malformed request can't crash the resident service. This is the loop first validated for the
+/// return leg (leap_bound_windowed), lifted here so the forward + advance legs reuse it verbatim.
+#[cfg(unix)]
+pub fn serve_warm<F>(sock: &str, pk_path: &str, handle: F)
+where
+    F: Fn(&serde_json::Value, &ProvingKey<Bls12_381>, &VerifyingKey<Bls12_381>) -> Result<String, String>,
+{
+    use std::io::{BufRead, BufReader, Write};
+    eprintln!("[warm] loading ceremony key {pk_path} (once)...");
+    let t0 = std::time::Instant::now();
+    let pk = load_pk(pk_path);
+    let vk = pk.vk.clone();
+    eprintln!("[warm] pk loaded in {:.1}s; serving on {sock}", t0.elapsed().as_secs_f64());
+    let _ = std::fs::remove_file(sock);
+    let listener = std::os::unix::net::UnixListener::bind(sock).expect("bind unix socket");
+    for conn in listener.incoming() {
+        let mut s = match conn { Ok(s) => s, Err(_) => continue };
+        let mut line = String::new();
+        if BufReader::new(&s).read_line(&mut line).is_err() { continue; }
+        if line.trim() == "ping" { let _ = s.write_all(b"{\"ok\":true,\"ready\":true}\n"); continue; }
+        if line.trim() == "shutdown" { let _ = s.write_all(b"{\"ok\":true,\"bye\":true}\n"); break; }
+        let tp = std::time::Instant::now();
+        // catch_unwind: a bad request (missing file / malformed inputs -> .unwrap() panic) must return an error
+        // to THAT caller, never crash the resident service (which holds the ~6.6-min pk load).
+        let resp = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<String, String> {
+            let req: serde_json::Value = serde_json::from_str(line.trim()).map_err(|e| e.to_string())?;
+            handle(&req, &pk, &vk)
+        })).unwrap_or_else(|_| Err("prover panicked on this request (missing file / malformed inputs?)".into()));
+        let reply = match &resp {
+            Ok(o) => format!("{{\"ok\":true,\"out\":{},\"prove_secs\":{:.1}}}", serde_json::to_string(o).unwrap(), tp.elapsed().as_secs_f64()),
+            Err(e) => format!("{{\"error\":{}}}", serde_json::to_string(e).unwrap()),
+        };
+        let _ = s.write_all(reply.as_bytes()); let _ = s.write_all(b"\n");
+        eprintln!("[warm] served in {:.1}s: {reply}", tp.elapsed().as_secs_f64());
+    }
 }
 
 // ---- redeemer JSON (compressed-hex vk+proof+public inputs) — same format the Aiken tests/relayer expect.
