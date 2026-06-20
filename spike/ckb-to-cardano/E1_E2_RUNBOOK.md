@@ -9,13 +9,20 @@
   derives CHI_POLICY_ID from applied.json + proves with `CEREMONY_PK`; .env + bridge_lock_unified updated).
   Old applied.json backed up (`.bak-bcd28c5f`, gitignored). **Remaining: one browser mint+burn dry-run** (the
   self-custody step I can't run autonomously) before re-inviting testers.
-- **E2 — DEPLOY-READY (live cutover staged).** Validator `ckpt_registry.ak` verified (4 tests pass, blueprint
-  emits, no existing-hash collateral). Drivers `ckpt_registry_genesis.py` + `ckpt_reanchor.py` authored and
-  `--dry` validated (both derive the same script `5b830eb3c5d739246ccf81ebabfb4535d187df0524e8d8ea88f1c2f1`;
-  governor = relayer cred `2df44c71…`). **Remaining (one focused on-chain session — the deferrable part):**
-  genesis the registry `--live` (anchor from `advance_relayer.py init`), swap `escrow_lock.py`/`release_xada.py`
-  `derive()` to bake the stable registry NFT, rewire `xada_burn_orchestrate.mjs` step 3 to `ckpt_reanchor.py` +
-  the stable escrow, then re-validate two returns. These touch the LIVE return path so they go together.
+- **E2 — CORE LIVE on-chain; integration return remaining.** Validator `ckpt_registry.ak` verified (4 tests).
+  **LIVE:** stable registry genesis'd (tx `71887fcde8cac04c…`, NFT `b1a46defe938157977f50aa8c03f8dc3c78f5bdba500c80b59f2b9e1`
+  at script `5b830eb3c5d739246ccf81ebabfb4535d187df05…`, pinned tip 21483210); **governor re-anchor validated
+  on-chain** (tx `e602cf45a3e29a42…`, 21483210→21483222 — continuity + monotonic tip enforced). The novel
+  mechanism (stable cell re-anchored in place vs re-genesis'd) works in production.
+  **Discovery that simplifies the rest:** `escrow_lock.py`/`release_xada.py` need NO code edit — their existing
+  `CHIRAL_CHECKPOINT_NFT` override already bakes any NFT, so the stable escrow is just
+  `CHIRAL_CHECKPOINT_NFT=b1a46def… CHIRAL_RETURN_VK=<burn vk>`.
+  **Remaining (integration return, needs the Mithril-gated χADA flow):** deploy the stable ada_escrow + ref
+  scripts (~190 ADA), rewire `xada_burn_orchestrate.mjs` step 3 (`genesis_ckbcert` → `ckpt_reanchor` + the
+  registry NFT), and re-validate two returns end-to-end. Each return needs a FRESH χADA burn bound to the
+  registry's (forward-only) window — i.e. a forward χADA mint (Mithril cert ~6-7 min) → burn → re-anchor →
+  prove → release. Mechanically identical to the already-proven return, only the checkpoint source changes
+  (fresh genesis → stable registry), so it's wiring validation, not new mechanism.
 
 ---
 
