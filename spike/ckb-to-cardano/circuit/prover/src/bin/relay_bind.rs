@@ -40,6 +40,7 @@ fn mkleaf(h:&Value, hash:[u8;32])->[u8;120]{
     ckb_mmr::leaf(hash, ndiff_le(uh(h,"compact_target") as u32), uh(h,"number") as u64, uh(h,"epoch") as u64, uh(h,"timestamp") as u64, uh(h,"compact_target") as u32)
 }
 
+#[derive(Clone)]
 struct RelayBind { raw:[u8;192], nonce:[u8;16], cbmt_leaf:[u8;32], cbmt_path:Vec<([u8;32],bool)>, wit:[u8;32],
     leaf0:[u8;120], mpath:Vec<([u8;120],bool,[u8;120])>, chain_root:[u8;32], seal:[u8;32],
     body:Vec<u8>, bridge_code:[u8;32], type_off:usize, amount_off:usize, recip_off:usize }
@@ -130,8 +131,22 @@ fn main(){
     let amt=&body[amount_off..amount_off+16]; let rcp=&body[recip_off..recip_off+28];
     let mut ns=amt.to_vec(); ns.extend_from_slice(rcp); let mut cc=ns.clone(); cc.extend_from_slice(&seal); let commitment=b2b(&cc);
     let mut rng=ark_std::rand::rngs::StdRng::seed_from_u64(7);
-    eprintln!("relay_bind: Groth16 setup+prove on LIVE value-bound data...");
-    let (pk,vk)=Groth16::<Bls12_381>::circuit_specific_setup(mk(),&mut rng).unwrap();
+    // E1: the vk is a COMPILE-TIME parameter of the deployed zk_chiral_mint policy, so a deterministic
+    // seed_from_u64(7) setup makes the policy's vk forgeable (toxic waste publicly recoverable). Prefer a
+    // ceremony key: CEREMONY_OUT runs the MPC trusted setup once; CEREMONY_PK loads it; else the seeded
+    // dev/test fallback (which still prints a redeemer for local sanity but MUST NOT back a live policy).
+    let (pk,vk) = if let Ok(dir)=std::env::var("CEREMONY_OUT") {
+        eprintln!("relay_bind: running MPC trusted-setup ceremony over the value-bound circuit -> {dir} ...");
+        let (pk,transcript)=ckb_consensus_circuit::setup_mpc::run_ceremony(mk(), 3, 3, "relay_bind");
+        ckb_consensus_circuit::setup_mpc::save_pk(&pk, &format!("{dir}/relay_bind_pk.bin"));
+        let _ = std::fs::write(format!("{dir}/relay_bind_transcript.json"), serde_json::to_string_pretty(&transcript).unwrap());
+        let vk=pk.vk.clone(); (pk,vk)
+    } else if let Ok(p)=std::env::var("CEREMONY_PK") {
+        eprintln!("relay_bind: loading ceremony key from {p}"); let pk=ckb_consensus_circuit::setup_mpc::load_pk(&p); let vk=pk.vk.clone(); (pk,vk)
+    } else {
+        eprintln!("relay_bind: Groth16 (SEEDED test) setup+prove on LIVE value-bound data — dev only, forgeable vk...");
+        Groth16::<Bls12_381>::circuit_specific_setup(mk(),&mut rng).unwrap()
+    };
     let proof=Groth16::<Bls12_381>::prove(&pk,mk(),&mut rng).unwrap();
     let inputs=vec![Fr::from_le_bytes_mod_order(&chain_root),Fr::from_le_bytes_mod_order(&seal),Fr::from_le_bytes_mod_order(&commitment)];
     let ok=Groth16::<Bls12_381>::verify(&vk,&inputs,&proof).unwrap();
