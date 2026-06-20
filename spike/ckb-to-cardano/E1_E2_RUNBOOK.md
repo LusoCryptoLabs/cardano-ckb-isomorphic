@@ -9,6 +9,14 @@
   derives CHI_POLICY_ID from applied.json + proves with `CEREMONY_PK`; .env + bridge_lock_unified updated).
   Old applied.json backed up (`.bak-bcd28c5f`, gitignored). **Remaining: one browser mint+burn dry-run** (the
   self-custody step I can't run autonomously) before re-inviting testers.
+- **E2 — DONE + LIVE (full integration return validated on-chain).** Forward-minted 4 χADA (Mithril-certified
+  lock), burned it, `ckpt_reanchor`'d the STABLE registry in place (tip 21483571, NFT preserved), proved the
+  burn, locked the STABLE escrow `904bccd8…` (baked with the registry NFT), and `ada_escrow.Release` **verified
+  the Groth16 proof on-chain against the registry cell + released 4 ADA** → `2df44c71…` (release tx
+  `2edacbe06f10f2d6…`; `[guard]` confirmed proof window_root/tip bound the registry datum). **NO CHURN PROVEN:**
+  the registry cell is still live after the return (reference input) and the escrow + ref scripts (`4307ede1…`)
+  are deployed ONCE and reusable — the entire E2 benefit. Run a return with `CHIRAL_STABLE_REGISTRY=1`.
+  Earlier validation steps below:
 - **E2 — CORE LIVE on-chain; integration return remaining.** Validator `ckpt_registry.ak` verified (4 tests).
   **LIVE:** stable registry genesis'd (tx `71887fcde8cac04c…`, NFT `b1a46defe938157977f50aa8c03f8dc3c78f5bdba500c80b59f2b9e1`
   at script `5b830eb3c5d739246ccf81ebabfb4535d187df05…`, pinned tip 21483210); **governor re-anchor validated
