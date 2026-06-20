@@ -1,5 +1,25 @@
 # E1 / E2 execution runbook (post-pilot, gated on sign-off)
 
+## STATUS (2026-06-20)
+- **E1 — DONE + LIVE.** Ran the relay_bind MPC ceremony (1,543,533 constraints / 2^21; phase-1 PoT 3 +
+  phase-2 delta 3, all verified; arkworks verify=true; pk 446 MB). Baked the ceremony vk → **new χCKB policy
+  `92832ec45733a5e44d06722a878ffaa264ec9fe214b532c18ead358e`** (replaces `bcd28c5f`). **Linchpin validated:**
+  the ceremony proof verifies under the on-chain g16 verifier (`live_relayer_leap_verifies` PASS); emit produces
+  valid mint params under the new policy (qty==amount). Wired everywhere (applied.json overwritten; server.mjs
+  derives CHI_POLICY_ID from applied.json + proves with `CEREMONY_PK`; .env + bridge_lock_unified updated).
+  Old applied.json backed up (`.bak-bcd28c5f`, gitignored). **Remaining: one browser mint+burn dry-run** (the
+  self-custody step I can't run autonomously) before re-inviting testers.
+- **E2 — DEPLOY-READY (live cutover staged).** Validator `ckpt_registry.ak` verified (4 tests pass, blueprint
+  emits, no existing-hash collateral). Drivers `ckpt_registry_genesis.py` + `ckpt_reanchor.py` authored and
+  `--dry` validated (both derive the same script `5b830eb3c5d739246ccf81ebabfb4535d187df0524e8d8ea88f1c2f1`;
+  governor = relayer cred `2df44c71…`). **Remaining (one focused on-chain session — the deferrable part):**
+  genesis the registry `--live` (anchor from `advance_relayer.py init`), swap `escrow_lock.py`/`release_xada.py`
+  `derive()` to bake the stable registry NFT, rewire `xada_burn_orchestrate.mjs` step 3 to `ckpt_reanchor.py` +
+  the stable escrow, then re-validate two returns. These touch the LIVE return path so they go together.
+
+---
+
+
 Derived from the 9-agent blast-radius analysis (2026-06-20). **Sequencing decision: pilot the current
 optimized deployment first → E1 → defer E2.** All the *off-chain* prep below is safe (no chain mutation);
 every **IRREVERSIBLE** step is gated and must not run without explicit sign-off + the stated preconditions.
