@@ -76,8 +76,15 @@ def main():
         sys.exit("live registry cell (carrying the NFT) not found at " + reg_script)
     cur = read_checkpoint(cell.output.datum)
     cur_tip = int(cur[3])
+    cur_wroot = cur[2].hex() if isinstance(cur[2], (bytes, bytearray)) else str(cur[2])
     if NEW_TIP <= cur_tip:
-        sys.exit(f"non-monotonic re-anchor: new tip {NEW_TIP} <= current {cur_tip}")
+        # IDEMPOTENT: if the cell already sits at this exact anchor (same tip + window_root), it's a no-op —
+        # the orchestrator may re-run the same burn, and the registry already covers it. Only a STRICT rollback
+        # (a different/earlier anchor) is rejected.
+        if NEW_TIP == cur_tip and cur_wroot == NEW_WINDOW:
+            print(f"already anchored at tip {cur_tip} (window {NEW_WINDOW[:16]}…); skipping re-anchor (no-op)")
+            return
+        sys.exit(f"non-monotonic re-anchor: new tip {NEW_TIP} <= current {cur_tip} (and window differs — rollback refused)")
     print(f"re-anchoring tip {cur_tip} -> {NEW_TIP}")
 
     nft = pc.MultiAsset.from_primitive({bytes.fromhex(registry_nft): {THREAD_NAME: 1}})

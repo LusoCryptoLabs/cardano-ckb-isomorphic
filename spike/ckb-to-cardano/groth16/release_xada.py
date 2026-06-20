@@ -127,7 +127,10 @@ def main():
     esc_in = next((u for u in ctx.utxos(str(esc_addr)) if str(u.input.transaction_id) == esc_txid), None) \
              or next((u for u in ctx.utxos(str(esc_addr))), None)
     reg_in = find(ctx, addr(M["seal_nullifier_script"]), M["seal_registry_nft"])
-    ckpt_ref = find(ctx, addr(CKBC["advance_ckbcert_script"]), CHECKPOINT_NFT)
+    # the checkpoint reference cell carries CHECKPOINT_NFT; ada_escrow finds it by NFT (any address). Off-chain
+    # we filter by address: the advance_ckbcert lineage by default, or the STABLE ckpt_registry script (E2) when
+    # CHIRAL_CKPT_SCRIPT is set (the registry cell lives at ckpt_registry's address, not advance_ckbcert's).
+    ckpt_ref = find(ctx, addr(os.environ.get("CHIRAL_CKPT_SCRIPT", CKBC["advance_ckbcert_script"])), CHECKPOINT_NFT)
     pol_ref = find(ctx, addr(M["policy_script"]), M["policy_nft"])
     print("esc_in:", bool(esc_in), "reg_in:", bool(reg_in), "ckpt_ref:", bool(ckpt_ref), "pol_ref:", bool(pol_ref))
     assert all([esc_in, reg_in, ckpt_ref, pol_ref]), "missing a cell"

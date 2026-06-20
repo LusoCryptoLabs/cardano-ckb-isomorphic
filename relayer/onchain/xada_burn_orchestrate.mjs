@@ -46,13 +46,23 @@ try {
   const tip = blk + K_MIN;
   process.stderr.write(`[ret] burn block ${blk}; re-anchoring checkpoint to tip ${tip}…\n`);
 
-  // 3) re-anchor the ckbcert checkpoint so its window covers the burn (new singleton NFT each time).
+  // 3) re-anchor the checkpoint so its window covers the burn.
   wsl(`cd ${q(RELAYER)} && CHIRAL_WINDOW_DEPTH=6 python3 advance_relayer.py init ${CKB_RPC} ${tip} ${q(CER + "/reanchor.json")}`);
   const re = JSON.parse(fs.readFileSync(path.resolve(HERE, "../../spike/ckb-to-cardano/circuit/ceremony_xada_burn/reanchor.json"), "utf8"));
-  wsl(`cd ${q(G16)} && python3 genesis_ckbcert.py --live`,
-    `CHIRAL_CHAIN_ROOT=${re.chain_root} CHIRAL_WINDOW_ROOT=${re.window_root} CHIRAL_TIP_HEIGHT=${re.tip_height}`);
-  const nft = JSON.parse(fs.readFileSync(path.resolve(HERE, "../../deployed/cardano/preview/ckbcert-genesis.json"), "utf8")).checkpoint_nft;
-  process.stderr.write(`[ret] checkpoint re-anchored: nft ${nft.slice(0, 12)}… tip ${tip}\n`);
+  const anchorEnv = `CHIRAL_CHAIN_ROOT=${re.chain_root} CHIRAL_WINDOW_ROOT=${re.window_root} CHIRAL_TIP_HEIGHT=${re.tip_height}`;
+  let nft;
+  if (process.env.CHIRAL_STABLE_REGISTRY) {
+    // E2: re-anchor the ONE STABLE registry cell IN PLACE (governor-gated, monotonic tip) -> its NFT, and the
+    // ada_escrow that bakes it, stay CONSTANT across returns. No per-return re-genesis / escrow churn.
+    wsl(`cd ${q(G16)} && python3 ckpt_reanchor.py --live`, anchorEnv);
+    nft = JSON.parse(fs.readFileSync(path.resolve(HERE, "../../deployed/cardano/preview/ckpt-registry.json"), "utf8")).registry_nft;
+    process.stderr.write(`[ret] STABLE registry re-anchored: nft ${nft.slice(0, 12)}… tip ${tip}\n`);
+  } else {
+    // legacy: genesis a FRESH checkpoint NFT each return (churns the escrow + ref scripts ~190 ADA/return).
+    wsl(`cd ${q(G16)} && python3 genesis_ckbcert.py --live`, anchorEnv);
+    nft = JSON.parse(fs.readFileSync(path.resolve(HERE, "../../deployed/cardano/preview/ckbcert-genesis.json"), "utf8")).checkpoint_nft;
+    process.stderr.write(`[ret] checkpoint re-anchored: nft ${nft.slice(0, 12)}… tip ${tip}\n`);
+  }
 
   // 4) witness + window (at the SAME tip), then PROVE reusing the burn pk (fast).
   process.stderr.write("[ret] fetching witness/window + proving (reusing burn pk)…\n");
@@ -72,7 +82,7 @@ try {
   } catch (e) { /* fall through to cold */ }
   if (!warmOk) {
     process.stderr.write("[ret] warm prover unavailable; cold-proving (loads the 480MB pk, ~6-7 min)…\n");
-    wsl(`cd ${q(REPO_WSL + "/spike/ckb-to-cardano")} && CHIRAL_WINDOW=${q(CER + "/window.json")} ${WIN} K=12 PROVE=1 CEREMONY_PK=${q(CER + "/leap_bound_windowed_pk.bin")} circuit/prover/target/release/leap_bound_windowed ${q(CER + "/xada_burn_wit.json")} ${q(CER + "/xada_burn_live.json")} > ${q(BURN_REDEEMER)}`);
+    wsl(`cd ${q(REPO_SH + "/spike/ckb-to-cardano")} && CHIRAL_WINDOW=${q(CER + "/window.json")} ${WIN} K=12 PROVE=1 CEREMONY_PK=${q(CER + "/leap_bound_windowed_pk.bin")} circuit/prover/target/release/leap_bound_windowed ${q(CER + "/xada_burn_wit.json")} ${q(CER + "/xada_burn_live.json")} > ${q(BURN_REDEEMER)}`);
   }
 
   // 5) lock the return escrow (burn vk + new nft), recipient[:28] == the burn recipient, amount == burn amount.
@@ -86,7 +96,12 @@ try {
   // 6) deploy ref scripts for THIS escrow script + spend it via Release (verifies the proof on-chain).
   // CHIRAL_BURN_SEAL = THIS burn's tx hash (== the seal the prover committed as PI[1]); without it release_xada.py
   // falls back to a hardcoded default seal — which only happened to be correct for the very first return.
-  const renv = `CHIRAL_RETURN_VK=${q(BURN_REDEEMER)} CHIRAL_CHECKPOINT_NFT=${nft} CHIRAL_BURN_SEAL=${burnTxid} CHIRAL_ESCROW_IN=xada-return-escrow.json`;
+  // E2: the stable registry cell lives at the ckpt_registry address (not advance_ckbcert's), so release_xada
+  // must look for the checkpoint reference cell there — CHIRAL_CKPT_SCRIPT points it at the registry script.
+  const ckptScriptEnv = process.env.CHIRAL_STABLE_REGISTRY
+    ? ` CHIRAL_CKPT_SCRIPT=${JSON.parse(fs.readFileSync(path.resolve(HERE, "../../deployed/cardano/preview/ckpt-registry.json"), "utf8")).registry_script}`
+    : "";
+  const renv = `CHIRAL_RETURN_VK=${q(BURN_REDEEMER)} CHIRAL_CHECKPOINT_NFT=${nft} CHIRAL_BURN_SEAL=${burnTxid} CHIRAL_ESCROW_IN=xada-return-escrow.json${ckptScriptEnv}`;
   wsl(`cd ${q(G16)} && python3 release_xada.py --refscripts`, renv);
   // poll until the ref-script tx confirms (was a blind `sleep 25`): break as soon as the ref UTxOs are live,
   // capped so a slow network still proceeds (the --live build re-checks and fails safe if a ref is missing).

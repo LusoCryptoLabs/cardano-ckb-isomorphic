@@ -19,7 +19,7 @@ const BR = JSON.parse(fs.readFileSync(path.join(HERE, "xada_burn_deploy.json"), 
 const OWNER_STATE = JSON.parse(fs.readFileSync(path.join(HERE, "xada_owner_cell.json"), "utf8"));
 const strip = (h) => (h || "").replace(/^0x/, "");
 const out = (o) => { console.log(JSON.stringify(o)); process.exit(o.error ? 1 : 0); };
-const FEE = 10_000000n, RECEIPT_CAP = 185_00000000n;
+const FEE = 9_000000n, RECEIPT_CAP = 185_00000000n;   // 0.09 CKB — keeps the fee RATE under ccc's 0.1 CKB/kB cap on this ~1kB tx
 
 const [recipArg, amtArg, cardanoRecip] = process.argv.slice(2);
 let recipientLock;
