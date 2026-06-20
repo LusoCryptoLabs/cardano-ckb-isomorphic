@@ -82,13 +82,14 @@ def main():
 
     nft = pc.MultiAsset.from_primitive({bytes.fromhex(registry_nft): {THREAD_NAME: 1}})
     pure = sorted([u for u in ctx.utxos(str(addr)) if not u.output.amount.multi_asset], key=lambda u: int(u.output.amount.coin))
-    if not pure:
-        sys.exit("need a pure-ADA UTxO for collateral/fees")
+    collateral = next((u for u in pure if int(u.output.amount.coin) >= 5_000_000), None)
+    if collateral is None:
+        sys.exit("need a pure-ADA UTxO >= 5 ADA for collateral; consolidate the wallet")
     b = pc.TransactionBuilder(ctx)
     b.add_script_input(cell, script=spend_script, redeemer=pc.Redeemer(pc.RawPlutusData(reanchor), EXU))
     b.add_input_address(addr)
     b.add_output(pc.TransactionOutput(reg_addr, pc.Value(int(cell.output.amount.coin), nft), datum=pc.RawPlutusData(new_struct)))
-    b.collaterals = [pure[0]]
+    b.collaterals = [collateral]
     b.required_signers = [vk.hash()]
     tx = b.build_and_sign([sk], change_address=addr)
     txid = ctx.submit_tx(tx)

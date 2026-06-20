@@ -1,0 +1,16 @@
+{
+  "registry_nft": "b1a46defe938157977f50aa8c03f8dc3c78f5bdba500c80b59f2b9e1",
+  "registry_script": "5b830eb3c5d739246ccf81ebabfb4535d187df0524e8d8ea88f1c2f1",
+  "registry_addr": "addr_test1wpdcxr4nchtnjfrve7q7h2lmg56arp7lq5jw3k823rcu9ug4j3ynn",
+  "governor": "2df44c71a4312463ba31315c5aa7725b6ad44cd544a055a3dde915a6",
+  "genesis_tx": "71887fcde8cac04cc4cbeace9f156c8194ffd19c8f3bd2f8e926e2287c10ae88",
+  "gref": "bd8d36d4f09d668f3bef333b09fd31990879c2bb56e44ad141ae30dd5d58df24#0",
+  "thread_name_hex": "636b62636572742d746872656164",
+  "pinned": {
+    "chain_root": "801de4c698ac985db6c0f8fe72a695b8079c6f96e42c32d9c6e1f0999950ed90",
+    "total_difficulty": "0000000000000000000000000000000000000000000000000000000000000000",
+    "window_root": "4abb344df932a93bf483818dcc970d74ad075ee9482e0a8e7c36d6f70146add0",
+    "tip_height": 21483222
+  },
+  "last_reanchor_tx": "e602cf45a3e29a42395fb98562c290fe3afa08cccfbbd7d3c12674197b6e6a6c"
+}
