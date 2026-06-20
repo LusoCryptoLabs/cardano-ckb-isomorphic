@@ -20,7 +20,11 @@
   both a 5-tx-block lock AND a 2-tx-block lock minted χCKB under `4cd5c378` (Cardano `e789c48b`, `ae7c1dd7`)
   — Blockfrost evaluated the policy against each proof and accepted both = generality proven. Config updated
   (applied.json, server.mjs, .env, bridge_lock_unified → `4cd5c378`); dapp server restarted + serves it.
-  Cold prove now ~4 min (2^22 / 740 MB key); the warm prover amortizes to ~10s. **NOTE:** the χADA-leg /
+  Cold prove now ~4 min (2^22 / 740 MB key); the warm prover amortizes to ~10s.
+  **FULL χCKB ROUND TRIP CLOSED LIVE under `4cd5c378`:** lock 300 CKB `0x8c094427` → prove (verify=true) →
+  mint 30B χCKB `a90d2dac` → burn `111ff99c` → Mithril cert (~8 min) → KEYLESS release 300 CKB `0xbfe6f04a`
+  to the recipient (gated only by the cert + replay-once nullifier). Forward (general + on-chain) AND return
+  both proven under the new policy. **NOTE:** the χADA-leg /
   return prover (`leap_bound_windowed`) verifies a CKB burn via the SAME variable-depth CBMT and needs the
   identical fixed-depth treatment before ITS deployed policy generalizes across burn block sizes.
 - **E1 — DONE + LIVE + END-TO-END ON-CHAIN VALIDATED (key fix 2026-06-20).** History: the cutover baked a
