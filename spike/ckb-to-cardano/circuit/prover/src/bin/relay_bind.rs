@@ -141,6 +141,20 @@ fn main(){
         ckb_consensus_circuit::setup_mpc::save_pk(&pk, &format!("{dir}/relay_bind_pk.bin"));
         let _ = std::fs::write(format!("{dir}/relay_bind_transcript.json"), serde_json::to_string_pretty(&transcript).unwrap());
         let vk=pk.vk.clone(); (pk,vk)
+    } else if let Ok(out)=std::env::var("CHIRAL_SECURE_SETUP") {
+        // E1-FIX: arkworks-native trusted setup, seeded from OS entropy (read once from /dev/urandom, then
+        // dropped) — a SECURE single-party setup. The custom MPC assembly (setup_mpc::derive_pk) currently
+        // yields an INCONSISTENT proving key (proofs fail their own vk; see relay_bind dry-run); this
+        // proven-correct generator replaces it for the testnet pilot. Non-forgeable: the toxic waste is
+        // discarded, NOT a public seed like the dev fallback below. Saves the pk so the server loads it via
+        // CEREMONY_PK unchanged, and emits a redeemer so the policy is baked from this vk.
+        use std::io::Read;
+        let mut seed=[0u8;32]; std::fs::File::open("/dev/urandom").unwrap().read_exact(&mut seed).unwrap();
+        let mut secure=ark_std::rand::rngs::StdRng::from_seed(seed);
+        eprintln!("relay_bind: SECURE single-party setup (OS entropy, discarded) -> {out}");
+        let (pk,vk)=Groth16::<Bls12_381>::circuit_specific_setup(mk(),&mut secure).unwrap();
+        ckb_consensus_circuit::setup_mpc::save_pk(&pk,&out);
+        (pk,vk)
     } else if let Ok(p)=std::env::var("CEREMONY_PK") {
         eprintln!("relay_bind: loading ceremony key from {p}"); let pk=ckb_consensus_circuit::setup_mpc::load_pk(&p); let vk=pk.vk.clone(); (pk,vk)
     } else {

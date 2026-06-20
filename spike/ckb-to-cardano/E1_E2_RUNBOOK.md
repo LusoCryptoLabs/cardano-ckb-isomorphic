@@ -1,14 +1,31 @@
 # E1 / E2 execution runbook (post-pilot, gated on sign-off)
 
 ## STATUS (2026-06-20)
-- **E1 — DONE + LIVE.** Ran the relay_bind MPC ceremony (1,543,533 constraints / 2^21; phase-1 PoT 3 +
-  phase-2 delta 3, all verified; arkworks verify=true; pk 446 MB). Baked the ceremony vk → **new χCKB policy
-  `92832ec45733a5e44d06722a878ffaa264ec9fe214b532c18ead358e`** (replaces `bcd28c5f`). **Linchpin validated:**
-  the ceremony proof verifies under the on-chain g16 verifier (`live_relayer_leap_verifies` PASS); emit produces
-  valid mint params under the new policy (qty==amount). Wired everywhere (applied.json overwritten; server.mjs
-  derives CHI_POLICY_ID from applied.json + proves with `CEREMONY_PK`; .env + bridge_lock_unified updated).
-  Old applied.json backed up (`.bak-bcd28c5f`, gitignored). **Remaining: one browser mint+burn dry-run** (the
-  self-custody step I can't run autonomously) before re-inviting testers.
+- **E1 — DONE + LIVE + END-TO-END ON-CHAIN VALIDATED (key fix 2026-06-20).** History: the cutover baked a
+  ceremony vk → policy `92832ec4…` (replacing `bcd28c5f`). A **headless forward-mint dry-run on 2026-06-20
+  caught a critical regression**: the on-disk relay_bind ceremony key (468 MB, re-generated at 04:28, larger
+  than the cutover's 446 MB — i.e. the validated key was later overwritten by a re-run, never re-validated)
+  was **internally inconsistent** — a fresh proof from it **failed verification against its own vk**
+  (`arkworks verify=false`, prover panics at relay_bind.rs:155). Root cause isolated to the **custom hand-rolled
+  MPC param assembly** (`setup_mpc::derive_pk`): the arkworks-native (seeded) path verifies fine on the identical
+  circuit+witness; only the custom ceremony key fails. So the forward mint was BROKEN (no tester could mint).
+  **FIX (Option A — secure single-party setup):** added a `CHIRAL_SECURE_SETUP` path to `relay_bind.rs` —
+  arkworks-native `circuit_specific_setup` seeded from `/dev/urandom` (entropy discarded; non-forgeable, NOT a
+  public seed). Regenerated a CONSISTENT key (`arkworks verify=true`), backed up the broken one as
+  `relay_bind_pk.bin.broken`. Re-baked the policy → **new χCKB policy
+  `08db0245dd235757b8c96777e38b8a8e540487a1fa496eae7dae5128`** (replaces `92832ec4`). **VALIDATED ON-CHAIN
+  HEADLESSLY:** lock 300 CKB `0xe758d8c591f9…` (Pudge) → `relay_bind` prove with the new key (verify=true,
+  binds 300 CKB → recip `2df44c71`) → re-baked policy via `build_chiral_policy.py` → **`cardano_mint_bound.py`
+  minted 30000000000 χCKB on Cardano (`6ce737afd9a3…`, block 4400811)** — Blockfrost evaluated the
+  `zk_chiral_mint` Plutus policy against the proof and ACCEPTED it = the on-chain g16 verify passes under the
+  new policy. Wired everywhere (applied.json `→08db0245`; server.mjs default + derives from applied.json; .env +
+  bridge_lock_unified updated). Old applied.json backed up (`.bak-92832ec4`).
+  - **MAINNET HARDENING (deferred):** the custom MPC ceremony (`derive_pk`) is still broken — fix it + run a
+    genuinely-independent multi-party ceremony before real value. On testnet the single-party setup is
+    security-equivalent to the prior ceremony (whose transcript admits contributor independence is simulated
+    on one machine).
+  - **Remaining (non-autonomous):** a browser-wallet mint+burn on the new policy (self-custody CIP-30 signing,
+    identical redeemer/script to the headless `cardano_mint_bound.py` just validated).
 - **E2 — DONE + LIVE (full integration return validated on-chain).** Forward-minted 4 χADA (Mithril-certified
   lock), burned it, `ckpt_reanchor`'d the STABLE registry in place (tip 21483571, NFT preserved), proved the
   burn, locked the STABLE escrow `904bccd8…` (baked with the registry NFT), and `ada_escrow.Release` **verified
