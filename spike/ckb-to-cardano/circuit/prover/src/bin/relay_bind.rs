@@ -7,7 +7,7 @@
 //! body + offsets). Proves R1 PoW + R2 MMR + R3 CBMT (+ seal==tx) + the value binding, on the LIVE chain.
 use ark_bls12_381::{Bls12_381, Fr, Fq, G1Affine as ArkG1, G2Affine as ArkG2};
 use ark_ec::AffineRepr; use ark_ff::{PrimeField, BigInteger};
-use ark_groth16::Groth16;
+use ark_groth16::{Groth16, VerifyingKey, Proof};
 use ark_r1cs_std::{uint8::UInt8, boolean::Boolean, alloc::AllocVar, eq::EqGadget, fields::fp::FpVar, fields::FieldVar, ToBitsGadget};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, SynthesisError};
 use ark_snark::SNARK; use ark_std::rand::SeedableRng;
@@ -101,7 +101,77 @@ fn g2c(p:&ArkG2)->String{ let (x,y)=p.xy().unwrap(); let mut u=[0u8;192]; u[0..4
 fn hexs(b:impl AsRef<[u8]>)->String{ b.as_ref().iter().map(|x| format!("{:02x}",x)).collect() }
 fn fr_dec(x:&Fr)->String{ x.into_bigint().to_string() }
 
+struct RelayMeta { target_block: String, tx: String, amount: String, recipient: String, chain_root: String, seal: String, commitment: String }
+
+// Build the value-bound circuit + its 3 public inputs + redeemer metadata from a witness (wpath) and the
+// captured receipt body (bpath). Used by the warm server (serve); mirrors the cold path in main().
+fn build_relay(wpath:&str, bpath:&str) -> (RelayBind, Vec<Fr>, RelayMeta) {
+    let v:Value=serde_json::from_reader(std::fs::File::open(wpath).unwrap()).unwrap();
+    let lj:Value=serde_json::from_reader(std::fs::File::open(bpath).unwrap()).unwrap();
+    let hs=v["headers"].as_array().unwrap();
+    let (raw,nonce)=raw_of(&hs[3]);
+    let bh=ckbhash(&[raw.as_slice(),nonce.as_slice()].concat());
+    assert_eq!(hexs(&bh), hs[3]["hash"].as_str().unwrap().trim_start_matches("0x"), "block hash mismatch");
+    let cb=&v["cbmt"]; let mut node=u64::from_str_radix(cb["indices"][0].as_str().unwrap().trim_start_matches("0x"),16).unwrap();
+    let mut cbmt_path=Vec::new(); for l in cb["lemmas"].as_array().unwrap() { cbmt_path.push((hx32(l.as_str().unwrap()), node%2==1, true)); node=(node-1)/2; }
+    const MAX_CBMT_DEPTH: usize = 16;   // fixed CBMT depth -> circuit/vk invariant to the block's tx count
+    assert!(cbmt_path.len() <= MAX_CBMT_DEPTH, "CBMT proof depth {} exceeds MAX_CBMT_DEPTH {}", cbmt_path.len(), MAX_CBMT_DEPTH);
+    while cbmt_path.len() < MAX_CBMT_DEPTH { cbmt_path.push(([0u8;32], false, false)); }
+    let cbmt_leaf=hx32(v["tx_hash"].as_str().unwrap()); let wit=hx32(cb["witnesses_root"].as_str().unwrap());
+    let leaves:Vec<[u8;120]>=(0..4).map(|i| mkleaf(&hs[i], hx32(hs[i]["hash"].as_str().unwrap()))).collect();
+    let n01=ckb_mmr::merge(&leaves[0],&leaves[1]); let n23=ckb_mmr::merge(&leaves[2],&leaves[3]); let root=ckb_mmr::merge(&n01,&n23);
+    let chain_root=ckb_mmr::mmr_hash(&root); let mpath=vec![(leaves[2],false,n23),(n01,false,root)];
+    let seal=cbmt_leaf;
+    let body=hx(lj["body_hex"].as_str().unwrap());
+    let bridge_code=hx32(lj["bridge_code_hash"].as_str().unwrap());
+    let off=&lj["offsets"]; let type_off=off["type_code"].as_u64().unwrap() as usize;
+    let amount_off=off["amount"].as_u64().unwrap() as usize; let recip_off=off["recipient"].as_u64().unwrap() as usize;
+    assert_eq!(hexs(&ckbhash(&body)), hexs(&seal), "captured body does not hash to the proven tx");
+    let amt=&body[amount_off..amount_off+16]; let rcp=&body[recip_off..recip_off+28];
+    let mut ns=amt.to_vec(); ns.extend_from_slice(rcp); let mut cc=ns.clone(); cc.extend_from_slice(&seal); let commitment=b2b(&cc);
+    let inputs=vec![Fr::from_le_bytes_mod_order(&chain_root), Fr::from_le_bytes_mod_order(&seal), Fr::from_le_bytes_mod_order(&commitment)];
+    let meta=RelayMeta{
+        target_block: hs[3]["number"].as_str().unwrap().to_string(), tx: v["tx_hash"].as_str().unwrap().to_string(),
+        amount: u128::from_le_bytes(amt.try_into().unwrap()).to_string(), recipient: format!("0x{}",hexs(rcp)),
+        chain_root: format!("0x{}",hexs(&chain_root)), seal: format!("0x{}",hexs(&seal)), commitment: format!("0x{}",hexs(&commitment)) };
+    let circ=RelayBind{raw,nonce,cbmt_leaf,cbmt_path,wit,leaf0:leaves[3],mpath,chain_root,seal,body,bridge_code,type_off,amount_off,recip_off};
+    (circ, inputs, meta)
+}
+
+// The value-bound leap redeemer JSON — IDENTICAL shape to the cold path below (cardano_mint_bound.py /
+// emit_mint_redeemer.py consume amount/recipient/seal/proof/public_inputs_dec).
+fn emit_relay(vk:&VerifyingKey<Bls12_381>, proof:&Proof<Bls12_381>, inputs:&[Fr], m:&RelayMeta) -> String {
+    let ic:Vec<String>=vk.gamma_abc_g1.iter().map(g1c).collect();
+    serde_json::to_string_pretty(&serde_json::json!({
+      "note":"value-bound CKB->Cardano leap redeemer (cardano_bound.ak); commitment derived in-circuit from the receipt amount/recipient",
+      "target_block": m.target_block, "tx": m.tx, "amount": m.amount, "recipient": m.recipient,
+      "chain_root": m.chain_root, "seal": m.seal, "commitment": m.commitment,
+      "vk":{"alpha_g1":g1c(&vk.alpha_g1),"beta_g2":g2c(&vk.beta_g2),"gamma_g2":g2c(&vk.gamma_g2),"delta_g2":g2c(&vk.delta_g2),"ic":ic},
+      "proof":{"a":g1c(&proof.a),"b":g2c(&proof.b),"c":g1c(&proof.c)},
+      "public_inputs_dec": inputs.iter().map(fr_dec).collect::<Vec<_>>()
+    })).unwrap()
+}
+
+// CHIRAL_SERVE=<unix socket>: load the (~740MB) ceremony pk ONCE and prove many forward-mint requests, so a
+// tester's lock no longer reloads the key (~4 min) each time. Request (one JSON line): {wit,bridge,out}; the
+// redeemer is written to `out`. The forward-leg warm prover (mirrors leap_bound_windowed's serve).
+fn serve(sock:&str){
+    let pk_path=std::env::var("CEREMONY_PK").expect("CHIRAL_SERVE needs CEREMONY_PK (the ceremony proving key)");
+    ckb_consensus_circuit::setup_mpc::serve_warm(sock, &pk_path, move |req, pk, vk| {
+        let wit=req["wit"].as_str().ok_or("missing wit")?;
+        let bridge=req["bridge"].as_str().ok_or("missing bridge")?;
+        let out=req["out"].as_str().ok_or("missing out")?;
+        let (circ, inputs, meta)=build_relay(wit, bridge);
+        let mut rng=ark_std::rand::rngs::StdRng::seed_from_u64(7);
+        let proof=Groth16::<Bls12_381>::prove(pk, circ.clone(), &mut rng).map_err(|e| format!("{e:?}"))?;
+        if !Groth16::<Bls12_381>::verify(vk, &inputs, &proof).map_err(|e| format!("{e:?}"))? { return Err("warm proof did not verify under ceremony vk".into()); }
+        std::fs::write(out, emit_relay(vk, &proof, &inputs, &meta)).map_err(|e| e.to_string())?;
+        Ok(out.to_string())
+    });
+}
+
 fn main(){
+    if let Ok(sock)=std::env::var("CHIRAL_SERVE") { serve(&sock); return; }
     let wpath=std::env::args().nth(1).unwrap_or("/tmp/witness_bridge.json".into());
     let bpath=std::env::args().nth(2).unwrap_or("/mnt/c/Users/telmo/chiral-study/relayer/onchain/bridge_lock_live.json".into());
     let v:Value=serde_json::from_reader(std::fs::File::open(&wpath).unwrap()).unwrap();

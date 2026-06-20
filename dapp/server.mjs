@@ -73,6 +73,10 @@ const APPLIED_POLICY = `${REPO_SH}/relayer/onchain/zk_chiral_mint.applied.json`;
 // per-request seeded setup, so the emitted vk == the deployed (ceremony) policy's vk. Without this the forward
 // mint would prove under the forgeable seed_from_u64(7) vk and fail the policy-id check.
 const RELAY_CEREMONY_PK = process.env.RELAY_CEREMONY_PK || `${WSL_CKB}/circuit/ceremony_relay_bind/relay_bind_pk.bin`;
+// Optional WARM forward prover: if a resident `relay_bind` (CHIRAL_SERVE on this socket) is up, proveLeap uses
+// it (~seconds) instead of a cold ~4-min key reload. warm_prove.py exits 1 if the socket is down, so the
+// pipeline falls back to the cold prover — no warm daemon required for correctness.
+const RELAY_WARM_SOCK = process.env.RELAY_WARM_SOCK || "/tmp/chiral_relay_warm.sock";
 
 function bridgeConfigBuild() {
   const bl = readJSON(path.join(ONCHAIN, "bridge_lock_live.json"), {});
@@ -154,7 +158,10 @@ async function proveLeap({ lockTxid, lockBlock }) {
     `cd ${sh(WSL_CKB)}`,
     `python3 relayer/gen_bridge_body.py ${sh(lockTxid)} ${sh(bridgeCode)} --rpc ${sh(CKB_RPC)} --out ${perlock}`,
     `${tgt} python3 relayer/relayer.py ${sh(CKB_RPC)} ${wit}`,
-    `CEREMONY_PK=${sh(RELAY_CEREMONY_PK)} circuit/prover/target/release/relay_bind ${wit} ${perlock} > ${red}`,
+    // WARM-first: a resident relay_bind (RELAY_WARM_SOCK) proves in ~seconds; warm_prove.py writes the redeemer
+    // to ${red} and exits 0, or exits 1 (socket down/error) -> `||` falls back to the cold key-reloading prover.
+    // warm_prove's status line is sent to stderr (>&2) so only emit_mint_redeemer's blob lands on stdout.
+    `( python3 relayer/warm_prove.py prove ${wit} ${perlock} ${red} --sock ${sh(RELAY_WARM_SOCK)} >&2 || CEREMONY_PK=${sh(RELAY_CEREMONY_PK)} circuit/prover/target/release/relay_bind ${wit} ${perlock} > ${red} )`,
     `python3 relayer/emit_mint_redeemer.py --proof ${red} --applied ${sh(APPLIED_POLICY)}`,
   ].join(" && ");
   const r = await wsl(`mkdir -p ${tmp} && (${pipeline}); RC=$?; rm -rf ${tmp}; exit $RC`);
