@@ -24,9 +24,16 @@
   **FULL χCKB ROUND TRIP CLOSED LIVE under `4cd5c378`:** lock 300 CKB `0x8c094427` → prove (verify=true) →
   mint 30B χCKB `a90d2dac` → burn `111ff99c` → Mithril cert (~8 min) → KEYLESS release 300 CKB `0xbfe6f04a`
   to the recipient (gated only by the cert + replay-once nullifier). Forward (general + on-chain) AND return
-  both proven under the new policy. **NOTE:** the χADA-leg /
-  return prover (`leap_bound_windowed`) verifies a CKB burn via the SAME variable-depth CBMT and needs the
-  identical fixed-depth treatment before ITS deployed policy generalizes across burn block sizes.
+  both proven under the new policy.
+- **χADA RETURN LEG — fixed-depth CBMT DEPLOYED + VALIDATED ON-CHAIN (2026-06-20).** `leap_bound_windowed`
+  (the χADA burn/return prover, baked into `ada_escrow`) had the SAME variable-CBMT bug; applied the identical
+  fixed-depth fix + a `CHIRAL_SECURE_SETUP` path. Secure-set a new fixed-size key (751 MB, verify=true) →
+  re-baked `ada_escrow` to the new vk (escrow `714c54f2`). **Full χADA round trip closed under the new key:**
+  forward-lock 4 ADA (`64ed69c8`) → Mithril cert → mint 4 χADA (`0x6fd912fb`) → burn (`0x8a4d13ea`) →
+  re-anchor + prove with the NEW key → `ada_escrow.Release` **verified the new-key Groth16 proof ON-CHAIN
+  (`valid_contract: True`)** and released 4 ADA (release `a02d763a`, block 4401248) → `2df44c71`. (Two transient
+  re-tries en route: the return ran before 12 CKB confirmations, and the release needed fresh ref scripts for
+  the new escrow + a funding-race retry.) Both bridge legs now generalize across block sizes.
 - **E1 — DONE + LIVE + END-TO-END ON-CHAIN VALIDATED (key fix 2026-06-20).** History: the cutover baked a
   ceremony vk → policy `92832ec4…` (replacing `bcd28c5f`). A **headless forward-mint dry-run on 2026-06-20
   caught a critical regression**: the on-disk relay_bind ceremony key (468 MB, re-generated at 04:28, larger

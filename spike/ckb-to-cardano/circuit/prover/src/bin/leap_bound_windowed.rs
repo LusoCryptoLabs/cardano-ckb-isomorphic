@@ -338,6 +338,17 @@ fn main(){
         ckb_consensus_circuit::setup_mpc::save_pk(&pk, &format!("{dir}/leap_bound_windowed_pk.bin"));
         let _ = std::fs::write(format!("{dir}/leap_bound_windowed_transcript.json"), serde_json::to_string_pretty(&transcript).unwrap());
         let vk=pk.vk.clone(); (pk,vk)
+    } else if let Ok(out)=std::env::var("CHIRAL_SECURE_SETUP") {
+        // SECURE single-party setup: arkworks-native circuit_specific_setup seeded from OS entropy (read once
+        // from /dev/urandom, then dropped). Non-forgeable (toxic waste discarded, NOT a public seed) and
+        // proven-correct (the custom MPC derive_pk yields inconsistent keys). Saves the pk for CEREMONY_PK loads.
+        use std::io::Read;
+        let mut seed=[0u8;32]; std::fs::File::open("/dev/urandom").unwrap().read_exact(&mut seed).unwrap();
+        let mut secure=ark_std::rand::rngs::StdRng::from_seed(seed);
+        eprintln!("leap_bound_windowed: SECURE single-party setup (OS entropy, discarded) -> {out}");
+        let (pk,vk)=Groth16::<Bls12_381>::circuit_specific_setup(real.clone(),&mut secure).unwrap();
+        ckb_consensus_circuit::setup_mpc::save_pk(&pk,&out);
+        (pk,vk)
     } else if let Ok(p)=std::env::var("CEREMONY_PK") {
         eprintln!("loading ceremony key from {p}"); let pk=ckb_consensus_circuit::setup_mpc::load_pk(&p); let vk=pk.vk.clone(); (pk,vk)
     } else {
