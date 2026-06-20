@@ -31,6 +31,7 @@ use blake2b_rs::Blake2bBuilder;
 use serde_json::Value;
 use ckb_consensus_circuit::{eaglesong_gadget, blake2b_gadget::blake2b256, merkle_gadget};
 
+const MAX_CBMT_DEPTH: usize = 16;   // fixed CBMT proof depth -> circuit size invariant to the block's tx count
 fn ckbhash(d:&[u8])->[u8;32]{ let mut h=Blake2bBuilder::new(32).personal(b"ckb-default-hash").build(); h.update(d); let mut o=[0u8;32]; h.finalize(&mut o); o }
 fn b2b(d:&[u8])->[u8;32]{ let mut h=Blake2bBuilder::new(32).build(); h.update(d); let mut o=[0u8;32]; h.finalize(&mut o); o }
 fn hx(s:&str)->Vec<u8>{ let s=s.trim_start_matches("0x"); (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i+2],16).unwrap()).collect() }
@@ -70,7 +71,7 @@ fn window_root_path(leaves:&[[u8;32]], idx:usize)->([u8;32], Vec<([u8;32],bool)>
 #[derive(Clone)]
 struct BoundWindowedLeap {
     raw:[u8;192], nonce:[u8;16],
-    cbmt_leaf:[u8;32], cbmt_path:Vec<([u8;32],bool)>, wit:[u8;32],
+    cbmt_leaf:[u8;32], cbmt_path:Vec<([u8;32],bool,bool)>, wit:[u8;32],
     seal:[u8;32],
     window_root:[u8;32], siblings:Vec<[u8;32]>, tip_height:u64, k:u64, kmin:u64,
     body:Vec<u8>, bridge_code:[u8;32], type_off:usize, amount_off:usize, recip_off:usize,
@@ -93,8 +94,10 @@ impl ConstraintSynthesizer<Fr> for BoundWindowedLeap {
         let leaf=w(&self.cbmt_leaf,&cs)?;
         let wit=w(&self.wit,&cs)?;
         let mut path=Vec::new();
-        for (s,d) in &self.cbmt_path { path.push((w(s,&cs)?, Boolean::new_witness(cs.clone(),||Ok(*d))?)); }
-        let troot=merkle_gadget::tx_root_from_proof(&leaf,&path,&wit)?;
+        // FIXED-DEPTH CBMT (see merkle_gadget::merkle_root_fixed): constant constraint count regardless of how
+        // many txs share the burn's block, so one deployed vk verifies any burn.
+        for (s,d,a) in &self.cbmt_path { path.push((w(s,&cs)?, Boolean::new_witness(cs.clone(),||Ok(*d))?, Boolean::new_witness(cs.clone(),||Ok(*a))?)); }
+        let troot=merkle_gadget::tx_root_from_proof_fixed(&leaf,&path,&wit)?;
         for i in 0..32 { troot[i].enforce_equal(&raw[64+i])?; }
         // R2' WINDOWED membership; slot BOUND to the header's own height (mod W)
         let mut hin = raw.clone(); hin.extend(nonce);
@@ -171,7 +174,9 @@ fn build_circuit(wpath:&str, bpath:&str, window:Option<&str>, depth:usize, k_ove
     let block_hash=ckbhash(&[raw.as_slice(),nonce.as_slice()].concat());
     assert_eq!(block_hash.iter().map(|x|format!("{:02x}",x)).collect::<String>(), hs[3]["hash"].as_str().unwrap().trim_start_matches("0x"), "block hash mismatch");
     let cb=&v["cbmt"]; let mut node=u64::from_str_radix(cb["indices"][0].as_str().unwrap().trim_start_matches("0x"),16).unwrap();
-    let mut cbmt_path=Vec::new(); for l in cb["lemmas"].as_array().unwrap() { cbmt_path.push((hx32(l.as_str().unwrap()), node%2==1)); node=(node-1)/2; }
+    let mut cbmt_path=Vec::new(); for l in cb["lemmas"].as_array().unwrap() { cbmt_path.push((hx32(l.as_str().unwrap()), node%2==1, true)); node=(node-1)/2; }
+    assert!(cbmt_path.len() <= MAX_CBMT_DEPTH, "CBMT proof depth {} exceeds MAX_CBMT_DEPTH {}", cbmt_path.len(), MAX_CBMT_DEPTH);
+    while cbmt_path.len() < MAX_CBMT_DEPTH { cbmt_path.push(([0u8;32], false, false)); }
     let cbmt_leaf=hx32(v["tx_hash"].as_str().unwrap()); let wit=hx32(cb["witnesses_root"].as_str().unwrap());
     let seal=cbmt_leaf;
     let body=hx(lj["body_hex"].as_str().unwrap());
@@ -249,7 +254,9 @@ fn main(){
     assert_eq!(block_hash.iter().map(|x|format!("{:02x}",x)).collect::<String>(), hs[3]["hash"].as_str().unwrap().trim_start_matches("0x"), "block hash mismatch");
     // CBMT path (relayer)
     let cb=&v["cbmt"]; let mut node=u64::from_str_radix(cb["indices"][0].as_str().unwrap().trim_start_matches("0x"),16).unwrap();
-    let mut cbmt_path=Vec::new(); for l in cb["lemmas"].as_array().unwrap() { cbmt_path.push((hx32(l.as_str().unwrap()), node%2==1)); node=(node-1)/2; }
+    let mut cbmt_path=Vec::new(); for l in cb["lemmas"].as_array().unwrap() { cbmt_path.push((hx32(l.as_str().unwrap()), node%2==1, true)); node=(node-1)/2; }
+    assert!(cbmt_path.len() <= MAX_CBMT_DEPTH, "CBMT proof depth {} exceeds MAX_CBMT_DEPTH {}", cbmt_path.len(), MAX_CBMT_DEPTH);
+    while cbmt_path.len() < MAX_CBMT_DEPTH { cbmt_path.push(([0u8;32], false, false)); }
     let cbmt_leaf=hx32(v["tx_hash"].as_str().unwrap()); let wit=hx32(cb["witnesses_root"].as_str().unwrap());
     let seal=cbmt_leaf;
     // the captured receipt body + offsets (verified on the real tx by bridge_deploy_lock.mjs)
