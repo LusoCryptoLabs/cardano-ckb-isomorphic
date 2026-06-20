@@ -15,7 +15,7 @@ const CKB = 100_000_000n, FEE = 2_000_000n;
 const AMOUNT_CKB = BigInt(process.env.AMOUNT_CKB || 300n);     // ≥ ~269 (unified receipt occupied bytes)
 const AMOUNT = AMOUNT_CKB * CKB;                               // shannons; capacity == amount
 const RECIPIENT = process.env.RECIPIENT || "2df44c71a4312463ba31315c5aa7725b6ad44cd544a055a3dde915a6";
-const POLICY = process.env.CHI_POLICY_ID || "3120e1ba97f13f69b2238bca2af7923da8ada83e5054bedf5c5b2fd3";
+const POLICY = process.env.CHI_POLICY_ID || "92832ec45733a5e44d06722a878ffaa264ec9fe214b532c18ead358e";
 const NAME = "636869434b42";                                  // "chiCKB"
 
 const u64le = (n) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; };

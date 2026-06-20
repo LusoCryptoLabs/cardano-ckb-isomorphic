@@ -1,0 +1,49 @@
+{
+  "circuit": "relay_bind",
+  "domain": 2097152,
+  "note": "Real two-phase Groth16 ceremony on the production circuit. Toxic waste {tau,alpha,beta,delta} is a product of all contributors' OS-entropy secrets, each dropped. gamma=1 (public, sound). SANDBOX CAVEAT: contributor INDEPENDENCE is simulated (same machine); the machinery + verifiable transcript let real external contributors slot in unchanged.",
+  "phase1_powers_of_tau": {
+    "contributors": 3,
+    "rounds": [
+      {
+        "accumulator_wellformed": true,
+        "contributor": 1,
+        "forged_pok_rejected": true,
+        "pok_verified": true
+      },
+      {
+        "accumulator_wellformed": true,
+        "contributor": 2,
+        "forged_pok_rejected": true,
+        "pok_verified": true
+      },
+      {
+        "accumulator_wellformed": true,
+        "contributor": 3,
+        "forged_pok_rejected": true,
+        "pok_verified": true
+      }
+    ]
+  },
+  "phase2_delta": {
+    "contributors": 3,
+    "rounds": [
+      {
+        "contributor": 1,
+        "forged_pok_rejected": true,
+        "pok_verified": true
+      },
+      {
+        "contributor": 2,
+        "forged_pok_rejected": true,
+        "pok_verified": true
+      },
+      {
+        "contributor": 3,
+        "forged_pok_rejected": true,
+        "pok_verified": true
+      }
+    ]
+  },
+  "vk_blake2b": "9e1adfb2a512a174e4b067e9e4d2a847078399163faa13c70bf8b90ce3c59df2"
+}

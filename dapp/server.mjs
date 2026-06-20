@@ -64,8 +64,15 @@ const WARM_SOCK = process.env.CHIRAL_WARM_SOCK || process.env.CHIRAL_SERVE || "/
 // emit_mint_redeemer.py as policy_id. Overridable for a redeploy.
 // the deployed amount-binding zk_chiral_mint policy (vk + ft_name applied) — the policy the leap MINTS and
 // the burn-gated lock releases against. Validated live: mint f598926b… minted qty == the locked amount.
-const CHI_POLICY_ID = process.env.CHI_POLICY_ID || "bcd28c5f0d883c7ce15cea32b752612dd352e6b5b3533000b208e146";
+// E1: derive the policy id from the live applied script at startup (kills the drift the analysis found across
+// server/.env/bridge_lock_unified). Falls back to env, then the post-ceremony policy as a last resort.
+const CHI_POLICY_ID = process.env.CHI_POLICY_ID || readJSON(path.join(ONCHAIN, "zk_chiral_mint.applied.json"), {}).policy_id
+  || "92832ec45733a5e44d06722a878ffaa264ec9fe214b532c18ead358e";
 const APPLIED_POLICY = `${REPO_SH}/relayer/onchain/zk_chiral_mint.applied.json`;   // build_chiral_policy.py output
+// E1: the relay_bind ceremony proving key (CEREMONY_OUT output) — the prove step LOADS it instead of doing a
+// per-request seeded setup, so the emitted vk == the deployed (ceremony) policy's vk. Without this the forward
+// mint would prove under the forgeable seed_from_u64(7) vk and fail the policy-id check.
+const RELAY_CEREMONY_PK = process.env.RELAY_CEREMONY_PK || `${WSL_CKB}/circuit/ceremony_relay_bind/relay_bind_pk.bin`;
 
 function bridgeConfigBuild() {
   const bl = readJSON(path.join(ONCHAIN, "bridge_lock_live.json"), {});
@@ -147,7 +154,7 @@ async function proveLeap({ lockTxid, lockBlock }) {
     `cd ${sh(WSL_CKB)}`,
     `python3 relayer/gen_bridge_body.py ${sh(lockTxid)} ${sh(bridgeCode)} --rpc ${sh(CKB_RPC)} --out ${perlock}`,
     `${tgt} python3 relayer/relayer.py ${sh(CKB_RPC)} ${wit}`,
-    `circuit/prover/target/release/relay_bind ${wit} ${perlock} > ${red}`,
+    `CEREMONY_PK=${sh(RELAY_CEREMONY_PK)} circuit/prover/target/release/relay_bind ${wit} ${perlock} > ${red}`,
     `python3 relayer/emit_mint_redeemer.py --proof ${red} --applied ${sh(APPLIED_POLICY)}`,
   ].join(" && ");
   const r = await wsl(`mkdir -p ${tmp} && (${pipeline}); RC=$?; rm -rf ${tmp}; exit $RC`);
