@@ -41,7 +41,7 @@ fn mkleaf(h:&Value, hash:[u8;32])->[u8;120]{
 }
 
 #[derive(Clone)]
-struct RelayBind { raw:[u8;192], nonce:[u8;16], cbmt_leaf:[u8;32], cbmt_path:Vec<([u8;32],bool)>, wit:[u8;32],
+struct RelayBind { raw:[u8;192], nonce:[u8;16], cbmt_leaf:[u8;32], cbmt_path:Vec<([u8;32],bool,bool)>, wit:[u8;32],
     leaf0:[u8;120], mpath:Vec<([u8;120],bool,[u8;120])>, chain_root:[u8;32], seal:[u8;32],
     body:Vec<u8>, bridge_code:[u8;32], type_off:usize, amount_off:usize, recip_off:usize }
 fn b2fp<F:PrimeField>(b:&[UInt8<F>])->Result<FpVar<F>,SynthesisError>{ let mut a=FpVar::<F>::zero(); let mut c=F::one(); for byte in b { for bit in byte.to_bits_le()? { a+=FpVar::from(bit)*c; c.double_in_place(); } } Ok(a) }
@@ -56,8 +56,10 @@ impl ConstraintSynthesizer<Fr> for RelayBind {
         merkle_gadget::enforce_leq_be(&pow,&target)?;
         // R3 tx inclusion -> transactions_root
         let leaf=w(&self.cbmt_leaf,&cs)?; let wit=w(&self.wit,&cs)?;
-        let mut path=Vec::new(); for (s,d) in &self.cbmt_path { path.push((w(s,&cs)?, Boolean::new_witness(cs.clone(),||Ok(*d))?)); }
-        let troot=merkle_gadget::tx_root_from_proof(&leaf,&path,&wit)?;
+        // FIXED-DEPTH CBMT: each level carries an `active` flag; the path is padded to a constant MAX so the
+        // circuit size is invariant to the block's tx count (one deployed vk verifies any lock).
+        let mut path=Vec::new(); for (s,d,a) in &self.cbmt_path { path.push((w(s,&cs)?, Boolean::new_witness(cs.clone(),||Ok(*d))?, Boolean::new_witness(cs.clone(),||Ok(*a))?)); }
+        let troot=merkle_gadget::tx_root_from_proof_fixed(&leaf,&path,&wit)?;
         for i in 0..32 { troot[i].enforce_equal(&raw[64+i])?; }
         // R2 MMR membership; leaf0.children_hash == block hash
         let mut hin=raw.clone(); hin.extend(nonce.clone()); let bh=blake2b256(&hin,b"ckb-default-hash")?;
@@ -110,7 +112,12 @@ fn main(){
     assert_eq!(hexs(&bh), hs[3]["hash"].as_str().unwrap().trim_start_matches("0x"), "block hash mismatch");
     // CBMT path
     let cb=&v["cbmt"]; let mut node=u64::from_str_radix(cb["indices"][0].as_str().unwrap().trim_start_matches("0x"),16).unwrap();
-    let mut cbmt_path=Vec::new(); for l in cb["lemmas"].as_array().unwrap() { cbmt_path.push((hx32(l.as_str().unwrap()), node%2==1)); node=(node-1)/2; }
+    let mut cbmt_path=Vec::new(); for l in cb["lemmas"].as_array().unwrap() { cbmt_path.push((hx32(l.as_str().unwrap()), node%2==1, true)); node=(node-1)/2; }
+    // FIXED-DEPTH: pad the CBMT proof to a constant MAX so the circuit (and thus the vk) is invariant to how
+    // many txs share the lock's block. Padding levels are inactive no-ops (see merkle_gadget::merkle_root_fixed).
+    const MAX_CBMT_DEPTH: usize = 16;   // covers up to 2^16 txs/block; real CKB blocks are far smaller
+    assert!(cbmt_path.len() <= MAX_CBMT_DEPTH, "CBMT proof depth {} exceeds MAX_CBMT_DEPTH {}", cbmt_path.len(), MAX_CBMT_DEPTH);
+    while cbmt_path.len() < MAX_CBMT_DEPTH { cbmt_path.push(([0u8;32], false, false)); }
     let cbmt_leaf=hx32(v["tx_hash"].as_str().unwrap()); let wit=hx32(cb["witnesses_root"].as_str().unwrap());
     // checkpoint MMR over T-3..T
     let leaves:Vec<[u8;120]>=(0..4).map(|i| mkleaf(&hs[i], hx32(hs[i]["hash"].as_str().unwrap()))).collect();

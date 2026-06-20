@@ -67,7 +67,7 @@ const WARM_SOCK = process.env.CHIRAL_WARM_SOCK || process.env.CHIRAL_SERVE || "/
 // E1: derive the policy id from the live applied script at startup (kills the drift the analysis found across
 // server/.env/bridge_lock_unified). Falls back to env, then the post-ceremony policy as a last resort.
 const CHI_POLICY_ID = process.env.CHI_POLICY_ID || readJSON(path.join(ONCHAIN, "zk_chiral_mint.applied.json"), {}).policy_id
-  || "08db0245dd235757b8c96777e38b8a8e540487a1fa496eae7dae5128";
+  || "4cd5c378e2357aef01910bc98efabe43b40031a4d09c292eede2c429";
 const APPLIED_POLICY = `${REPO_SH}/relayer/onchain/zk_chiral_mint.applied.json`;   // build_chiral_policy.py output
 // E1: the relay_bind ceremony proving key (CEREMONY_OUT output) — the prove step LOADS it instead of doing a
 // per-request seeded setup, so the emitted vk == the deployed (ceremony) policy's vk. Without this the forward

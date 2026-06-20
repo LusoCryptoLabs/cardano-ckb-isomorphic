@@ -1,6 +1,28 @@
 # E1 / E2 execution runbook (post-pilot, gated on sign-off)
 
 ## STATUS (2026-06-20)
+- **E1-GENERALITY — FORWARD MINT NOW WORKS FOR *ANY* TESTER (fixed-depth CBMT, 2026-06-20).** A pre-pilot
+  round-trip dry-run exposed a deeper bug than the key: `relay_bind`'s circuit size was **variable** — it
+  grew with the number of txs in the lock's block (the CBMT tx-inclusion proof depth was unpadded:
+  `merkle_gadget::merkle_root` folded one blake2b per real lemma). A Groth16 policy bakes ONE vk for ONE
+  circuit, so the deployed policy only verified locks from blocks with the SAME tx count as the lock it was
+  baked from. Proof: lock A (5-tx block) = 1,544,285 constraints (policy baked here); lock B (2-tx block) =
+  1,493,404 → the deployed key gave `verify=false` on lock B (seeded on its own circuit it verified fine).
+  The earlier demos worked only by coincidence (matching block sizes). **FIX:** added
+  `merkle_gadget::merkle_root_fixed` / `tx_root_from_proof_fixed` — fold a CONSTANT `MAX_CBMT_DEPTH=16`
+  levels, each with an `active` flag; real levels fold, padding levels pass the running hash through (the
+  blake2b is always computed → constant constraint count; discarded on padding via conditional select).
+  Soundness unchanged: the root is still bound to the header's `transactions_root` (relay_bind.rs:61), so
+  only the true proof matches. Both locks now compile to **2,260,731** constraints (identical) and BOTH
+  `verify=true` under one deployed key. Regenerated the (now witness-independent) fixed-size key via secure
+  setup (740 MB, 2^22 domain), re-baked → **CURRENT live χCKB policy
+  `4cd5c378e2357aef01910bc98efabe43b40031a4d09c292eede2c429`** (replaces `08db0245`). **VALIDATED ON-CHAIN:**
+  both a 5-tx-block lock AND a 2-tx-block lock minted χCKB under `4cd5c378` (Cardano `e789c48b`, `ae7c1dd7`)
+  — Blockfrost evaluated the policy against each proof and accepted both = generality proven. Config updated
+  (applied.json, server.mjs, .env, bridge_lock_unified → `4cd5c378`); dapp server restarted + serves it.
+  Cold prove now ~4 min (2^22 / 740 MB key); the warm prover amortizes to ~10s. **NOTE:** the χADA-leg /
+  return prover (`leap_bound_windowed`) verifies a CKB burn via the SAME variable-depth CBMT and needs the
+  identical fixed-depth treatment before ITS deployed policy generalizes across burn block sizes.
 - **E1 — DONE + LIVE + END-TO-END ON-CHAIN VALIDATED (key fix 2026-06-20).** History: the cutover baked a
   ceremony vk → policy `92832ec4…` (replacing `bcd28c5f`). A **headless forward-mint dry-run on 2026-06-20
   caught a critical regression**: the on-disk relay_bind ceremony key (468 MB, re-generated at 04:28, larger

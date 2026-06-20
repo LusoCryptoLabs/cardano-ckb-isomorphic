@@ -83,6 +83,46 @@ pub fn tx_root_from_proof<F: PrimeField>(
     blake2b256(&concat, CKB_PERSONAL)
 }
 
+/// FIXED-DEPTH merkle fold: iterate EXACTLY `path.len()` levels (the caller pads to a constant MAX), where
+/// each step carries an `active` flag. Active levels fold (ckbhash(left‖right)); padding levels pass the
+/// running hash through UNCHANGED. The blake2b is ALWAYS computed (so the constraint count is constant,
+/// independent of the real proof depth) but its result is discarded on padding levels via a conditional
+/// select. This makes the circuit size invariant to how many txs share the block. Soundness is unchanged:
+/// the caller binds the returned root to the header's `transactions_root`, so only the true proof (correct
+/// real depth + correct siblings) can match — a prover cannot fold extra/fewer levels and still match.
+pub fn merkle_root_fixed<F: PrimeField>(
+    leaf: &[UInt8<F>],
+    path: &[(Vec<UInt8<F>>, Boolean<F>, Boolean<F>)],   // (sibling, leaf_is_left, active)
+) -> Result<Vec<UInt8<F>>, SynthesisError> {
+    let mut cur = leaf.to_vec();
+    for (sib, leaf_is_left, active) in path {
+        let mut left = Vec::with_capacity(32);
+        let mut right = Vec::with_capacity(32);
+        for i in 0..32 {
+            left.push(UInt8::conditionally_select(leaf_is_left, &cur[i], &sib[i])?);
+            right.push(UInt8::conditionally_select(leaf_is_left, &sib[i], &cur[i])?);
+        }
+        let mut concat = left; concat.extend(right);
+        let folded = blake2b256(&concat, CKB_PERSONAL)?;
+        let mut next = Vec::with_capacity(32);
+        for i in 0..32 { next.push(UInt8::conditionally_select(active, &folded[i], &cur[i])?); }
+        cur = next;
+    }
+    Ok(cur)
+}
+
+/// Fixed-depth variant of `tx_root_from_proof` (see `merkle_root_fixed`): constant constraint count
+/// regardless of the block's tx count, so one deployed vk verifies any lock.
+pub fn tx_root_from_proof_fixed<F: PrimeField>(
+    leaf: &[UInt8<F>],
+    path: &[(Vec<UInt8<F>>, Boolean<F>, Boolean<F>)],
+    witnesses_root: &[UInt8<F>],
+) -> Result<Vec<UInt8<F>>, SynthesisError> {
+    let raw_root = merkle_root_fixed(leaf, path)?;
+    let mut concat = raw_root; concat.extend_from_slice(witnesses_root);
+    blake2b256(&concat, CKB_PERSONAL)
+}
+
 /// R1 helper: decode CKB's Bitcoin-style compact target (4 bytes, little-endian as in the header)
 /// into a 32-byte big-endian target. compact_le = [m0, m1, m2_raw, exp]; mantissa = m2&0x7f, m1, m0
 /// placed at big-endian positions [32-exp .. 32-exp+2]. Handles a data-dependent exponent.
