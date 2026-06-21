@@ -7,10 +7,10 @@
   "gref": "bd8d36d4f09d668f3bef333b09fd31990879c2bb56e44ad141ae30dd5d58df24#0",
   "thread_name_hex": "636b62636572742d746872656164",
   "pinned": {
-    "chain_root": "448eeba6cebc9a8bb8530ebdf75f9ffb59f38c9a355c275300da1528786818e4",
+    "chain_root": "6da7b8f03ed1aaff8834de55a6d1767a20f1f1a01597be19cf5480b448a2fcdd",
     "total_difficulty": "0000000000000000000000000000000000000000000000000000000000000000",
-    "window_root": "dd10684b07c8c7360ac2efdca12c8cb392673ca81154c05146f5a98edc68dc23",
-    "tip_height": 21483571
+    "window_root": "d292c0d07c4edf4cc08dc3ed6f4fabb51f84f82217c14dfb61fddb46d3fb748a",
+    "tip_height": 21499568
   },
-  "last_reanchor_tx": "3bff050d52bff5271d36a7867434b922023329de308d3fa94b95870ce92771b0"
+  "last_reanchor_tx": "da94bcad88eeda2211ed86ef86abc9b2a1388ac2152cf3d17090244564c9ef8c"
 }

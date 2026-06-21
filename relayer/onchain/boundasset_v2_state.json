@@ -1,8 +1,8 @@
 {
   "registry": {
-    "txHash": "0x6af807a6ae4af74d6109d4cc70b28095f610ae440ef2233bb21ae8584b199f72",
-    "index": 1,
-    "root": "0x87b596d5e29831d8ef13b13c922892d968e637177c19264a7210ae3008edbbba"
+    "txHash": "0x6fd912fbd52a58977458bd7e81614a8db4c0f0fe48d9a1626b3dc7c6fa9a9bb7",
+    "index": 2,
+    "root": "0x8e0cd96e87fcfdeb628b729e458d48ca4d979294224acc87490f3946347ddfb8"
   },
   "bound": {
     "txHash": "0x1e1b978c579c61df54ac6aadca074ea0652c9a687093977558d84c3c8bdce887",

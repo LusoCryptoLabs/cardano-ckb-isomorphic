@@ -1,7 +1,7 @@
 {
-  "release_tx": "2030617040d3c296c3aa906a4702d89f0aff3dc41deb5ce7952ef9abb1117b12",
-  "amount": 3000000,
+  "release_tx": "a02d763a55496b9cea799fae57ade8d9e205b3d8559e5492f4f5558c0244ace2",
+  "amount": 4000000,
   "recipient": "2df44c71a4312463ba31315c5aa7725b6ad44cd544a055a3dde915a6",
-  "burn_seal": "faa3536087986f05b4f9c552617254a8a5ee5e1b1384c3b32c42315793d363a7",
-  "escrow_tx": "4954f0d0ba05d6d3b0aa6aa9abe9105dfb52e17c08ce3d809d9a9114b52abb81"
+  "burn_seal": "8a4d13eabe0d4efa6c7c1e80f1ee5ad6c7821c17071d4e968b334dbdb57b7647",
+  "escrow_tx": "ca3fd55b889b39fb5f26f5f24d868aa2e84aa3d3909d37faa1b3fb6062ad3695"
 }
