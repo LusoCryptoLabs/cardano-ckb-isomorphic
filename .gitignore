@@ -26,3 +26,13 @@ _throwaway*
 *.bak-*
 _*_test.*
 _*_drive.*
+
+# session scratch: ceremony proving keys (huge, regenerated) + debug scripts/dirs + logs + policy backups
+spike/ckb-to-cardano/circuit/ceremony_*/*.bin
+spike/ckb-to-cardano/circuit/ceremony_*/*.bin.*
+spike/ckb-to-cardano/circuit/ceremony_*/*.uc
+spike/ckb-to-cardano/circuit/_*
+spike/ckb-to-cardano/groth16/_*
+relayer/onchain/_ckbbal.mjs
+relayer/onchain/*.old-*
+dapp/_*.log

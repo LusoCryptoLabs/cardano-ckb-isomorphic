@@ -36,17 +36,33 @@ export async function buildLockTx({ signer, cfg, amountCKB, recipientCred28 }) {
   if (amount < BigInt(cfg.minLockCKB) * 100000000n) throw new Error(`minimum lock is ${cfg.minLockCKB} CKB`);
   const data = "0x" + "42524731" + "00" + u64le(amount) + "00".repeat(8) + recipientCred28; // 49 bytes
   const bridgeType = ccc.Script.from({ codeHash: cfg.bridgeCodeHash, hashType: "data1", args: "0x" + "00".repeat(32) });
+  const userLock = (await signer.getRecommendedAddressObj()).script;
   // conservation-safe receipt lock; fall back to the user's lock only if the backend hasn't surfaced burnGated.
-  const receiptLock = cfg.burnGated
-    ? burnGatedLock(cfg.burnGated, amount)
-    : (await signer.getRecommendedAddressObj()).script;
+  const receiptLock = cfg.burnGated ? burnGatedLock(cfg.burnGated, amount) : userLock;
+  // CANONICAL 1-INPUT LAYOUT — byte-for-byte identical to relayer/onchain/bridge_lock_unified.mjs (1 funding
+  // input, receipt[0] + change[1], bridge dep + secp dep). The relay_bind proof binds amount/recipient by their
+  // OFFSETS in this raw tx, so the leap policy's vk is tied to the tx layout: a fixed layout => ONE deployed vk
+  // verifies EVERY user's lock. (ccc's completeInputsByCapacity adds a variable number of inputs -> a different
+  // layout per wallet -> verify=false.) Needs a single funding cell >= amount + fee + min-change.
+  const CKB = 100_000_000n, FEE = 2_000_000n, MIN_CHANGE = 63n * CKB;
+  const client = signer.client;
+  let fund = null;
+  for await (const c of client.findCellsByLock(userLock, null, true)) {
+    if (c.cellOutput.type != null || c.outputData !== "0x") continue;          // plain spendable cells only
+    if (BigInt(c.cellOutput.capacity) < amount + FEE + MIN_CHANGE) continue;
+    if (await client.getCellLive(c.outPoint, true)) { fund = c; break; }       // verify it's live on the node
+  }
+  if (!fund) throw new Error(`need a single CKB cell ≥ ${Number(amount + FEE + MIN_CHANGE) / 1e8} CKB to lock — consolidate your wallet or use a fresh faucet cell`);
   const tx = ccc.Transaction.from({
-    outputs: [{ lock: receiptLock, type: bridgeType, capacity: amount }],
-    outputsData: [data],
+    inputs: [{ previousOutput: fund.outPoint, since: 0n }],
+    outputs: [
+      { lock: receiptLock, type: bridgeType, capacity: amount },                                  // [0] receipt
+      { lock: userLock, capacity: BigInt(fund.cellOutput.capacity) - amount - FEE },               // [1] change
+    ],
+    outputsData: [data, "0x"],
     cellDeps: [{ outPoint: { txHash: cfg.bridgeDep.txHash, index: cfg.bridgeDep.index }, depType: "code" }],
   });
-  await tx.completeInputsByCapacity(signer);
-  await tx.completeFeeBy(signer);
+  tx.cellDeps.push(...(await client.getKnownScript(ccc.KnownScript.Secp256k1Blake160)).cellDeps.map((cd) => cd.cellDep));
   return tx;
 }
 

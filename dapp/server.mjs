@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import zlib from "node:zlib";
 import { WSL_DISTRO, REPO_SH, shInvoke } from "../relayer/onchain/_rt.mjs";   // WSL (this box) vs native-Linux (VPS)
+import { createJobRegistry } from "./jobreg.mjs";                             // idempotent, pollable heavy-op dedup
 
 // Concurrency control for the experiment: the prover is CPU-heavy and the release pipeline mutates shared
 // on-chain singletons. Cap concurrent proves (queue the rest) and serialize releases (mutex), so a few
@@ -30,8 +31,42 @@ const proveGate = semaphore(Number(process.env.PROVE_CONCURRENCY || 2));  // N p
 const releaseGate = semaphore(1);                                         // releases strictly one-at-a-time
 const xadaGate = semaphore(1);                                            // χADA mints strictly one-at-a-time
 const xadaReturnGate = semaphore(1);                                      // χADA→ADA returns strictly one-at-a-time
-let proveQueued = 0, releaseBusy = false, xadaBusy = false, xadaReturnBusy = false;
 const strip = (h) => String(h || "").replace(/^0x/, "");
+
+// Idempotent, pollable job registry for the heavy ops (prove/release/mint/return). See jobreg.mjs for the
+// dedup policy; the short version: a refresh/double-submit ATTACHES to the in-flight run keyed by the
+// lock/burn/escrow txid instead of starting a second pipeline that would race the first on the same UTxOs.
+const jobs = createJobRegistry();
+const PROVE_CONCURRENCY = Number(process.env.PROVE_CONCURRENCY || 2);
+
+// --- access gate + rate limit for the heavy, DoS-expensive endpoints -------------------------------------
+// /api/leap/prove runs a ~1.39M-constraint Groth16 prove on any valid-shaped input — a DoS magnet. For the
+// guided pilot: (a) if CHIRAL_ACCESS_TOKEN is set, the heavy POSTs require it (header x-chiral-access or ?t=),
+// so ONLY known testers who got the tester link can trigger work; (b) a per-IP token-bucket caps the rate
+// regardless. Static files, /api/*/config, /api/health and /api/job stay OPEN so the page always loads and a
+// waiting client can still poll. Empty token = open (dev box); set CHIRAL_ACCESS_TOKEN on the VPS.
+const ACCESS_TOKEN = process.env.CHIRAL_ACCESS_TOKEN || "";
+const RATE_BURST = Number(process.env.CHIRAL_RATE_BURST || 4);        // immediate heavy requests allowed per IP
+const RATE_PER_MIN = Number(process.env.CHIRAL_RATE_PER_MIN || 12);   // sustained heavy requests per IP per minute
+const rateBuckets = new Map();   // ip -> { tokens, last }
+function rateOk(ip) {
+  const now = Date.now(), refill = RATE_PER_MIN / 60_000;            // tokens regenerated per ms
+  let b = rateBuckets.get(ip);
+  if (!b) { b = { tokens: RATE_BURST, last: now }; rateBuckets.set(ip, b); }
+  b.tokens = Math.min(RATE_BURST, b.tokens + (now - b.last) * refill); b.last = now;
+  if (b.tokens < 1) return false;
+  b.tokens -= 1; return true;
+}
+const clientIp = (req) => (String(req.headers["x-forwarded-for"] || "").split(",")[0].trim()) || req.socket.remoteAddress || "?";
+// returns null if allowed, else {code,error} to send. Call FIRST in every heavy endpoint.
+function gateHeavy(req, url) {
+  if (ACCESS_TOKEN) {
+    const tok = req.headers["x-chiral-access"] || url.searchParams.get("t") || "";
+    if (tok !== ACCESS_TOKEN) return { code: 401, error: "access token required — open the tester link your operator gave you" };
+  }
+  if (!rateOk(clientIp(req))) return { code: 429, error: "rate limit — wait a moment and retry" };
+  return null;
+}
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number((process.argv.find((a) => a.startsWith("--port=")) || "").split("=")[1] || process.env.PORT || 8799);
@@ -67,7 +102,7 @@ const WARM_SOCK = process.env.CHIRAL_WARM_SOCK || process.env.CHIRAL_SERVE || "/
 // E1: derive the policy id from the live applied script at startup (kills the drift the analysis found across
 // server/.env/bridge_lock_unified). Falls back to env, then the post-ceremony policy as a last resort.
 const CHI_POLICY_ID = process.env.CHI_POLICY_ID || readJSON(path.join(ONCHAIN, "zk_chiral_mint.applied.json"), {}).policy_id
-  || "4cd5c378e2357aef01910bc98efabe43b40031a4d09c292eede2c429";
+  || "5b4f5525a155fd86757bb3ba20da6e2ef66bcfb72e8853ef31bcf268";   // canonical-lock forward policy (2026-06-21; verifies any 1-input canonical lock)
 const APPLIED_POLICY = `${REPO_SH}/relayer/onchain/zk_chiral_mint.applied.json`;   // build_chiral_policy.py output
 // E1: the relay_bind ceremony proving key (CEREMONY_OUT output) — the prove step LOADS it instead of doing a
 // per-request seeded setup, so the emitted vk == the deployed (ceremony) policy's vk. Without this the forward
@@ -317,28 +352,34 @@ async function submitXadaBurn({ signedTxHex }) {
 // pointing testers at it. The forward leap (lock -> prove -> mint) works when ready === true.
 // Cache the (forking) prover-reachability probe for ~30s so a polling /api/health loop doesn't spawn
 // WSL+python on every hit. The probe rarely flips; 30s staleness is fine for an operator readiness signal.
-let proverProbe = { at: 0, ok: false };
+let proverProbe = { at: 0, ok: false, warm: false, warmReturn: false };
 const PROBE_TTL_MS = 30_000;
+// One cached WSL round-trip: is the prover toolchain reachable, AND are the resident warm sockets serving?
+// We probe the sockets THROUGH WSL (not fs.existsSync) because on the Windows dev box the dapp runs on Windows
+// while the warm prover + its /tmp socket live in WSL — Windows can't stat them, but the actual prove (which
+// runs warm_prove.py INSIDE WSL) reaches them fine. On a native-Linux VPS the same `test -S` works directly.
 async function proverReachable() {
   const now = Date.now();
-  if (proverProbe.at && now - proverProbe.at < PROBE_TTL_MS) return proverProbe.ok;
-  const r = await wsl(`test -x ${sh(WSL_CKB + "/circuit/prover/target/release/relay_bind")} && ` +
-    `python3 -c 'import pycardano' && echo OK`);
-  proverProbe = { at: now, ok: r.code === 0 && r.out.includes("OK") };
-  return proverProbe.ok;
+  if (proverProbe.at && now - proverProbe.at < PROBE_TTL_MS) return proverProbe;
+  const r = await wsl(`test -x ${sh(WSL_CKB + "/circuit/prover/target/release/relay_bind")} && python3 -c 'import pycardano' && echo TOOLS; ` +
+    `test -S ${sh(RELAY_WARM_SOCK)} && echo WARMFWD; test -S ${sh(WARM_SOCK)} && echo WARMRET; true`);
+  proverProbe = { at: now, ok: r.out.includes("TOOLS"), warm: r.out.includes("WARMFWD"), warmReturn: r.out.includes("WARMRET") };
+  return proverProbe;
 }
 async function health() {
   const cfg = bridgeConfig();
   const configOk = !!(cfg.bridgeCodeHash && cfg.burnGated?.policyId && cfg.cardano?.mintScriptHex);
-  const proverOk = await proverReachable();
-  const warm = fs.existsSync(WARM_SOCK);   // cheap: is the resident warm prover's socket present?
+  const probe = await proverReachable();
+  const proverOk = probe.ok;
+  const warm = probe.warm;             // FORWARD warm prover (what /api/leap/prove uses) — the banner's "warm ✓"
   const ready = configOk && proverOk;
   return {
     ready,
     config: configOk ? "ok" : "missing bridge/burn-gated/cardano config",
     prover: proverOk ? `ok (WSL ${WSL_DISTRO})` : `unreachable (need WSL ${WSL_DISTRO} with relay_bind + pycardano)`,
-    warm,   // true once the resident prover (CHIRAL_SERVE) is up -> ~8s proofs instead of a ~6.7min cold reload
-    load: { prove_in_flight_or_queued: proveQueued, prove_concurrency: Number(process.env.PROVE_CONCURRENCY || 2), release_busy: releaseBusy, xada_busy: xadaBusy },
+    warm,                       // FORWARD warm prover up -> ~10s proofs instead of a ~4min cold key reload
+    warmReturn: probe.warmReturn,   // RETURN warm prover (χADA return) up
+    load: jobs.load(PROVE_CONCURRENCY),
     note: ready ? "experiment: proves are queued at the cap; releases run one-at-a-time"
       : "not ready to prove — fix the prover/config before onboarding testers",
   };
@@ -395,53 +436,66 @@ const server = http.createServer((req, res) => {
     return health().then((h) => send(res, h.ready ? 200 : 503, h));
   }
   if (url.pathname === "/api/bridge/config") return send(res, 200, bridgeConfig());
+  // poll a heavy job's state without re-triggering it: GET /api/job?key=<kind>:<txid-no-0x>
+  // (e.g. prove:abcd…, release:dead…). The client already knows its txid, so it can recover after a dropped
+  // socket. 404 => no live/recent job for that key (safe to (re)submit). Returns { state, position, result? }.
+  if (url.pathname === "/api/job") {
+    const key = url.searchParams.get("key");
+    if (!key) return send(res, 400, { error: "key required, e.g. prove:<lockTxid-no-0x>" });
+    const j = jobs.get(key);
+    return j ? send(res, 200, jobs.view(j)) : send(res, 404, { state: "none", key });
+  }
   // increment 3: prove a confirmed lock tx -> mint redeemer the user signs in their own wallet.
+  // Deduped per lock tx: a refresh/double-submit attaches to the in-flight prove instead of starting a second.
   if (url.pathname === "/api/leap/prove" && req.method === "POST") {
+    const g = gateHeavy(req, url); if (g) return send(res, g.code, { error: g.error });
     return readBody(req).then(async (raw) => {
       let body; try { body = JSON.parse(raw || "{}"); } catch { return send(res, 400, { error: "bad JSON" }); }
-      proveQueued++;
-      try { return send(res, 200, await proveGate(() => proveLeap(body))); }   // queued at cap; no shared /tmp
+      const job = jobs.run("prove", strip(body.lockTxid), proveGate, () => proveLeap(body));   // queued at cap; no shared /tmp
+      try { return send(res, 200, await job.promise); }
       catch (e) { return send(res, 502, { error: String(e?.message || e) }); }
-      finally { proveQueued--; }
     });
   }
   // reverse leg: release the locked CKB against a Mithril-certified χCKB burn (keyless).
+  // Serialized AND deduped per burn tx: mutates shared singletons (light-client, registry) + the one key,
+  // so a retry must NOT spawn a second release racing the first.
   if (url.pathname === "/api/leap/release" && req.method === "POST") {
+    const g = gateHeavy(req, url); if (g) return send(res, g.code, { error: g.error });
     return readBody(req).then(async (raw) => {
       let body; try { body = JSON.parse(raw || "{}"); } catch { return send(res, 400, { error: "bad JSON" }); }
-      releaseBusy = true;
-      // serialized: releases mutate shared on-chain singletons (light-client, registry) + one key
-      try { return send(res, 200, await releaseGate(() => releaseLeap(body))); }
+      const job = jobs.run("release", strip(body.burnTxid), releaseGate, () => releaseLeap(body));
+      try { return send(res, 200, await job.promise); }
       catch (e) { return send(res, 502, { error: String(e?.message || e) }); }
-      finally { releaseBusy = false; }
     });
   }
   // native ADA → CKB leg: the bridge config the browser needs to build the ADA escrow-lock tx.
   if (url.pathname === "/api/xada/config") return send(res, 200, xadaConfig());
   // native ADA → CKB leg: mint χADA to the user's CKB wallet against their Mithril-certified ADA lock.
   if (url.pathname === "/api/xada/mint" && req.method === "POST") {
+    const g = gateHeavy(req, url); if (g) return send(res, g.code, { error: g.error });
     return readBody(req).then(async (raw) => {
       let body; try { body = JSON.parse(raw || "{}"); } catch { return send(res, 400, { error: "bad JSON" }); }
-      xadaBusy = true;
-      // serialized: the mint spends+recreates the shared registry singleton + owner authority cell.
-      try { return send(res, 200, await xadaGate(() => mintXada(body))); }
+      // serialized + deduped per escrow tx: the mint spends+recreates the shared registry singleton + owner cell.
+      // (A not-yet-certified result isn't cached, so the dApp's cert-retry loop still re-runs until Mithril is ready.)
+      const job = jobs.run("mint", strip(body.escrowTxid), xadaGate, () => mintXada(body));
+      try { return send(res, 200, await job.promise); }
       catch (e) { return send(res, 502, { error: String(e?.message || e) }); }
-      finally { xadaBusy = false; }
     });
   }
   // native CKB → Cardano return: release ADA against a confirmed CKB χADA burn (on-chain Groth16 verify).
   if (url.pathname === "/api/xada/return" && req.method === "POST") {
+    const g = gateHeavy(req, url); if (g) return send(res, g.code, { error: g.error });
     return readBody(req).then(async (raw) => {
       let body; try { body = JSON.parse(raw || "{}"); } catch { return send(res, 400, { error: "bad JSON" }); }
-      xadaReturnBusy = true;
-      // serialized: the return re-anchors the shared checkpoint + spends the seal registry singleton.
-      try { return send(res, 200, await xadaReturnGate(() => returnXada(body))); }
+      // serialized + deduped per burn tx: the return re-anchors the shared checkpoint + spends the seal registry.
+      const job = jobs.run("return", strip(body.burnTxid), xadaReturnGate, () => returnXada(body));
+      try { return send(res, 200, await job.promise); }
       catch (e) { return send(res, 502, { error: String(e?.message || e) }); }
-      finally { xadaReturnBusy = false; }
     });
   }
   // one-click χADA burn (self-serve), step 1: build the unsigned co-signed burn tx (relayer adds owner+funding).
   if (url.pathname === "/api/xada/burn/build" && req.method === "POST") {
+    const g = gateHeavy(req, url); if (g) return send(res, g.code, { error: g.error });
     return readBody(req).then(async (raw) => {
       let body; try { body = JSON.parse(raw || "{}"); } catch { return send(res, 400, { error: "bad JSON" }); }
       try { return send(res, 200, await xadaReturnGate(() => buildXadaBurn(body))); }
@@ -450,6 +504,7 @@ const server = http.createServer((req, res) => {
   }
   // one-click χADA burn, step 2: the user signed their χADA input in the browser — relayer signs funding + submits.
   if (url.pathname === "/api/xada/burn/submit" && req.method === "POST") {
+    const g = gateHeavy(req, url); if (g) return send(res, g.code, { error: g.error });
     return readBody(req).then(async (raw) => {
       let body; try { body = JSON.parse(raw || "{}"); } catch { return send(res, 400, { error: "bad JSON" }); }
       try { return send(res, 200, await xadaReturnGate(() => submitXadaBurn(body))); }

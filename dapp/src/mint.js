@@ -7,6 +7,8 @@
 // self-custody. The minted amount is whatever the proof bound (== the locked CKB), so conservation holds.
 // Lazy-load the heavy Lucid/Cardano-multiplatform WASM (~4.4MB) — only when the user actually builds a
 // Cardano tx, not on first paint. Memoized so every call after the first reuses the one module instance.
+import { jsonHeaders } from "./api.js";
+
 let _lucidMod = null;
 const lucidMod = () => (_lucidMod ??= import("@lucid-evolution/lucid"));
 
@@ -36,7 +38,7 @@ export async function waitLockConfirmed(ckbClient, txid, { tries = 60, gapMs = 4
 // Ask the backend to prove the confirmed lock. Returns the mint params the wallet needs.
 export async function requestProof(lockTxid) {
   const r = await fetch("/api/leap/prove", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lockTxid }),
+    method: "POST", headers: jsonHeaders(), body: JSON.stringify({ lockTxid }),
   });
   const j = await r.json();
   if (!r.ok || j.error) throw new Error(j.error || `prove failed (${r.status})`);
@@ -99,7 +101,7 @@ export async function burnChiCKB({ cardanoApi, cfg, qty }) {
 // burn + the replay-once nullifier do.
 export async function requestRelease(burnTxid, receiptTxid, ckbRecipient) {
   const r = await fetch("/api/leap/release", {
-    method: "POST", headers: { "content-type": "application/json" },
+    method: "POST", headers: jsonHeaders(),
     body: JSON.stringify({ burnTxid, receiptTxid, ckbRecipient }),
   });
   const j = await r.json();

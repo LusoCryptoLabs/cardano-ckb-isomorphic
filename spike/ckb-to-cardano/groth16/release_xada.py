@@ -166,7 +166,11 @@ def main():
     b.add_output(pc.TransactionOutput(recip_addr, pc.Value(AMOUNT)))                                  # release ADA -> recipient
     b.add_output(pc.TransactionOutput(addr(M["seal_nullifier_script"]), pc.Value(int(reg_in.output.amount.coin), seal_nft), datum=reg_out))
     pure = sorted([u for u in ctx.utxos(str(a)) if not u.output.amount.multi_asset and int(u.output.amount.coin) >= 5_000_000], key=lambda u: int(u.output.amount.coin))
-    b.collaterals = [pure[0]]
+    # pick a random collateral among the SMALLEST few eligible pure cells (not always pure[0]) so a concurrent
+    # Cardano-key tx rarely grabs the SAME collateral UTxO -> fewer "inputs spent" self-collisions. All eligible
+    # cells are valid collateral; staying in the small tail keeps the reserved-but-returned collateral modest.
+    import random
+    b.collaterals = [random.choice(pure[:min(len(pure), 5)])]
     b.required_signers = [vk.hash()]
     if not live:
         body = b.build(change_address=a)

@@ -7,6 +7,8 @@
 // goes nowhere else and is 1:1 with the locked lovelace, so the relayer cannot redirect or inflate it.
 // Lazy-load the heavy Lucid/Cardano-multiplatform WASM (~4.4MB) only when the user builds a Cardano tx
 // (lock / burn), not on first paint. Memoized — every call after the first reuses the one module instance.
+import { jsonHeaders } from "./api.js";
+
 let _lucidMod = null;
 const lucidMod = () => (_lucidMod ??= import("@lucid-evolution/lucid"));
 
@@ -53,7 +55,7 @@ export async function lockAda({ cardanoApi, bridgeCfg, xcfg, amountAda, ckbRecip
 // the aggregator is still certifying (the dApp retries), else {minted, mintTxid, tokenId, amount, recipient, …}.
 export async function requestXadaMint({ escrowTxid, amountLovelace, recipientLock }) {
   const r = await fetch("/api/xada/mint", {
-    method: "POST", headers: { "content-type": "application/json" },
+    method: "POST", headers: jsonHeaders(),
     body: JSON.stringify({ escrowTxid, amountLovelace, recipientLock }),
   });
   const j = await r.json();
@@ -67,7 +69,7 @@ export async function requestXadaMint({ escrowTxid, amountLovelace, recipientLoc
 // releasedAda, recipient}. Heavy + slow (a few minutes — it re-anchors the checkpoint per return).
 export async function requestXadaReturn({ burnTxid }) {
   const r = await fetch("/api/xada/return", {
-    method: "POST", headers: { "content-type": "application/json" },
+    method: "POST", headers: jsonHeaders(),
     body: JSON.stringify({ burnTxid }),
   });
   const j = await r.json();
@@ -79,7 +81,7 @@ export async function requestXadaReturn({ burnTxid }) {
 // cell + funding). Returns { txHex, burnAmount, recipient }. The browser then signs the χADA input + submits.
 export async function buildXadaBurn({ recipientLock, amount, cardanoRecipient }) {
   const r = await fetch("/api/xada/burn/build", {
-    method: "POST", headers: { "content-type": "application/json" },
+    method: "POST", headers: jsonHeaders(),
     body: JSON.stringify({ recipientLock, amount, cardanoRecipient }),
   });
   const j = await r.json();
@@ -89,7 +91,7 @@ export async function buildXadaBurn({ recipientLock, amount, cardanoRecipient })
 // step 2 — the user signed their χADA input in the browser; the relayer signs funding + submits. Returns {burnTxid}.
 export async function submitXadaBurn({ signedTxHex }) {
   const r = await fetch("/api/xada/burn/submit", {
-    method: "POST", headers: { "content-type": "application/json" },
+    method: "POST", headers: jsonHeaders(),
     body: JSON.stringify({ signedTxHex }),
   });
   const j = await r.json();

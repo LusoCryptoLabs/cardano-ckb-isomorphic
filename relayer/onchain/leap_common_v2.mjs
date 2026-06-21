@@ -76,9 +76,12 @@ export async function plainCells(client, lock) {
 }
 export async function pickPlain(client, lock, need) {
   const ps = await plainCells(client, lock);
-  const c = ps.find((x) => BigInt(x.cellOutput.capacity) >= need);
-  if (!c) throw new Error(`no plain cell >= ${Number(need) / 1e8} CKB`);
-  return c;
+  const elig = ps.filter((x) => BigInt(x.cellOutput.capacity) >= need);
+  if (!elig.length) throw new Error(`no plain cell >= ${Number(need) / 1e8} CKB`);
+  // Randomize among eligible cells (every one covers `need`) so two CONCURRENT orchestrators sharing the one
+  // relayer key under different gates (a mint vs a release) rarely pick the SAME input -> far fewer
+  // "All inputs are spent" self-collisions. No cross-process state; a residual collision is a caller retry.
+  return elig[Math.floor(Math.random() * elig.length)];
 }
 export function guard(inputs) {
   for (const i of inputs)

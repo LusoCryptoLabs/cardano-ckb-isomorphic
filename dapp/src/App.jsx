@@ -4,6 +4,7 @@ import { listCardanoWallets, connectCardano, reconnectCardano, rememberedWallet,
 import { lockCkb, cardanoRecipientCred } from "./leap.js";
 import { waitLockConfirmed, requestProof, mintChiCKB, burnChiCKB, requestRelease } from "./mint.js";
 import { fetchXadaConfig, lockAda, requestXadaMint, requestXadaReturn, buildXadaBurn, submitXadaBurn } from "./xada.js";
+import { useRelayLoad, useJobPosition, loadSummary } from "./queue.js";
 
 const ckbClient = new ccc.ClientPublicTestnet();
 const C = { fg: "#e7edf5", dim: "#95a1b4", mut: "#7c8ba1", blue: "#6b9bff", green: "#35d6a0", warn: "#d29922", bad: "#f85149", off: "#3a4456" };
@@ -156,6 +157,8 @@ function Forward({ signer, cardano, cfg, onLock }) {
   const [busy, setBusy] = useState(false), [status, setStatus] = useState(null), [err, setErr] = useState(null);
   const [lockTx, setLockTx] = useState(null), [mintParams, setMintParams] = useState(null), [mintTx, setMintTx] = useState(null);
   let recipient = null; try { recipient = cardano ? cardanoRecipientCred(cardano.addressHex) : null; } catch { /* bad */ }
+  // live queue position for THIS prove (the client already knows lockTx) — only while the prove is in flight.
+  const provePos = useJobPosition("prove", lockTx, busy && !!lockTx && !mintParams);
   const phase = mintTx ? 4 : mintParams ? 3 : lockTx ? 2 : 1;
   const ready = !!signer && !!cardano && !!cfg?.bridgeCodeHash && !!recipient && Number(amount) > 0;
 
@@ -197,7 +200,9 @@ function Forward({ signer, cardano, cfg, onLock }) {
       ) : busy && status && status.includes("proving") ? (
         <div style={{ textAlign: "center", padding: "16px 10px" }}>
           {spinner(C.green)}
-          <div style={{ fontSize: 15, fontWeight: 600, color: C.fg, marginBottom: 6 }}>Relayer generating Groth16 proof…</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: C.fg, marginBottom: 6 }}>
+            {provePos && provePos.position > 0 ? `Waiting in line — ${provePos.position} ahead of you…` : "Relayer generating Groth16 proof…"}
+          </div>
           <div style={{ fontSize: 13, color: C.dim, maxWidth: "44ch", margin: "0 auto" }}>Proving Eaglesong PoW + header-MMR membership + tx-inclusion of your lock against CKB consensus.</div>
         </div>
       ) : (
@@ -525,6 +530,29 @@ function Support() {
   );
 }
 
+// ---------- shared relayer load banner (honest backpressure) ----------
+// The relayer serializes heavy ops; this turns the wait into visible status for ALL legs. Shows the warm
+// state (cold first proof = minutes; warm = ~10s) and, when busy, what's running so a queued user sees the
+// line is real, not hung. Hidden when the relayer is idle.
+function RelayBanner() {
+  const health = useRelayLoad();
+  if (!health) return null;
+  const summary = loadSummary(health);
+  const warm = health.warm;
+  const tone = summary ? C.warn : C.green;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 13px", border: "1px solid " + (summary ? "#3a3320" : "#1c2433"), background: summary ? "#16130a" : "#0a0e16", borderRadius: 10, fontSize: 12.5 }}>
+      <span style={{ width: 7, height: 7, borderRadius: "50%", background: tone, boxShadow: `0 0 7px ${tone}`, flex: "0 0 auto" }} />
+      <span style={{ color: summary ? "#e3b341" : C.mut, fontWeight: 600 }}>
+        {summary ? `Relayer busy — ${summary}` : "Relayer idle"}
+      </span>
+      <span style={{ marginLeft: "auto", fontFamily: mono, fontSize: 11, color: warm ? C.green : C.warn }}>
+        {warm ? "warm ✓ ~10s proofs" : "cold · first proof ~min"}
+      </span>
+    </div>
+  );
+}
+
 // ---------- app ----------
 function LeapApp() {
   const signer = ccc.useSigner();
@@ -555,6 +583,7 @@ function LeapApp() {
           <span style={{ fontSize: 12, color: C.mut }}>New here? Take the {""}<a onClick={() => setTour(true)} style={{ color: C.blue, cursor: "pointer", textDecoration: "none", fontWeight: 600 }} className="lk">guided tour</a>.</span>
           <button onClick={() => setTour(true)} title="Guided tour" style={{ background: "transparent", color: C.mut, border: "1px solid #243049", borderRadius: 8, padding: "5px 11px", font: "inherit", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>? Guide me</button>
         </div>
+        <RelayBanner />
         <div style={{ display: "flex", gap: 5, padding: 5, border: "1px solid #1c2433", borderRadius: 12, background: "#0a0e16" }}>
           <div style={pill(dir === "forward")} onClick={() => setDir("forward")}>CKB → Cardano<span style={sub(dir === "forward")}>mint χCKB</span></div>
           <div style={pill(dir === "ada2ckb")} onClick={() => setDir("ada2ckb")}>Cardano → CKB<span style={sub(dir === "ada2ckb")}>mint χADA</span></div>

@@ -56,9 +56,13 @@ export async function plainCells(client, lock) {
 // never reaches for a code cell. Returns the added outpoint (for logging). Throws if no plain cell.
 export async function addFunding(tx, client, lock) {
   const { ccc } = await import("@ckb-ccc/core");
-  const cells = await plainCells(client, lock);
+  const cells = await plainCells(client, lock);   // capacity-descending
   if (!cells.length) throw new Error("no plain funding cell available");
-  const c = cells[0];
+  // Pick a random cell among the LARGEST few (top-K) — still large enough that ccc's completeInputsByCapacity
+  // won't reach for a big code cell, but de-correlated so two concurrent funders don't both grab cells[0]
+  // and throw "All inputs are spent". Falls back to the single cell when that's all there is.
+  const K = Math.min(cells.length, 5);
+  const c = cells[Math.floor(Math.random() * K)];
   tx.inputs.push(ccc.CellInput.from({ previousOutput: c.outPoint, since: 0n }));
   return c.outPoint;
 }
