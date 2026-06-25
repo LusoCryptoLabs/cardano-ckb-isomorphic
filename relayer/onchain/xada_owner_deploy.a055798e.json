@@ -1,0 +1,33 @@
+{
+  "ownerCode": {
+    "txHash": "0x4e596253b48938080b3dd951e865aa12b58611b7132e3790e1d5bc80facc5ccd",
+    "index": 0,
+    "codeHash": "0x8c4b0210332b283e4aad16b9fffa672699e73e08424a560b5f75f28cd8d66b32",
+    "size": 58288
+  },
+  "ownerArgs": "0x01a055798e911a4f7ed074d5e1ee6273683e9a446c70d3e22adab680d70eea5b74dc18fd562bca1834536c926ce8c9d94f608318c3a79a43959c0c46a84265a24e707a6be98eca27fdab26b8b750a4a46ffc86c5dc52cf7c943f40f4ea35",
+  "ownerLockHash": "0xa5313f32809f5914b55d2aa322db03de5b31dad3f9d80e8688031ddc58eda97a",
+  "salt": "01",
+  "lckpTypeHash": "0xa055798e911a4f7ed074d5e1ee6273683e9a446c70d3e22adab680d70eea5b74",
+  "registryTypeHash": "0xdc18fd562bca1834536c926ce8c9d94f608318c3a79a43959c0c46a84265a24e",
+  "escrowAddr": "707a6be98eca27fdab26b8b750a4a46ffc86c5dc52cf7c943f40f4ea35",
+  "xudt": {
+    "codeHash": "0x25c29dc317811a6f6f3985a7a9ebc4838bd388d19d0feeecf0bcd60f6c0975bb",
+    "hashType": "type",
+    "dep": {
+      "txHash": "0xbf6fb538763efec2a70a6a3dcb7242787087e1030c4e7d86585bc63a9d337f5f",
+      "index": 0
+    }
+  },
+  "xadaTokenType": {
+    "codeHash": "0x25c29dc317811a6f6f3985a7a9ebc4838bd388d19d0feeecf0bcd60f6c0975bb",
+    "hashType": "type",
+    "args": "0xa5313f32809f5914b55d2aa322db03de5b31dad3f9d80e8688031ddc58eda97a"
+  },
+  "xadaTokenId": "0xc05c0e09ccf1c9fd687ce76ef792c3eb27b9d67c78e222955010b461e2f68f79",
+  "supersedes": {
+    "tokenId": "0xe3a8d7be94191ed6ba7ac647673b5c8b2fd328cfcd970286a2458d8ecf64d73c",
+    "ownerCode": "0xc4e9077f709594ee34b32db682be2d8424c0e103ab987463fbf673367de4b748",
+    "reason": "0xe3a8d7be poisoned: first explorer sighting lacked an info cell"
+  }
+}

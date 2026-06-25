@@ -1,0 +1,14 @@
+[package]
+license = "MIT"
+name = "finalize-gen"
+version = "0.1.0"
+edition = "2021"
+
+# Host tool: builds a self-contained, internally-consistent FINALIZE dataset (a seal-consuming Cardano tx +
+# two-level Blake2s256 MMR proofs, same crate as the verifier) and emits it as JSON for the witness encoder
+# + mock-tx assembler. We control the checkpoint root (= our master MMR root), so the dataset is valid by
+# construction - no live Mithril cert needed to prove the encoder<->verifier agreement.
+[dependencies]
+blake2 = "0.10"
+blake2b-ref = "0.3"
+ckb-merkle-mountain-range = "0.6"

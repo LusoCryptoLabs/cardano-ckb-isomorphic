@@ -1,0 +1,31 @@
+{
+  "_note": "First LIVE Cardano->CKB close (isomorphic binding). A Mithril-certified Cardano seal-mint drove a CKB bound-cell creation; cross-chain verification ran in-script on the live Pudge node.",
+  "cardano_preview": {
+    "seal_mint_tx": "83dd51d2f3ae6c6529a2f6feda2d85d1a27efa5bfafc6a34c6c595d203f25e15",
+    "mithril_certificate": "c8a6986f8832d6daf2a4fe31045664261abc2ea6a5ad789e458992ee4cf10c43",
+    "certified_tx_set_root": "30a3465e240ccb51af1e315ea787ddcbf44bdcf4386c0407f6a9443c1c0b7afa",
+    "binding_lock_addr": "addr_test1wqwthgsg3cjfsr255gamvh0z683r8gekejk9ka0mqxkdyuqtyp3vw",
+    "seal_policy": "8855af1be1fd48ee096b72e91bee858db51b9ab75e866540c8647674",
+    "S0": "bound-asset:demo:v1",
+    "commitment": "cad8d630cf4ff1e9bd4b1658e236a87ea58c282affc882e70cab974cc37993e6"
+  },
+  "ckb_pudge": {
+    "genesis_mint_code_hash": "0x5ae1cb33415d6896ddd42a434aadc6e1f11965c5ad809fe8b5221c0ebc45f880",
+    "code_deploy_tx": "0xd2a650ec6000c027091aa87467fe19849e544037e825c901b0565945b5f29f68",
+    "bound_cell_tx": "0xab2f93a79a0517184a61f3456d96488988a2522f073fe41dcd2c92bbecc7997b",
+    "bound_cell_state": "bound-asset:demo:v1"
+  },
+  "transfer": {
+    "cardano_transfer_tx": "a98b6636b3f08670cf0fe64a6176b64094d5929165ec62eb2944ac66b0f74da7",
+    "mithril_cert_root": "bb30dc3ccd71d20dab20ca3d723f3ed09b4bd38c75ba24168e94da156df31aaa",
+    "S1": "bound-asset:demo:v2 owner=bob",
+    "new_commitment": "fd4d8f09a10011f0",
+    "ckb_transition": "LIVE: bound cell S1 minted on Pudge tx 0xf930cd8c190c681716908ef81fd545248da2857aa838f81f8a7fc14ee26d025b (block 0xa8867f15), type=transition_mint 0xa3ba168d verified the certified transfer in-script",
+    "transition_code_hash": "0xa3ba168deb6eecd1837b0f8cd7ae269a0e5b61465929d48cff26a475f200a308",
+    "transition_deploy_tx": "0x9eb56c3bb5a6701b556bcdd4365be0de9dc552044068efb0e22e67bbc5899271"
+  },
+  "leap_out": {
+    "cardano_unbind_tx": "6c729ea61fd36152e107643caa0ecf569e9905600d656db12e5aafcff3f156e9",
+    "note": "binding_lock Unbind ran live; seal released to a plain UTxO. CKB bound-cell finalize (symmetric leg) not yet posted (cert+capacity)."
+  }
+}

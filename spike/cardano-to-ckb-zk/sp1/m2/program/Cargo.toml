@@ -1,0 +1,9 @@
+[package]
+license = "MIT"
+name = "m2-program"
+version = "0.1.0"
+edition = "2021"
+[dependencies]
+sp1-zkvm = "6.2.3"
+sha2 = "0.10"
+[workspace]

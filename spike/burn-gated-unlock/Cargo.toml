@@ -1,0 +1,80 @@
+[package]
+license = "MIT"
+name = "burn-gated-unlock"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "burn_gated_unlock"
+path = "src/main.rs"
+
+# v2: the GENERALIZED lock - witness-driven (any certified burn tx) + binds the released amount to the
+# ACTUAL Conway burn amount parsed in-VM (gap #2's generalization). The original main.rs (live-deployed,
+# specific-burn) is kept for provenance.
+[[bin]]
+name = "burn_gated_unlock_v2"
+path = "src/bin/burn_gated_unlock_v2.rs"
+
+# the global replay-once nullifier set (SEC C1): a singleton SMT-root cell; inserting a burn key requires a
+# non-membership proof, so each certified burn can be consumed at most once.
+[[bin]]
+name = "burn_nullifier_registry"
+path = "src/bin/burn_nullifier_registry.rs"
+
+# our BoundAsset instance: the unified verifier with LCKP_TYPE_HASH rebound to OUR live authenticated
+# checkpoint (cv_deploy type-hash 0x855231b3), so it trusts the light-client checkpoint we deployed.
+[[bin]]
+name = "bound_asset_unified_ours"
+path = "src/bin/bound_asset_unified_ours.rs"
+
+# v2: the ownership-toggle leap script (docs/LEAP_BRIEF_V2.md). Disjoint deployment, new code_hash; v1 cells
+# never run it (version byte + new code_hash). Closes B1/B2/B3 + S5 nullifier (B4 core).
+[[bin]]
+name = "bound_asset_v2"
+path = "src/bin/bound_asset_v2.rs"
+
+# CKB→Cardano leg: the bridge RECEIPT type script (spike/ckb-to-cardano/VALUE_BINDING_FIX.md §2). Pins the
+# canonical 49-byte receipt layout the leap circuit reads + enforces the value-lock per kind (CKB / xUDT).
+[[bin]]
+name = "bridge_lock_v1"
+path = "src/bin/bridge_lock_v1.rs"
+
+# Cardano→CKB leg (χADA): the FORWARD-mint type script (spike/cardano-to-ckb-zk/XADA_LEG.md). χADA = wrapped
+# ADA on CKB (xUDT-style). Issuance is Mithril-gated: mints iff a certified Cardano ADA-lock (escrow output)
+# is proven in-VM, bound 1:1 to the locked lovelace + the committed CKB recipient, nullified replay-once.
+[[bin]]
+name = "xada_mint"
+path = "src/bin/xada_mint.rs"
+
+# χADA RETURN leg: the burn receipt. Burning χADA on CKB creates a receipt binding (amount, cardano_recipient);
+# self-enforces Σ χADA in − Σ χADA out == amount (a real burn), so the deployed xada_mint policy is reused
+# unchanged for the round-trip. The return Groth16 circuit reads it; ada_escrow releases the ADA.
+[[bin]]
+name = "xada_burn_receipt"
+path = "src/bin/xada_burn_receipt.rs"
+
+# χADA xUDT OWNER lock - makes χADA a STANDARD xUDT (canonical code hash) instead of a bespoke type script.
+# The bridge verification (Mithril cert + escrow binding + replay registry) is re-homed into this lock, which
+# authorizes xUDT owner-mode minting. Supersedes xada_mint.rs (which minted a non-standard custom-typed cell).
+[[bin]]
+name = "xada_mint_owner"
+path = "src/bin/xada_mint_owner.rs"
+
+# Multi-chain Mode B (HTLC) spike: a minimal hashlock + since-timelock CKB lock that pairs with an XRPL
+# PreimageSha256 escrow under the SAME SHA256(preimage) hashlock (spike/xrpl-htlc).
+[[bin]]
+name = "htlc_lock"
+path = "src/bin/htlc_lock.rs"
+
+[dependencies]
+ckb-std = "0.16"
+blake2 = { version = "0.10", default-features = false }
+blake2b-ref = { version = "0.3", default-features = false }
+ckb-merkle-mountain-range = { version = "0.6", default-features = false }
+sha2 = { version = "0.10", default-features = false }
+
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
+codegen-units = 1

@@ -1,0 +1,15 @@
+[package]
+license = "MIT"
+name = "relay-escrow"
+version = "0.1.0"
+edition = "2021"
+[[bin]]
+name = "relay_escrow"
+path = "src/main.rs"
+[dependencies]
+ckb-std = "0.16"
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
+codegen-units = 1

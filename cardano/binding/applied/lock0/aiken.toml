@@ -1,0 +1,16 @@
+name = "chiral/binding"
+version = "0.1.0"
+compiler = "v1.1.21"
+plutus = "v3"
+license = "MIT"
+description = "Chiral isomorphic-binding seal NFT (one-shot) + binding lock (Cardano side)"
+
+[repository]
+user = "chiral"
+project = "binding"
+platform = "github"
+
+[[dependencies]]
+name = "aiken-lang/stdlib"
+version = "v2.2.1"
+source = "github"

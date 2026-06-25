@@ -1,0 +1,11 @@
+{
+  "checkpoint": {
+    "txHash": "0x55d16dece265139615989d01d2e32b080f903e9061f0eaf942b4545d86ac84a0",
+    "index": 0
+  },
+  "root": "0xa1d60c49e033ea229f2d0624220e843cce5db10436f603e337d2824bf4b11ac4",
+  "witnessCell": {
+    "txHash": "0x568221295f2f5be2bb4c66f6bb06b2d25095afae6a296537f24146ddce56590a",
+    "index": 0
+  }
+}

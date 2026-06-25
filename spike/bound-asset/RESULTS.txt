@@ -1,0 +1,22 @@
+ISOMORPHIC-BINDING CORE - bound-cell transition + Conway tx parsing, in CKB-VM.
+
+§6.2 (in-script Conway tx-body CBOR parsing) - on a REAL preview tx (64fbcc23…):
+  parsed the body map; extracted the input SET (Conway tag-258) and detected the real seal
+  input 3c2dce14…#1; extracted output[0]'s inline datum (tag-24). 26,738 cycles.
+  => in-script parsing of real Conway transactions works (the one genuinely-new hard piece).
+
+§6.3 (BoundAsset transition) - on a constructed, correctly-formatted seal-spend:
+  parse body -> (inputs, output[0] inline datum=commitment); require
+    (a) the seal OP is among the inputs (seal consumed), AND
+    (b) commitment == blake2b256(new_state || new_seal_txid || new_seal_idx).
+  VERIFIED in CKB-VM. 30,323 cycles.
+  => the actual isomorphic-binding step: a Cardano seal spend, carrying a commitment, authorizes
+     a CKB bound-cell transition to exactly the committed next state.
+
+Combined with the proven oracle (spike/cross-chain: cardano_tx_is_certified) and the cert
+verifier, the full isomorphic-binding TRANSITION is now demonstrated in-script on real Conway
+CBOR: a certified Cardano seal-spend tx -> the bound cell transitions to the committed state.
+
+NOT yet (honest): wire the oracle call INTO the BoundAsset script (§6.3 uses a constructed tx +
+notes the cardano_tx_is_certified call); the binding lock (Plutus) + seal NFT; leap-in/leap-out;
+witness/relayer transcode; molecule schemas; a real deployed seal spend + live run.

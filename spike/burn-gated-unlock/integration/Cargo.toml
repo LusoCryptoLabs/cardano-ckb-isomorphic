@@ -1,0 +1,30 @@
+[package]
+license = "MIT"
+name = "burn-gated-unlock-v2-it"
+version = "0.0.0"
+edition = "2021"
+
+# Real-VM integration test for the generalized burn-gated lock (v2): a synthetic Conway burn tx + a
+# consistent two-level Blake2s MMR proof + the amount binding, run in ckb-testtool. No mock logic.
+[dependencies]
+ckb-testtool = "0.13"
+ckb-merkle-mountain-range = "0.6"
+blake2 = "0.10"
+blake2b-ref = "0.3"
+
+[[test]]
+name = "v2"
+path = "tests/v2.rs"
+
+# χADA forward-mint (Cardano→CKB): a synthetic Conway ESCROW tx (ADA locked at the escrow address, inline
+# datum binding a CKB recipient) + the same two-level MMR cert proof + the replay-once registry, run in
+# ckb-testtool against `xada_mint`. Proves a certified ADA-lock mints exactly the bound χADA to the recipient.
+[[test]]
+name = "xada"
+path = "tests/xada.rs"
+
+# χADA return-leg burn receipt: a real burn (Σ χADA in − Σ χADA out) creates a receipt binding the burned
+# amount + Cardano recipient; the receipt self-enforces the amount so it cannot overstate.
+[[test]]
+name = "xada_burn"
+path = "tests/xada_burn.rs"

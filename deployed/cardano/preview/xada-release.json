@@ -1,0 +1,7 @@
+{
+  "release_tx": "a02d763a55496b9cea799fae57ade8d9e205b3d8559e5492f4f5558c0244ace2",
+  "amount": 4000000,
+  "recipient": "2df44c71a4312463ba31315c5aa7725b6ad44cd544a055a3dde915a6",
+  "burn_seal": "8a4d13eabe0d4efa6c7c1e80f1ee5ad6c7821c17071d4e968b334dbdb57b7647",
+  "escrow_tx": "ca3fd55b889b39fb5f26f5f24d868aa2e84aa3d3909d37faa1b3fb6062ad3695"
+}

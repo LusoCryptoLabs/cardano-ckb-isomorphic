@@ -1,0 +1,35 @@
+Phase-5 adversarial suite - captured 2026-06-08T04:44:10Z
+ckb-debugger 0.119.0
+verifier binaries (codeHash = blake2b256 ckb-default-hash):
+  cv_standalone.bin 0x2d0ed47a5e86b867177b0b45207e975bc6aa0ced66c2fc5a7a1387808f346e04
+  cv_deploy.bin     0xdfc0aad01b4e3c307b9aa5966da83a965a7205c2647d234d415cfc7ad684f66f
+  cv_advance.bin    0xe877a8028eac379e962a596671d1cd918aceddfa4c4cd78163168ba3b533ac55 (canonical, type-hash 0x59efd99d)
+---
+== Battery A - forged cert (standalone): each tampered cert must be REJECTED ==
+  [PASS] A0 valid cert ACCEPTED: exit 0 (want 0)
+  [PASS] A1 tampered BLS signature (sigma): exit 20 (want 20)
+  [PASS] A2 tampered verification key (mvk): exit 20 (want 20)
+  [PASS] A3 tampered signer stake: exit 20 (want 20)
+  [PASS] A4 tampered signed_message (M1): exit 20 (want 20)
+  [PASS] A5 tampered avk_root (merkle/BLS): exit 20 (want 20)
+  [PASS] A6 tampered merkle batch value: exit 20 (want 20)
+  [PASS] A7 quorum k inflated (insufficient sigs): exit 20 (want 20)
+  [PASS] A8 forged next-avk (equivocation, M1): exit 20 (want 20)
+  [PASS] A9 truncated witness (fail-closed abort): exit -1 (want REJECT)
+  [PASS] A10 wrong magic (no witness found): exit 1 (want 1)
+== Battery B - chain integrity (advance mode): pinning / replay / reorg ==
+  [PASS] B1 FAKE genesis (unpinned avk) REJECTED: exit 7 (want 7)
+  [PASS] B2 canonical genesis ACCEPTED: exit 0 (want 0)
+  [PASS] B3 advance 1319->1320 ACCEPTED: exit 0 (want 0)
+  [PASS] B4 replay wrong-epoch cert: exit 10 (want 10)
+  [PASS] B5 input avk doctored: exit 11 (want 11)
+  [PASS] B6 reorg/epoch-skip output: exit 5 (want 5)
+  [PASS] B7 output avk not from cert: exit 5 (want 5)
+  [PASS] B8 forged cert in advance: exit 20 (want 20)
+== Battery C - avk-source binding (deploy mode): only a canonically-typed checkpoint is trusted ==
+  [PASS] C1 untyped checkpoint NOT trusted: exit 3 (want 3)
+  [PASS] C2 wrong-type checkpoint NOT trusted: exit 3 (want 3)
+  [PASS] C3 trusted checkpoint, avk mismatch: exit 6 (want 6)
+  [PASS] C4 trusted+matching avk reaches tx-root gate: exit 14 (want 14)
+
+==== 23/23 scenarios behaved as specified ====

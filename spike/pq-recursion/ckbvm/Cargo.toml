@@ -1,0 +1,23 @@
+[package]
+license = "MIT"
+name = "pq-recursion-cost"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "poseidon2_goldilocks"
+path = "src/main.rs"
+
+[dependencies]
+ckb-std = "0.16"
+fri-core = { path = "../../pq-fri-verify/core" }
+
+[profile.release]
+opt-level = 3
+lto = true
+panic = "abort"
+codegen-units = 1
+
+[features]
+# default = 0 permutations (baseline); `perms` = K - subtract to isolate cost/permutation.
+perms = []

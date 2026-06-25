@@ -1,0 +1,18 @@
+{
+  "seal_policy": "ec8d2c7485d2f2aa31003d94b97fbf44fabf10f231534dd931970b10",
+  "seal_name_hex": "5345414c",
+  "binding_lock_addr": "addr_test1wprutk2vjvuzgwlsvf956we9ssxqlyfl9jdeywrlv6tsyccz32l5e",
+  "owner_vkh": "2df44c71a4312463ba31315c5aa7725b6ad44cd544a055a3dde915a6",
+  "S0_hex": "626f756e642d61737365743a64656d6f3a7631",
+  "commitment": "cad8d630cf4ff1e9bd4b1658e236a87ea58c282affc882e70cab974cc37993e6",
+  "seal_mint_tx": "08000078bce80ed84d5409e12aa28c24e06591c87c23cdfff8606f947ba006cb",
+  "seed": "0d703ac1d72e324553669074db647c3f0e0c8300980949863001a4ad9efa7a3f#1",
+  "s4_transfer_tx": "538158494246a1c93c64457c2d90516c0d241dbb554573735dd172df628255da",
+  "s4_seal_index": 0,
+  "s4_state_hex": "626f756e642d61737365743a64656d6f3a7631",
+  "s4_commitment": "cad8d630cf4ff1e9bd4b1658e236a87ea58c282affc882e70cab974cc37993e6",
+  "s5_leap_tx": "177a0871ba4c9be4d4ea7901568d82c2148887bd7f5ee925166b5e33dc575a04",
+  "s5_seal_index": 0,
+  "s5_recipient": "7a971a3b730d3e5b69f73ac7add6dcd2396cab9523176132ed23e17500c820c7",
+  "s5_rc": "f595281946f02a54e82d2fbb929f0626bb0d6e2c2277514cb228310e608bb1c2"
+}

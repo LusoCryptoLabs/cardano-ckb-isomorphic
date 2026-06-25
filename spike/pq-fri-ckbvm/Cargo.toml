@@ -1,0 +1,25 @@
+[package]
+license = "MIT"
+name = "pq-fri-ckbvm"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "bench"
+path = "src/main.rs"
+
+[dependencies]
+ckb-std = "0.16"
+blake2b-ref = { version = "0.3", default-features = false }
+
+[profile.release]
+opt-level = 3
+lto = true
+panic = "abort"
+codegen-units = 1
+
+# Each feature selects ONE workload so ckb-debugger's total-cycle count attributes to that primitive.
+[features]
+baseline = []
+hash = []
+fmul = []

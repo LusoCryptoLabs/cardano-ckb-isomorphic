@@ -1,0 +1,32 @@
+CKB -> CARDANO leg, PHASE 1 (the keystone): a Groth16 SNARK verifies ON-CHAIN on Cardano, in budget.
+
+This de-risks the whole symmetric direction the same way "Mithril verifies in CKB-VM" de-risked the
+Cardano->CKB leg: if Cardano can verify a SNARK on-chain in budget, then a ZK light-client of CKB
+(the oracle CKB lacks a Mithril for) is feasible, and the CKB-anchored binding is just the mirror of
+what we already built.
+
+WHAT WAS BUILT
+  prover/         arkworks Groth16 over BLS12-381 (a real proof, 3 public inputs), RE-ENCODED into the
+                  CIP-0381 / Plutus compressed point format (via zkcrypto bls12_381 to_compressed) so
+                  the Cardano BLS builtins accept it. Self-verifies in arkworks; fixture.json emitted.
+  groth16/lib/g16/verifier.ak   Groth16 verifier in Aiken over the Plutus BLS12-381 builtins:
+                  e(A,B) == e(alpha,beta)*e(vk_x,gamma)*e(C,delta), vk_x = IC0 + Σ inputᵢ·ICᵢ,
+                  as one final_verify over a product of four miller_loops.
+  groth16/validators/cardano_bound.ak   the CKB-anchored binding lock (mirror of the CKB BoundAsset):
+                  the Cardano UTxO transitions/finalizes only on a valid Groth16 proof whose public
+                  inputs bind (ckb_checkpoint_root, seal, commitment(new_state)) - anti-replay.
+
+MEASURED ON-CHAIN COST (aiken check, REAL proof, 3 public inputs):
+  Groth16 verify = mem 37,379  /  cpu 2,266,909,180
+  Cardano per-tx limits        = mem 14,000,000  /  cpu 10,000,000,000
+  => CPU 22.7% of budget, MEM 0.27% of budget.  FITS, with ~77% CPU headroom for the binding logic.
+  Negative test: a tampered public input is REJECTED.
+
+WHAT THIS MEANS
+  The expensive direction (Cardano verifying CKB) is feasible: one constant-size SNARK verify per leap
+  is well within Plutus. The remaining work is the PROVER side - a zk-light-client circuit for CKB
+  consensus (Eaglesong PoW + header-MMR membership + cell inclusion + commitment), proven off-chain
+  by a permissionless relayer (liveness only; Plutus re-verifies). See docs/CKB_TO_CARDANO.md.
+
+  Combined with the live Cardano->CKB leg (Mithril oracle), this is the path to a fully bidirectional,
+  committee-free isomorphic bridge: each chain verifies the other by a single succinct proof.

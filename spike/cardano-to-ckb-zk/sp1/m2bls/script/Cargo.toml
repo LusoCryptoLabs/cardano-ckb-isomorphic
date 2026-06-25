@@ -1,0 +1,12 @@
+[package]
+license = "MIT"
+name = "m2bls-script"
+version = "0.1.0"
+edition = "2021"
+[dependencies]
+sp1-sdk = { version = "6.2.3", features = ["blocking", "native-gnark"] }
+bls12_381 = { version = "0.8", features = ["groups", "pairings", "alloc", "experimental"] }
+sha2 = "0.9"
+[build-dependencies]
+sp1-build = "6.2.3"
+[workspace]

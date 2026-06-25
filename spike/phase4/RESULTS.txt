@@ -1,0 +1,28 @@
+PHASE 4 - hardening + correctness.
+
+DIFFERENTIAL / TAMPER GATE (spike/phase4/difftest, runs in CI):
+  A host copy of the EXACT in-script verifier (compute_hash + aggregate BLS over bls12_381 +
+  the Phase-2 lottery target + avk Merkle reconstruction), run on a REAL preview-cert fixture.
+  11/11 tests:
+    ACCEPT genuine cert: BLS aggregate verifies; all declared indices win + count>=k; avk root
+      reconstructs; AND our compute_hash == mithril's own signed_message (cross-check vs mithril-common).
+    REJECT every single tamper (soundness): flipped sigma / mvk / message / avk-root-in-msgp /
+      authenticated message part / Merkle signer leaf / lowered stake -> all rejected.
+
+LIVE DRIFT WATCH (spike/phase4/live_drift_check.py, CI job live-drift):
+  Fetch the CURRENT preview cert; re-confirm compute_hash (SHA-256 over BTreeMap-ordered key||value,
+  hex) still equals its signed_message. FINDING: between the epoch-320 fixture and now, mithril
+  CHANGED the message-part set (added latest_block_number, cardano_blocks_transactions_*) - and our
+  generic construction STILL matches. The gate catches an algorithm change; the fixture pins a
+  known-good instance. Exactly the silent-drift protection Phase 4 calls for.
+
+REORG / FINALITY / LIVENESS / LATENCY / INVARIANTS / SIZE: see docs/HARDENING.md.
+  - the bridge only acts on Mithril-certified (immutable, settled) Cardano history -> tip reorgs are
+    invisible by construction; it trails the tip by the certification gap.
+  - relayer is permissionless + cannot forge; aggregator downtime stalls liveness, never safety.
+  - replay/monotonicity invariants enumerated + where each is enforced.
+  - sizes (size profile): BoundAsset ~48 KB (no BLS, per-transfer, shared/reclaimable); AdvanceCert
+    larger (bls12_381 + num-bigint); Phase 2 already dropped num-rational; further levers listed.
+
+CI: .github/workflows/verifier-difftest.yml runs the difftest crate on every push/PR + the live
+drift watch (non-blocking). Next: Phase 5 (audit + mainnet).

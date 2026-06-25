@@ -1,0 +1,14 @@
+{
+  "checkpoint_nft": "cabd605a1fe5621ed54cf9d323a89826f13f8feb07d7c22f91246468",
+  "advance_ckbcert_script": "2880a7536763a329880bd8ce8624a598a0fda3cacf3240a071e325a5",
+  "advance_addr": "addr_test1wq5gpf6nva36x2vgp0vvap3y5kv2pldret8nys9qw83jtfgkwqlf2",
+  "genesis_tx": "caadeae175b69585f47a8e0aaad7f36cbb51ab6ce2cf811d68d81ac123af0bce",
+  "gref": "88d0161c3110b6230bdd65f0aa76c7dedb3c0199938d0704bd541dfeb279467b#1",
+  "thread_name_hex": "636b62636572742d746872656164",
+  "pinned": {
+    "chain_root": "61e8cb8d6d365991ad5025e2109befb1a3385658622cf52fdb5a844072d247ae",
+    "total_difficulty": "0000000000000000000000000000000000000000000000000000000000000000",
+    "window_root": "006812ceb2adf630c674c1903595d314faaa1c4c6bcfc5ac14c1518e8a2a6dc0",
+    "tip_height": 21470412
+  }
+}

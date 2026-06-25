@@ -1,0 +1,22 @@
+REAL Mithril preview certificate aggregate-verify, measured INSIDE CKB-VM
+(ckb-testtool 0.13, rustc 1.94.1, target riscv64imac-unknown-none-elf, opt-level="z",
+bls12_381 v0.8 + sha2 0.9, blake2b-ref). Cert: testing-preview aggregator, 2 distinct
+winning signers, 2330 total winning indices (>= k=1944), signed_message 8645469a...
+
+  full-shape verify cost = 134,834,769 cycles   (3.85% of the 3.5e9 block budget)
+    [decode 2xG1 + 2xG2, aggregate (sum), hash-to-curve(msg), 2 pairings,
+     + 2330 eligibility blake2b hashes]
+
+  cryptographically VERIFIED in-script = FALSE  (this session)
+
+The COST is a true end-to-end measurement on real cert data and matches the Phase-1 model
+(~134M). Cryptographic ACCEPTANCE was not achieved: the aggregate pairing equality did not
+hold with msg=signed_message (raw 32B or ascii-hex) and empty DST, cross-checked in two
+independent hash-to-curve impls (zkcrypto bls12_381 in-script, py_ecc offline). The gap is
+mithril-stm's exact message-construction convention fed to blst (the precise bytes hashed /
+any internal domain framing), which must be matched bit-for-bit by porting from mithril-stm
+source or differential-testing against blst. This is a bounded CORRECTNESS task; it does NOT
+affect the feasibility verdict, which rests on the (now empirical) cost + structure.
+
+DST confirmed EMPTY from source: signature_scheme/bls_multi_signature/signature.rs calls
+blst `verify(false, msg, &[], &[], &mvk, false)` (3rd arg = dst = &[]).

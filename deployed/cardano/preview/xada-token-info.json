@@ -1,0 +1,9 @@
+{
+  "tx": "0x726336275e4d8bb476564f7dc626861be5ba7f66919c673b3536ef2f444cbb5c",
+  "token_id": "0xe3a8d7be94191ed6ba7ac647673b5c8b2fd328cfcd970286a2458d8ecf64d73c",
+  "name": "Chiral ADA",
+  "symbol": "xADA",
+  "decimals": 6,
+  "xada_cell": "0x726336275e4d8bb476564f7dc626861be5ba7f66919c673b3536ef2f444cbb5c:0",
+  "unique_cell": "0x726336275e4d8bb476564f7dc626861be5ba7f66919c673b3536ef2f444cbb5c:1"
+}

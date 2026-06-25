@@ -1,0 +1,38 @@
+PHASE 3 - the permissionless relayer + the leap-out FINALIZE (the symmetric leg).
+
+RELAYER (relayer/, liveness only - CANNOT forge; the CKB script re-verifies everything):
+  transcode.py  - Mithril CardanoTransactions proof (two-level MMR) + raw spend-tx CBOR
+                  -> the compact length-prefixed witness the unified BoundAsset reads from input_type.
+  relay.py      - watch binding_lock seal spends (Blockfrost) -> wait for Mithril cert -> fetch
+                  proof + tx CBOR + cert root -> transcode -> CLASSIFY (seal recreated at lock =>
+                  TRANSITION; not recreated => FINALIZE) -> emit the CKB submission descriptor.
+  validate_transcode.py - proves correctness against REAL ON-CHAIN-ACCEPTED data: the transcode
+                  reproduces, byte-for-byte (1173 B), the transition witness the live unified script
+                  accepted on Pudge (tx 0x94d0620f), from only the raw Mithril proof JSON + tx CBOR.
+
+  Validated end-to-end on real preview data (live Mithril aggregator + Blockfrost):
+    unbind 6c729ea6 -> mode FINALIZE  (witness 1132 B)
+    transfer a98b6636 -> mode TRANSITION (witness 1209 B)
+  The relayer cannot forge: a wrong/missing transcode only delays a transfer.
+
+LEAP-OUT FINALIZE (the symmetric leg the project had skipped):
+  The unified BoundAsset now has a FINALIZE mode (spike/phase1/bound_asset_unified.rs): consume the
+  bound cell with NO output cell, when the certified Cardano Unbind tx (a) is in the certified tx-set
+  root (same MKMapProof oracle as transition) AND (b) consumed the old seal AND (c) did NOT recreate
+  the seal NFT at the binding_lock (the new "seal_recreated_at_lock" Conway output/multiasset parse;
+  the Unbind released the seal to a plain 60-address, NOT the 70-binding_lock).
+
+  PROVEN IN CKB-VM on REAL certified Unbind data (finalize_bench.rs, real tx 6c729ea6 + its real
+  Mithril MKMapProof, cert root 0bc33aa8):
+    leap-out FINALIZE verify = 205,581 cycles = 0.006% of a 3.5e9 block.  PASSES.
+  Host differential confirms the detector: unbind -> seal_at_lock=False (finalize OK);
+  transfer a98b6636 -> seal_at_lock=True (finalize correctly REJECTED).
+
+  LIVE on Pudge: the finalize-capable unified script is DEPLOYED (codeHash 0xbeaff4d3…, tx
+  0x97ca700d…) and a bound cell (seal a98b6636, state v2) is MINTED under it (tx 0xc40d4a39…).
+  The final on-chain finalize spend is gas-dust-blocked (every isomorphic cell is at min capacity;
+  the unbind-checkpoint tx is ~0.02 CKB short and the only free capacity is in unrelated
+  committee-bridge code cells). The verification itself is proven in-VM on the real certified Unbind.
+
+Files: relayer/{transcode,relay,validate_transcode}.py; spike/phase3/finalize_bench.rs;
+deploy/pudge/{deploy-leapout-finalize,leapout-absorb}.mjs + p1f_hex.json. Next: Phase 4 (hardening).

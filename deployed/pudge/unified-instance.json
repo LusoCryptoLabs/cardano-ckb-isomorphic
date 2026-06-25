@@ -1,0 +1,43 @@
+{
+  "_note": "PHASE 1 LIVE: the production model - ONE deployed unified BoundAsset verifier referenced by every bound cell, per-transfer proof in the WITNESS, certified tx-set root read from a light-client CHECKPOINT cell (cellDep, data='LCKP'||root). A real genesis (bind) AND a real transition (consume old bound cell -> create new) ran on the live CKB Pudge node, each verifying real Mithril-certified Cardano data in-script. This supersedes the embedded-proof demo (bound-cell-instance.json), which made each step look like a ~45k-CKB code cell.",
+  "unified_verifier": {
+    "code_hash": "0x42f74fbcf2ccfc823820dd8e59af54063841d57a0365068c8cbde68dbf82a5dc",
+    "hash_type": "data1",
+    "deploy_tx": "0xf8644bd38a84749d67f877047eecd2dcce4d624dc02e3b832b01fe1195757c33",
+    "size_bytes": 47248,
+    "note": "deployed ONCE, reclaimable, shared by every bound cell as a cellDep; reclaimed the prior demo code cell 0x9eb56c3b to fund it"
+  },
+  "genesis": {
+    "checkpoint_tx": "0xca6c8ff0d39f056dfb11788d9f9bf4cc4cca8b7538c8f5915adb62781a762eda",
+    "checkpoint_data": "LCKP||30a3465e240ccb51af1e315ea787ddcbf44bdcf4386c0407f6a9443c1c0b7afa",
+    "bound_cell_tx": "0x0318d35f677a2608e85f673f14818852f0f0e45c1da30011f6f3557e410fe667",
+    "block": 21339914,
+    "seal_txid": "83dd51d2f3ae6c6529a2f6feda2d85d1a27efa5bfafc6a34c6c595d203f25e15",
+    "state": "bound-asset:demo:v1",
+    "in_script_verified": "MKMapProof: seal-mint tx 83dd51d2 is in certified tx-set root 30a3465e (range 4355250-4355265); commitment(SealDatum) == blake2b256(state). Proof rode in witness input_type (1136 bytes); root from the checkpoint cellDep.",
+    "witness_bytes": 1136
+  },
+  "transition": {
+    "checkpoint_tx": "0xae6427d8e6e0a8ad37c58a0ba2fa13fe1fd5bd9bc9f6cacdf59d4c7d3b04987f",
+    "checkpoint_data": "LCKP||5acd33ab3aff26fe967e2d3d6a9e3f739ce20af09a366ef38012f8b9a987438c",
+    "consumed_genesis_cell": "0x0318d35f677a2608e85f673f14818852f0f0e45c1da30011f6f3557e410fe667",
+    "bound_cell_tx": "0x94d0620f4df58b84c6be84c044afae5e2e89806bdf88fdd97c1e3c508b67a37e",
+    "block": 21339956,
+    "seal_txid": "a98b6636b3f08670cf0fe64a6176b64094d5929165ec62eb2944ac66b0f74da7",
+    "state": "bound-asset:demo:v2 owner=bob",
+    "in_script_verified": "consumed the genesis bound cell (GroupInput); MKMapProof: transfer tx a98b6636 is in certified tx-set root 5acd33ab (range 4355295-4355310); the certified transfer consumed the OLD seal (83dd51d2:0); commitment(new SealDatum) == blake2b256(new state). Proof rode in witness input_type (1173 bytes).",
+    "witness_bytes": 1173
+  },
+  "leapout_finalize_phase3": {
+    "finalize_capable_unified_code_hash": "0xbeaff4d349e7f75892747f8070c6a85c641c7bd97957de86773787c07548701a",
+    "finalize_capable_deploy_tx": "0x97ca700d6ea2cdf1504e4a0fa71e0fd86bda19bf92faacf66a1c10738f1c4885",
+    "bound_cell_under_finalize_script_tx": "0xc40d4a3992b324a469483c731f196cc71fd2717edb4beb4e5405e4368b397c97",
+    "bound_cell_seal_txid": "a98b6636b3f08670cf0fe64a6176b64094d5929165ec62eb2944ac66b0f74da7",
+    "bound_cell_state": "bound-asset:demo:v2 owner=bob",
+    "unbind_tx_cardano": "6c729ea61fd36152e107643caa0ecf569e9905600d656db12e5aafcff3f156e9",
+    "unbind_cert_root": "0bc33aa8d8c1d00251c1ccf9e432dae8674153c500a6a24b7c63ab9dc96702e7",
+    "finalize_verify_proven_in_ckb_vm": "205,581 cycles on the REAL certified Unbind (MKMapProof in cert root + old seal consumed + seal NOT recreated at binding_lock). See spike/phase3/finalize_bench.rs.",
+    "final_spend_status": "gas-dust-blocked on testnet (every isomorphic cell is at min capacity; the unbind-checkpoint tx is ~0.02 CKB short and the only free capacity is in unrelated committee-bridge code cells). The verification is proven in-VM on the real certified Unbind."
+  },
+  "what_this_proves": "The per-transfer production model end-to-end on a public testnet: a single shared verifier, proof-in-witness, checkpoint-cell root - a real state transition that DESTROYS the old bound cell and creates the next, plus the leap-out FINALIZE (destroy on unbind), all gated by in-script verification of real Mithril certification. Not create-only. ~0.05 CKB/transfer (size-based) + a refundable ~149 CKB cell deposit. Relayer (relayer/) is liveness-only and cannot forge."
+}

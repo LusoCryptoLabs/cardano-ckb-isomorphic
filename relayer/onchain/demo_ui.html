@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Chiral Leap, live testnet demo</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --line:#30363d; --fg:#e6edf3; --dim:#8b949e; --ckb:#3cc68a; --ada:#5b8def; --ok:#3fb950; --warn:#d29922; --bad:#f85149; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+  header { display:flex; align-items:center; gap:12px; padding:18px 24px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:17px; margin:0; font-weight:650; }
+  header .net { color:var(--dim); font-size:12px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--dim); display:inline-block; }
+  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
+  main { max-width:880px; margin:0 auto; padding:24px; }
+  .flow { display:flex; align-items:center; justify-content:center; gap:0; margin:8px 0 26px; }
+  .node { flex:1; max-width:300px; text-align:center; padding:20px; border:1px solid var(--line); border-radius:12px; background:var(--panel); transition:.2s; }
+  .node.active { box-shadow:0 0 0 2px currentColor inset; }
+  .node.ckb { color:var(--ckb); } .node.ada { color:var(--ada); }
+  .node .chain { font-size:12px; letter-spacing:.05em; text-transform:uppercase; opacity:.8; }
+  .node .state { font-size:18px; font-weight:650; margin-top:4px; color:var(--fg); }
+  .node.active .state { color:currentColor; }
+  .arrow { width:120px; text-align:center; color:var(--dim); font-size:12px; position:relative; }
+  .arrow .leg { font-weight:600; }
+  .arrow svg { display:block; margin:0 auto 2px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:24px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  .card .k { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  .card .v { font-size:18px; font-weight:600; margin-top:3px; word-break:break-word; }
+  .card .v small { font-size:12px; color:var(--dim); font-weight:400; }
+  .controls { display:flex; gap:12px; align-items:center; margin-bottom:26px; }
+  button { background:var(--ckb); color:#08130d; border:0; border-radius:8px; padding:10px 18px; font-weight:650; cursor:pointer; }
+  button.alt { background:var(--ada); color:#06101f; }
+  button:disabled { opacity:.4; cursor:not-allowed; filter:grayscale(.4); }
+  .controls .note { color:var(--warn); font-size:12px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); margin:0 0 10px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-weight:500; font-size:11px; text-transform:uppercase; }
+  td a { color:var(--ada); text-decoration:none; } td a:hover { text-decoration:underline; }
+  .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
+  .empty { color:var(--dim); padding:14px 0; }
+  .badge { font-size:11px; padding:2px 9px; border-radius:20px; border:1px solid var(--line); color:var(--dim); vertical-align:middle; }
+  .badge.running{color:var(--warn);border-color:var(--warn)} .badge.done{color:var(--ok);border-color:var(--ok)} .badge.failed{color:var(--bad);border-color:var(--bad)}
+  .phases { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 14px; }
+  .chip { font-size:12px; padding:6px 12px; border-radius:20px; border:1px solid var(--line); color:var(--dim); }
+  .chip.done { color:var(--ok); border-color:var(--ok); } .chip.active { color:var(--warn); border-color:var(--warn); box-shadow:0 0 0 1px var(--warn) inset; }
+  #jobLegs { margin-bottom:12px; }
+  .legrow { display:flex; gap:14px; align-items:center; padding:7px 0; font-size:13px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .legrow .lg { font-weight:700; width:28px; color:var(--fg); }
+  .joblog { background:#0a0d12; border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:11.5px; line-height:1.5; max-height:200px; overflow:auto; color:var(--dim); white-space:pre-wrap; word-break:break-word; margin:0; }
+  .joblog .err { color:var(--bad); } .joblog .warn { color:var(--warn); }
+  footer { color:var(--dim); font-size:11px; text-align:center; padding:20px; border-top:1px solid var(--line); margin-top:30px; }
+</style>
+</head>
+<body>
+<header>
+  <span id="conn" class="dot"></span>
+  <h1>Chiral Leap</h1>
+  <span class="net" id="net">connecting…</span>
+  <span style="flex:1"></span>
+  <span class="net" id="ts"></span>
+</header>
+<main>
+  <div class="flow">
+    <div class="node ckb" id="nodeCkb"><div class="chain">Nervos CKB</div><div class="state">CkbOwned</div></div>
+    <div class="arrow">
+      <svg width="120" height="22"><defs><marker id="ah" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#8b949e"/></marker></defs>
+        <line x1="6" y1="8" x2="108" y2="8" stroke="#8b949e" stroke-width="1.5" marker-end="url(#ah)"/>
+        <line x1="108" y1="16" x2="6" y2="16" stroke="#8b949e" stroke-width="1.5" marker-end="url(#ah)" opacity=".4"/></svg>
+      <div class="leg" id="legLabel">leap</div>
+    </div>
+    <div class="node ada" id="nodeAda"><div class="chain">Cardano</div><div class="state">CardanoBound</div></div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="controls">
+    <button id="btnLeg">Leap next leg</button>
+    <button id="btnToggle" class="alt">Full round-trip</button>
+    <span class="note" id="ctrlNote">real testnet on-chain leap, operator-signed, ~6-8 min per leg</span>
+  </div>
+
+  <section id="jobPanel" style="display:none">
+    <h2>Live leap <span id="jobState" class="badge"></span></h2>
+    <div class="phases" id="phases"></div>
+    <div id="jobLegs"></div>
+    <pre class="joblog" id="jobLog"></pre>
+  </section>
+
+  <h2>Recent leaps</h2>
+  <table><thead><tr><th>when</th><th>leg</th><th>Cardano tx</th><th>CKB tx</th><th>cert</th></tr></thead>
+    <tbody id="hist"><tr><td colspan="5" class="empty">loading…</td></tr></tbody></table>
+</main>
+<footer>Operator demo, no wallets, no value moved here. The relayer's keys drive the leap; this dashboard only observes. Testnet, unaudited.</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let CFG = {};
+const short = (h, n=10) => h ? (String(h).replace(/^0x/,"").slice(0,n) + "…") : "-";
+const txLink = (base, h) => h ? `<a href="${base}${h}" target="_blank" rel="noopener" class="mono">${short(h,12)}</a>` : "-";
+
+async function loadConfig() {
+  try { CFG = await (await fetch("/api/config")).json(); $("net").textContent = CFG.network || ""; } catch {}
+}
+
+function setSide(phase) {
+  const ckb = $("nodeCkb"), ada = $("nodeAda");
+  ckb.classList.toggle("active", phase === "CkbOwned");
+  ada.classList.toggle("active", phase === "CardanoBound");
+}
+
+async function poll() {
+  let s;
+  try { s = await (await fetch("/api/leap/status")).json(); } catch (e) { s = { ok:false, error:String(e) }; }
+  const conn = $("conn");
+  if (!s.ok) { conn.className = "dot bad"; $("net").textContent = "status error: " + (s.error||"").slice(0,80); return; }
+  $("ts").textContent = "updated " + (s.ts || "");
+  conn.className = "dot " + (s.health === "ok" ? "ok" : s.health === "funding-low" ? "warn" : "bad");
+  setSide(s.phase);
+  $("legLabel").textContent = s.next ? (s.next === "S4" ? "S4 → leap to Cardano" : "S5 → leap to CKB") : "-";
+  const cn = s.cardano || {};
+  const cells = [
+    ["State", `${s.phase}`, s.next ? `next leg ${s.next}` : "idle"],
+    ["Bound cell", s.cell ? `<span class="mono">${short(s.cell.txHash,12)}</span>` : "-", s.cell?.state ? `state "${s.cell.state}"` : ""],
+    ["Health", s.health === "ok" ? "OK" : s.health.replace(/-/g," "), s.ckb.missingCodeCells?.length ? "missing: "+s.ckb.missingCodeCells.join(",") : "code cells live"],
+    ["CKB balance", `${(s.ckb.totalCKB||0).toLocaleString()} <small>CKB</small>`, `top plain ${(s.ckb.plainTopCKB||0).toLocaleString()} (${s.ckb.plainCells} cells)`],
+    ["Cardano", cn.error ? "query failed" : `${(cn.tada||0).toLocaleString()} <small>tADA</small>`, cn.error ? "" : `seal ${short(cn.seal,10)}`],
+    ["Registry", `${s.registry.keys} <small>nullifier(s)</small>`, `root ${short(s.registry.root,12)}`],
+    ["Checkpoints", `${s.ckb.checkpointsParked} <small>parked</small>`, `${(s.ckb.checkpointCKB||0).toLocaleString()} CKB`],
+    ["Funding floor", `${(s.fundingFloorCKB||0).toLocaleString()} <small>CKB</small>`, (s.ckb.plainTopCKB < s.fundingFloorCKB) ? "below floor" : "above floor"],
+  ];
+  $("grid").innerHTML = cells.map(([k,v,sub]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div><div class="k" style="margin-top:6px;text-transform:none">${sub||""}</div></div>`).join("");
+}
+
+async function loadHistory() {
+  let h = [];
+  try { h = await (await fetch("/api/leap/history")).json(); } catch {}
+  const tb = $("hist");
+  if (!h.length) { tb.innerHTML = `<tr><td colspan="5" class="empty">no leaps logged yet</td></tr>`; return; }
+  tb.innerHTML = h.slice(0,12).map((e) => `<tr>
+    <td class="mono">${(e.ts||"").slice(0,19)}</td><td>${e.leg||"-"}</td>
+    <td>${txLink(CFG.cardanoExplorer||"#", e.cardano_tx)}</td>
+    <td>${txLink(CFG.ckbExplorer||"#", e.ckb_tx)}</td>
+    <td>${e.cert_s != null ? e.cert_s+"s" : "-"}</td></tr>`).join("");
+}
+
+// ---- Phase 2: drive a leap + live job tracker ----
+let jobTimer = null;
+const PHASE_LABEL = { funding:"Funding", cardano:"Cardano tx", cert:"Mithril cert", ckb:"CKB tx", done:"Done" };
+const escapeHtml = (s) => String(s).replace(/[<>&]/g, (c) => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;" }[c]));
+const setBusy = (b) => { $("btnLeg").disabled = b; $("btnToggle").disabled = b; };
+
+async function startLeap(kind) {
+  const what = kind === "toggle" ? "a full round-trip (CkbOwned → CardanoBound → CkbOwned, 2 legs)" : "the next leg";
+  if (!confirm(`Start ${what}?\n\nThis is a REAL testnet on-chain leap, signed with the operator's keys. It moves the bound cell, costs testnet fees, and takes ~6-8 min per leg (Mithril cert wait).`)) return;
+  setBusy(true); $("ctrlNote").textContent = "starting…";
+  let r;
+  try { r = await (await fetch("/api/leap/" + kind, { method:"POST", headers:{ "content-type":"application/json" }, body:"{}" })).json(); }
+  catch (e) { $("ctrlNote").textContent = "failed to start: " + e; setBusy(false); return; }
+  if (r.error) { $("ctrlNote").textContent = r.error; setBusy(false); return; }
+  $("ctrlNote").textContent = "";
+  trackJob(r.jobId);
+}
+
+function trackJob(id) {
+  $("jobPanel").style.display = "block";
+  clearInterval(jobTimer);
+  const tick = async () => {
+    let j; try { j = await (await fetch("/api/leap/jobs/" + id)).json(); } catch { return; }
+    renderJob(j);
+    if (j.state && j.state !== "running") { clearInterval(jobTimer); setBusy(false); $("ctrlNote").textContent = j.state === "done" ? "leap complete ✓" : "leap " + j.state; poll(); loadHistory(); }
+  };
+  tick(); jobTimer = setInterval(tick, 2500);
+}
+
+function renderJob(j) {
+  $("jobState").textContent = (j.state || "") + (j.currentLeg ? " · " + j.currentLeg : "");
+  $("jobState").className = "badge " + (j.state || "");
+  const cur = (j.phases || []).indexOf(j.phase);
+  $("phases").innerHTML = (j.phases || []).map((p, i) => {
+    const cls = j.state === "done" ? "done" : i < cur ? "done" : i === cur ? "active" : "";
+    return `<span class="chip ${cls}">${PHASE_LABEL[p] || p}</span>`;
+  }).join("");
+  const legs = (j.legs || []).map((e) => `<div class="legrow"><span class="lg">${e.leg}</span>
+    <span>Cardano ${txLink(CFG.cardanoExplorer || "#", e.cardano_tx)}</span>
+    <span>CKB ${txLink(CFG.ckbExplorer || "#", e.ckb_tx)}</span>
+    <span style="color:var(--dim)">cert ${e.cert_s}s</span></div>`).join("");
+  const pending = j.pendingCardanoTx ? `<div class="legrow"><span class="lg">${j.currentLeg || ""}</span><span>Cardano ${txLink(CFG.cardanoExplorer || "#", j.pendingCardanoTx)}</span><span style="color:var(--warn)">awaiting Mithril cert…</span></div>` : "";
+  $("jobLegs").innerHTML = legs + pending;
+  $("jobLog").innerHTML = (j.log || []).map((l) => `<div class="${l.level === "ERROR" ? "err" : l.level === "WARN" ? "warn" : ""}">${l.level === "INFO" ? "" : "[" + l.level + "] "}${escapeHtml(l.msg)}</div>`).join("");
+  $("jobLog").scrollTop = $("jobLog").scrollHeight;
+}
+
+(async () => {
+  await loadConfig();
+  $("btnLeg").onclick = () => startLeap("leg");
+  $("btnToggle").onclick = () => startLeap("toggle");
+  await poll(); await loadHistory();
+  // resume an in-progress job if the page was reloaded mid-leap
+  try { const cur = await (await fetch("/api/leap/jobs")).json(); if (cur && cur.id && cur.state === "running") { setBusy(true); trackJob(cur.id); } } catch {}
+  setInterval(poll, 12000);
+  setInterval(loadHistory, 30000);
+})();
+</script>
+</body>
+</html>

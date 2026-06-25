@@ -1,0 +1,16 @@
+CKB-VM BLS12-381 cycle measurements (ckb-testtool 0.13, rustc 1.94.1,
+target riscv64imac-unknown-none-elf, opt-level="z", lto, pure-Rust bls12_381 v0.8).
+
+  per BLS12-381 pairing  : 42,701,710 cycles
+  per G1 addition        :     24,820 cycles
+  (baseline ML-DSA-44 verify, same harness: 4,390,000 cycles)
+  CKB mainnet max_block_cycles: 3,500,000,000
+
+Mithril STM single-cert verify model = 2 pairings + k G1-adds (same-message aggregate):
+  k=600  -> ~100.3M cycles  (2.87% of a block)
+  k=1500 -> ~122.6M cycles  (3.50% of a block)
+  k=1944 -> ~133.6M cycles  (3.82% of a block)   [live mainnet k]
+  k=2422 -> ~145.5M cycles  (4.16% of a block)
+
+Live mainnet Mithril protocol parameters (release-mainnet aggregator /epoch-settings):
+  k = 1944,  m = 16948,  phi_f = 0.2

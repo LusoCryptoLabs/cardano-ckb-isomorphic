@@ -1,0 +1,11 @@
+[package]
+license = "MIT"
+name = "fri-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+blake2b-ref = { version = "0.3", default-features = false }

@@ -1,0 +1,23 @@
+Mithril stake-lottery (eligibility) reproduced + measured INSIDE CKB-VM (pure-Rust
+num-bigint/num-rational/blake2; no blst, no float). Cross-checked against the real preview
+cert: all winning indices WON (host: won=2330/lost=0; in-script: 40/40 sampled).
+
+ev = Blake2b512(b"map" || msgp || index.to_le_bytes() || sigma[48])   (msgp = msg||root)
+is_lottery_won: ev/2^512 < 1-(1-phi_f)^(stake/total) via num-bigint/num-rational Taylor
+  (c = from_float(ln(1-phi_f)) hardcoded as exact rational -251237303637201/1125899906842624)
+
+Per-index cost on CKB-VM:
+  NAIVE (rational Taylor per index): ~995,748 cycles/index
+     -> k=1944 ~= 1.94e9 cycles (55% of a 3.5e9 block)   [fits, but the cost driver]
+  OPTIMIZED (per-party TARGET precomputed; per-index = ev < target, 512-bit compare):
+     ~14,636 cycles/index  (68x faster)
+     -> k=1944 ~= 28.5M cycles (0.81% of a block)
+
+Full trust-minimized verify (optimized) ~= 135M (BLS aggregate) + 28.5M (eligibility)
+  ~= ~165M cycles ~= ~5% of a 3.5e9 block. Comfortably fits.
+  (Mainnet: + per-distinct-party target verification via the rational math once per winning
+   party (<= a few hundred) ~ a few hundred M worst-case; still < ~20% of a block.)
+
+Design: the relayer supplies per-party targets; the script verifies each target once per
+party via the exact rational math (matching is_lottery_won), then does ev<target per index.
+This mirrors mithril's own compute_target_value_for_snark_lottery (SNARK-friendly) lottery.

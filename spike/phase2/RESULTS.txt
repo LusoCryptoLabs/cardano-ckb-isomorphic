@@ -1,0 +1,41 @@
+PHASE 2 COMPLETE - the SNARK-lottery target: eligibility from ~70% of a block to ~1% (exact).
+
+PROBLEM. The Mithril stake lottery is the AdvanceCert cost driver: mithril's per-index
+`is_lottery_won` runs a num-rational Taylor series of exp(x) PER winning index. For the real
+preview cert (2330 winning indices) that is ~2.37e9 cycles = ~68% of a 3.5e9 CKB block. The
+Phase-1 note also measured that verifying a per-party target via the is_lottery_won BOUNDARY is
+WORSE (~1e9 cycles/call: at ev≈boundary the Taylor never early-exits, runs all 1000 terms).
+
+SOLUTION (mithril's compute_target_value_for_snark_lottery, made cheap + exact in-script).
+is_lottery_won(ev) <=> ev_int < T*,  T* = 2^512 * (1 - (1-phi_f)^w),  (1-phi_f)^w = exp(w*c),
+c = ln(1-phi_f) < 0 (the exact rational -251237303637201/1125899906842624). So the lottery is a
+single per-party TARGET T = ceil(T*) and the per-index check is ONE 512-bit integer compare ev<T.
+Derive T with a FIXED-POINT integer Taylor for exp(w*c) at scale 2^768 (NO num-rational, NO gcd -
+the gcd-per-term on growing rationals is what blew the cycle budget; even at 3.5e9 it didn't fit):
+  t_0 = 2^768; t_n = t_{n-1} * (stake*C_NUM) / (total*C_DEN) / n; acc = sum t_n  (~88 terms);
+  T = 2^512 - (acc >> (768-512)) = 2^512 - floor(2^512 * exp(x)) = ceil(T*).
+At scale 2^768 the per-term truncation is << 1 ULP at scale 2^512, so T is pinned exactly.
+
+CORRECTNESS (differential test, host, spike/phase2/host_difftest.rs):
+  on the real preview cert's 2330 winning indices, (ev_int < T) == is_lottery_won(ev) for EVERY
+  index - 2330/2330, 0 disagreements. The integer target reproduces mithril's lottery exactly.
+
+COST (CKB-VM, ckb-testtool, SAME harness, apples-to-apples; spike/phase2/eligibility_*.rs):
+  NAIVE  is_lottery_won x2330            = 2,368,167,479 cycles = 67.66% of a 3.5e9 block
+  TARGET per-party + ev<T x2330          =    39,746,866 cycles =  1.14% of a 3.5e9 block
+  => 59.6x reduction. Eligibility is no longer the cost driver.
+
+ASSEMBLED AdvanceCert (optimized), by component (each independently measured on CKB-VM):
+  aggregate BLS verify (real cert)  ~146M  (4.18%)   [spike/mithril-verify VERIFIED_RECIPE]
+  eligibility (target)               ~40M  (1.14%)   [here]
+  batch-Merkle membership + compute_hash recheck   small (hashes)
+  => full trust-minimized AdvanceCert ~= ~190M cycles ~= ~5% of a 3.5e9 block (was ~70%).
+  Folded into spike/light-client-cell/light_client_advance.rs (check_eligibility_quorum now uses
+  the per-party target).
+
+MAINNET. Cost is ~constant per DISTINCT winning party (one ~88-term fixed-point exp + the integer
+compares), not per index. With up to a few hundred distinct parties the per-party derivation
+(~a few M cycles each) stays well under a block. The lottery is no longer the bottleneck.
+
+Files: eligibility_target.rs (optimized), eligibility_naive.rs (mithril reference baseline),
+host_difftest.rs (the 2330-index exactness proof). Data = the real preview cert (epoch 320).

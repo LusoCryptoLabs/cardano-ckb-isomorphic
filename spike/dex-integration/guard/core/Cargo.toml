@@ -1,0 +1,10 @@
+[package]
+license = "MIT"
+name = "leap-guard-core"
+version = "0.1.0"
+edition = "2021"
+
+# Pure, std-testable conservation logic for the leap-mint guard. The CKB no_std script and the Cardano
+# validator both enforce these same rules; this crate is where they are unit-tested (`cargo test`).
+[lib]
+path = "src/lib.rs"

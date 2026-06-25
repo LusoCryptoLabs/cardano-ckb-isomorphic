@@ -1,0 +1,14 @@
+[package]
+license = "MIT"
+name = "leap-guard-integration"
+version = "0.1.0"
+edition = "2021"
+
+# Real, full-CKB-VM integration tests of the leap-mint guard (no mock): builds actual transactions with a
+# real-layout bound cell + real xUDT cells and runs the compiled guard binary in ckb-testtool's VM.
+[dependencies]
+ckb-testtool = "0.13"
+
+[[test]]
+name = "guard"
+path = "tests/guard.rs"

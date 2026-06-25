@@ -1,0 +1,17 @@
+WIRED LEAP TRANSITION - verified end-to-end in CKB-VM (bound_asset_leap.rs, 70,306 cycles).
+
+ONE BoundAsset script, given a Cardano seal-spend tx body + a tx-set membership proof + the new
+bound-cell state, accepts iff ALL hold:
+  1) cardano_tx_is_certified(body): blake2b256(body) as ascii-hex leaf is in CERT_ROOT (Mithril
+     tx-set MMR, Blake2s256, via ckb-merkle-mountain-range). [CERT_ROOT is a synthetic stand-in
+     here; the REAL two-level Mithril MKMapProof + cert verify authenticating it are proven on real
+     preview data in spike/cross-chain + spike/mithril-verify.]
+  2) the seal OutPoint is consumed by the tx (Conway CBOR parse, §6.2);
+  3) commitment (output[0] inline datum) == blake2b256(new_state || new_seal).
+
+=> a certified Cardano seal spend drives the CKB bound-cell transition to exactly the committed
+   next state - the full isomorphic-binding leap, wired into one script, end-to-end in CKB-VM.
+
+Remaining = the LIVE run (deploy seal+lock on preview, real seal spend, real Mithril cert, real CKB
+transition) + relayer + witness/molecule plumbing. No new in-script cryptography. See
+docs/LEAP_FLOWS.md.

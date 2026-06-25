@@ -1,0 +1,14 @@
+Mithril batch-Merkle membership verified IN CKB-VM (blake2b-256). Ports
+verify_leaves_membership_from_batch_path: leaf = blake2b256(mvk(96)||stake_be(8)),
+internal = blake2b256(left||right), heap parent=(i-1)/2, sibling odd/even, pad to
+next_power_of_two. Reconstructed root == avk root (13a8810b…) for the real preview cert.
+
+  cost: 72,175 cycles (preview: 3 leaves, 2 opened). Scales ~ #opened x log(nr_leaves)
+        hashes on mainnet -> still cheap.
+
+=== FULL Mithril signature verify now proven in-script on a real preview cert ===
+  1. aggregate BLS signature    ~146M cycles  (msgp=msg||root, empty DST, sum aggregate)
+  2. stake lottery (eligibility) ~28.5M cycles (k=1944, per-party-target optimized)
+  3. batch-Merkle membership     ~0.07M cycles
+  (+ quorum: count unique winning indices >= k -- trivial)
+  TOTAL ~= ~175M cycles ~= ~5% of a 3.5e9 block.

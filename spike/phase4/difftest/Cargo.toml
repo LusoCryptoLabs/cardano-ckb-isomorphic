@@ -1,0 +1,15 @@
+[package]
+license = "MIT"
+name = "mithril-verifier-difftest"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+bls12_381 = { version = "0.8", features = ["experimental"] }
+sha2 = "0.9"
+num-bigint = "0.4"
+num-traits = "0.2"
+blake2b-ref = "0.3"
+
+[profile.release]
+opt-level = 3

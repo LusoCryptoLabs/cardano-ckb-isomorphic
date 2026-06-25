@@ -1,0 +1,14 @@
+{
+  "name": "bridge-relayer",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "description": "Bridge relayer: watch -> prove -> submit. Builds the CKB FINALIZE leap-out + Cardano leap-in mint.",
+  "scripts": {
+    "selftest": "node relayer.mjs --selftest"
+  },
+  "dependencies": {
+    "@ckb-ccc/core": "^1.0.0"
+  }
+}

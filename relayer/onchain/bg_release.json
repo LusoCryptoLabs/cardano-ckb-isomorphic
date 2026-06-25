@@ -1,0 +1,10 @@
+{
+  "releaseTx": "0xbfe6f04a918fa162b826fb0c642f96cd782b9061903105370f4297ba745b6940",
+  "receipt": "0x8c0944279299643cf162ca6c88e344530a952ffeec36120f9cbb2fe7048bb346",
+  "lckp": "0xed9e8ad2aa1559488bf421929b153f2da78d1d609fe1ffdfb3507cd9bfbc8307",
+  "lckpRoot": "0xc75bc8343eeb6f76c53d2b93e6b15e48ddade0482aeaa7e4c0fc3396e930b5cc",
+  "nullifier": "0x5e4aa4e2d45c8dd32a0d34736ff8cb20eecd1aa29fde028baf070a69111642ee",
+  "regOldRoot": "0x49b8b57d19f7ccdcb4ae2b40f945caac2b8490be596fca0d8765941a508c3d6d",
+  "regNewRoot": "0x70963046011840ca2724273afd9b9bdb5c63de6f799c70631dc4b0e99e6aa79e",
+  "releasedCKB": 300
+}

@@ -1,0 +1,39 @@
+# build artifacts
+target/
+build/
+node_modules/
+*.bin
+*.log
+__pycache__/
+.aiken/
+# ceremony runtime artifacts (proving keys *.bin already ignored above; logs/in-progress redeemers are
+# reproducible runtime output - final vk hashes are recorded as text in D6_REORG.md)
+spike/ckb-to-cardano/circuit/ceremony/
+# secrets - never commit
+*.skey
+*.seed
+*.key
+.env
+deployed/**/keys/
+relayer/node_modules/
+relayer/package-lock.json
+.chiral/
+# session scratch / debug artifacts - targeted patterns so the real _-prefixed tooling
+# (relayer/onchain/_rt.mjs, _restore_code_cell.mjs) is NOT ignored.
+_shot_*.png
+_capture.mjs
+*_out.txt
+_throwaway*
+*.bak-*
+_*_test.*
+_*_drive.*
+
+# session scratch: ceremony proving keys (huge, regenerated) + debug scripts/dirs + logs + policy backups
+spike/ckb-to-cardano/circuit/ceremony_*/*.bin
+spike/ckb-to-cardano/circuit/ceremony_*/*.bin.*
+spike/ckb-to-cardano/circuit/ceremony_*/*.uc
+spike/ckb-to-cardano/circuit/_*
+spike/ckb-to-cardano/groth16/_*
+relayer/onchain/_ckbbal.mjs
+relayer/onchain/*.old-*
+dapp/_*.log

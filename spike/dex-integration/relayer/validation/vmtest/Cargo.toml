@@ -1,0 +1,15 @@
+[package]
+license = "MIT"
+name = "finalize-vmtest"
+version = "0.1.0"
+edition = "2021"
+
+# Runs the FINALIZE-capable verifier (the redeploy candidate) on the relayer's leap-out witness in
+# ckb-testtool's CKB-VM (which supports the atomics a fresh build emits), proving leap-out works end to end.
+[dependencies]
+ckb-testtool = "0.13"
+serde_json = "1"
+
+[[test]]
+name = "finalize"
+path = "tests/finalize.rs"

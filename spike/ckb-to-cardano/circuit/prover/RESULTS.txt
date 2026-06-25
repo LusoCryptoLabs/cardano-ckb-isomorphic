@@ -1,0 +1,188 @@
+CKB-consensus circuit - PROVING STACK + the first two gadgets (Eaglesong + Blake2b), built & tested.
+
+STACK: arkworks Groth16 over BLS12-381 + ark-r1cs-std (R1CS gadgets). Rationale: the proof drops
+DIRECTLY into the cardano_bound.ak Groth16 verifier we already built and MEASURED on-chain (~22.7%
+of a Cardano tx) - no recursion/wrapping layer, one curve end to end. (Halo2/KZG or Plonky2->Groth16
+remain proving-time optimizations behind the same on-chain interface.)
+
+GADGETS (ark-r1cs-std, BLS12-381 Fr; differential-tested vs the native CKB crates, in-circuit):
+  eaglesong_gadget.rs  - faithful port of CKB's Eaglesong sponge (R1, the PoW): 16xUInt32 state;
+     per round = GF(2) bit-matrix (xor) + rotation layer + constant injection + 8x(add,rotl8,rotl24,add)
+     ARX; 43 rounds; rate-256 sponge, delimiter 0x06, big-endian absorb / little-endian squeeze.
+     gadget output == native eaglesong on {empty, 32 B, 48 B}.   MEASURED:
+        1 permutation        ~232,000 constraints
+        PoW (48-byte msg)     464,192 constraints
+  blake2b_gadget.rs    - Blake2b-256 with 16-byte personalization = CKB's ckbhash (reused by R2 MMR,
+     R3 CBMT, R4): UInt64 state; G = addmany(64-bit) + xor + rotr; 12 rounds; param block sets
+     digest=32 + personalization. gadget output == native blake2b-rs("ckb-default-hash") on
+     {empty, "abc", 192 B}.   MEASURED:
+        per 128-byte block    ~48,820 constraints
+        192 B (RawHeader)     103,040 constraints
+
+REFINED TOTAL (measured costs): ~2.7M constraints per leap (R1 ~616K + R2 ~1.22M + R3 ~0.73M + R4
+~0.15M) - well under the earlier ~9-12M estimate (Blake2b is ~49K/block, not ~200K). Groth16 proving
+in ~tens of seconds, modest RAM. The two hardest hash gadgets are DONE and validated on real CKB data.
+
+REMAINING (per SPEC.md build plan): compact-target compare gadget; MMR-membership + CBMT-membership
+(both = Blake2b merges, gadget in hand); the R4 seal/commitment binding; wire public inputs to
+cardano_bound.ak; assemble + Groth16 prove end-to-end; AdvanceCKBCert checkpoint.
+
+------------------------------------------------------------------------------------------------
+ASSEMBLED LEAP CIRCUIT + END-TO-END Groth16 proof the Aiken verifier ACCEPTS (leap_prove.rs)
+------------------------------------------------------------------------------------------------
+Assembled the CKB-consensus leap circuit and produced a REAL Groth16 proof over BLS12-381:
+  R1  PoW on the REAL block 21,340,780: ckbhash(eaglesong(ckbhash(RawHeader)||nonce)) <= target
+  R3  Merkle (CBMT/MMR) membership - the gadget composed inside the proven circuit
+  R4  commitment = ckbhash(new_state || seal)
+  public inputs (3): field encodings of (checkpoint_root, seal, commitment) - matching cardano_bound.ak
+
+  arkworks Groth16 setup + prove + verify = true (on real header data; R1 is genuinely satisfied).
+  Proof + vk re-encoded to CIP-0381 compressed points -> fed to the SAME Aiken Groth16 verifier:
+     aiken check: leap_proof_verifies_onchain PASS  [mem 37.37 K, cpu 2.26 B = ~22.7% of a Cardano tx]
+
+THE FULL CKB->Cardano PIPELINE IS PROVEN END TO END:
+   real CKB consensus relations -> R1CS gadgets -> Groth16/BLS12-381 -> on-chain Cardano verify.
+The proof a permissionless prover would generate for a real CKB seal-spend is accepted on Cardano,
+at the budget we measured. Fixture: leap_fixture.json; on-chain test: groth16/lib/g16/leap_test.ak.
+
+REMAINING to productionize (engineering, not feasibility): in-circuit compact-target decode; wire R3
+to the real header.transactions_root + a real block's CBMT path; R2 header-MMR membership with CKB's
+HeaderDigest packing; the AdvanceCKBCert checkpoint UTxO; trusted-setup ceremony (or switch to a
+universal-SRS Plonk verifier). All standard; the hard halves (on-chain verify + the gadgets) are done.
+
+------------------------------------------------------------------------------------------------
+UPGRADE: faithful R3 (real CBMT) + in-circuit compact-target decode - re-proven end-to-end
+------------------------------------------------------------------------------------------------
+New gadgets (merkle_gadget.rs), differential-tested vs native CKB:
+  compact_to_target  - CKB's Bitcoin-style compact target (data-dependent exponent) -> 32-byte BE.
+     matches native for exponents 0x1d/0x1e/0x1b. ~1,984 constraints.
+  tx_root_from_proof - R3 on the REAL block 21,341,101: rebuild raw_transactions_root from the tx's
+     real CBMT path (lemmas from get_transaction_proof; direction = node index odd), then
+     ckbhash(raw_root || witnesses_root) == header.transactions_root. ~152,898 constraints.
+
+Faithful leap circuit (leap_prove.rs), REAL block 21,341,101 - R1 PoW now uses compact_to_target
+(decoded in-circuit from header.compact_target @bytes 4..8); R3 binds the tx to THIS header's
+transactions_root (raw[64..96]) via the real CBMT path; R4 commitment + 3 public inputs.
+  native pow_out = 000000049d32... (5 leading zero bytes -> valid PoW); arkworks verify = true.
+  aiken check: leap_proof_verifies_onchain PASS [mem 37.37 K, cpu 2.26 B = ~22.7% of a tx].
+
+So R1 and R3 are now wired to the SAME real header, with the target decoded in-circuit and the tx
+bound to the real transactions_root - and the proof is still accepted on-chain. Remaining: R2 header-
+MMR (CKB HeaderDigest packing) + AdvanceCKBCert checkpoint + trusted setup. All standard.
+
+------------------------------------------------------------------------------------------------
+R2: ChainRootMMR (HeaderDigest) membership - the circuit statement is now COMPLETE (R1..R4)
+------------------------------------------------------------------------------------------------
+ckb_mmr.rs (native ref): CKB's HeaderDigest (120-byte molecule struct), mmr_hash=ckbhash(serialize),
+MergeHeaderDigest (children_hash=ckbhash(mmr_hash(l)||mmr_hash(r)) + difficulty/range aggregation),
+leaf-from-header. Mechanics validated on REAL headers 21,341,101..104.
+mmr_gadget.rs (R2): membership - recompute the children_hash spine up to the bagged root and enforce
+mmr_hash(root) == checkpoint chain root. Differential-tested vs native on the real 4-leaf MMR:
+  4-leaf MMR membership = 357,634 constraints.
+(The digests' non-children_hash fields are carried witnesses; their aggregation consistency is
+AdvanceCKBCert's job. Binding to the LIVE chain root needs the light-client MMR proof - relayer-fetched,
+exactly like Mithril proofs on the other leg. CKB commits the chain root in block.extension, confirmed:
+block 21,341,101 extension = 0xb13cd27d...)
+
+COMPLETE faithful leap circuit (leap_prove.rs), REAL block 21,341,101, ALL relations present:
+  R1 PoW (in-circuit compact-target decode) + R2 MMR membership (leaf.children_hash == the header's
+  block hash = ckbhash(RawHeader||nonce), tying R2<->R1) + R3 tx bound to header.transactions_root via
+  a real CBMT path + R4 commitment; 3 public inputs (chain_root, seal, commitment).
+  arkworks verify = true; aiken check: leap_proof_verifies_onchain PASS [mem 37.37K, cpu 2.26B ~ 22.7% of a tx].
+
+=> The CKB->Cardano in-circuit statement is COMPLETE and verified on-chain. Remaining is ceremony/ops:
+   AdvanceCKBCert checkpoint UTxO (advances the chain root, enforcing difficulty aggregation) + the
+   trusted-setup ceremony (or a universal-SRS Plonk verifier). Not feasibility - the circuit is done.
+
+------------------------------------------------------------------------------------------------
+AdvanceCKBCert - the TRUSTLESS checkpoint (the chain root is earned by PoW work, not assumed)
+------------------------------------------------------------------------------------------------
+difficulty_gadget.rs (new trustless-work crypto), differential-tested vs native:
+  difficulty_verify - enforce diff == floor((2^256-1)/target) via a 256x256->512 multiply-compare
+     (diff*target <= MAX < (diff+1)*target). Valid diff passes; tampered diff+1 REJECTED. ~58,179 constraints.
+  add256 / mul256 - enforced 256-bit add (w/ carry) and 256x256 multiply (witness-and-verify).
+
+advance_ckbcert.ak (Cardano validator): a checkpoint UTxO {chain_root, total_difficulty}. ADVANCE
+spends it with a Groth16 proof + new state; it verifies the proof, binds public inputs to
+(old_root, old_diff, new_root, new_diff), enforces new_total_difficulty > old (HEAVIEST CHAIN, 32B
+compare), and continuity. Compiles. So anyone can advance the root by proving more work; the bridge
+never trusts an unproven checkpoint.
+
+AdvanceCKBCert circuit (advance_prove.rs) on REAL header 21,341,102 extending tip 21,341,101:
+  R1 PoW(h) + parent-link (raw.parent_hash == tip hash, verified: 0x94ba8c11) + difficulty_verify(h)
+  + new_total == old_total + difficulty(h) (enforced add256). arkworks verify = true.
+  aiken check: advance_proof_verifies_onchain PASS [mem 42.28K, cpu 2.39B ~ 24% of a tx].
+
+=> The checkpoint is TRUSTLESS. Combined with R2 membership (cardano_bound.ak reads this authenticated
+root), the CKB->Cardano leg needs no assumed checkpoint. Remaining: MMR-append in the advance circuit
+(so new_root is proven, not witnessed) + batching N headers + the trusted-setup ceremony. All standard.
+
+------------------------------------------------------------------------------------------------
+PROVEN MMR-append in the advance circuit - new_root is computed in-circuit (last in-circuit gap closed)
+------------------------------------------------------------------------------------------------
+mmr_gadget::merge_digest: fully DERIVES a parent HeaderDigest from children l,r - children_hash =
+ckbhash(mmr_hash(l)||mmr_hash(r)) AND total_difficulty = add256(l,r) (LE, proven) + ranges from
+l.start/r.end. No witnessed parent. So appending leaves yields a PROVEN root with PROVEN cumulative work.
+
+advance_prove.rs (rewritten): REAL header 21,341,104 appended to the ChainRootMMR over leaves
+21,341,101..103 (full carry, leaf_count=3=0b11):
+  - R1 PoW(104) + parent-link (raw.parent_hash == tip 21,341,103) + difficulty_verify(104).
+  - leaf_new digest built in-circuit from R1 outputs (children_hash = block hash; total_difficulty =
+    verified diff; ranges from raw fields).
+  - bag(old peaks) -> old_root (mmr_hash); APPEND: n_low=merge(p_low,leaf), n_top=merge(p_high,n_low);
+    new_root = mmr_hash(n_top) -- COMPUTED, not witnessed.
+  - old_total == bag.total_difficulty, new_total == n_top.total_difficulty (proven cumulative work).
+  arkworks verify = true.  old_root=dc6ad67c... new_root=d00faccb...
+  aiken check: advance_proof_verifies_onchain PASS [mem 42.28K, cpu 2.39B ~ 24% of a tx].
+
+=> new_root is now PROVEN from old peaks + the appended header; combined with difficulty_verify and the
+heaviest-chain validator, the checkpoint advance is fully trustless with nothing assumed about the new
+root. The in-circuit statement (R1..R4) AND the trustless checkpoint advance (PoW+difficulty+MMR-append)
+are complete and on-chain-verified. Remaining is ops: variable-carry append (general leaf_count via
+witnessed carry bits) + batching N headers + the trusted-setup ceremony. Not feasibility.
+
+------------------------------------------------------------------------------------------------
+GENERALIZED advance: variable-carry MMR append (any chain position) + N-header batching
+------------------------------------------------------------------------------------------------
+ckb_mmr: height-indexed peak array + general append/bag/build (any leaf_count).
+mmr_gadget::append_var: VARIABLE-CARRY append over H fixed height slots - pres[h]=bit h of leaf_count,
+  carry propagates through exactly the trailing set bits (in-circuit, witnessed presence bits). General
+  to any chain position (vs the earlier fixed full-carry). + bag_var (conditional bagging).
+  Standalone test (REAL headers, old leaf_count=5=0b101, append #6 -> carry STOPS at h1): gadget==native,
+  1,935,088 constraints.
+
+batch_advance.rs: append N=2 REAL headers (21,341,106..107) to the MMR in ONE proof - each header R1 PoW
+  + parent-link (running tip) + difficulty_verify; bag once before/after; cumulative work proven via the
+  merges. is_satisfied=true, 3,489,031 constraints; arkworks verify=true; aiken check:
+  batch_advance_verifies_onchain PASS [mem 42.28K, cpu 2.39B ~ 24% of a tx].
+
+=> The checkpoint advance now generalizes to ANY chain position (variable carry) and amortizes N headers
+per advance. H scales to ~32 (log2 chain height) at linear cost; N scales with prover budget. Combined
+with the leap (R1..R4) and difficulty_verify, the CKB->Cardano leg is complete and trustless in-circuit.
+Remaining is ops only: trusted-setup ceremony (or universal-SRS Plonk) + the relayer + a live testnet run.
+
+------------------------------------------------------------------------------------------------
+RELAYER (live) + trusted-setup CEREMONY + reverse-ZK spec
+------------------------------------------------------------------------------------------------
+RELAYER (#2, relayer/): relayer.py fetches LIVE Pudge data (tip -> a confirmed block T + 3 predecessors
+  + the tx's canonical CBMT proof) -> witness.json. relay_prove reads it, recomputes T's hash from live
+  bytes (asserted), derives the CBMT path + checkpoint MMR, builds the leap circuit (R1..R4), proves.
+  RAN LIVE on block 21,343,874: is_satisfied=true, 1,230,156 constraints, arkworks verify=true; the
+  emitted redeemer's proof is accepted on-chain (g16/live_relay_test.ak PASS). Output = broadcast-ready
+  Cardano redeemer (vk, proof, public inputs) for cardano_bound.ak.
+
+CEREMONY (#1, src/bin/ceremony.rs): Groth16 phase-2 multi-party trusted setup. Each contributor
+  re-randomizes delta with a secret s (delta*=s in G1/G2; h_query,l_query*=s^{-1}); final toxic delta =
+  delta_0 * prod(s_i), unknown unless ALL collude (secure if >=1 honest). Each contribution is publicly
+  VERIFIED via pairing ratio checks (no secrets): same_ratio + h/l consistency. Ran 3 contributions, all
+  verified; a proof under the multi-party key verifies on-chain (g16/ceremony_test.ak PASS). Phase-1
+  (alpha,beta,tau) from a universal Powers-of-Tau (external); production adds a PoK-of-s per contribution.
+
+LIVE BROADCAST (#3): blocked in this sandbox (no cardano-cli, Blockfrost 403, no funded keys). The
+  relayer produces the broadcast-ready artifacts; relayer/README.md gives the exact runbook + what to
+  plug in (funded Pudge + preview keys + a Cardano submit endpoint) to execute a real explorer-visible leap.
+
+REVERSE ZK (#4, ../cardano-to-ckb-zk/SPEC.md): making Cardano->CKB ZK. Honest staging: Ouroboros Praos
+  (VRF+KES+stake) in-circuit is research-scale; CKB-VM can run a hash-based STARK verifier natively (no
+  pairing builtins, quantum-resistant, no ceremony). Recommended path: Mithril -> STARK-Mithril (PQ +
+  ceremony-free) now, full ZK-of-Praos as the symmetric endgame. Spec'd, not built.

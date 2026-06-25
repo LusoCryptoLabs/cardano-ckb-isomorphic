@@ -1,0 +1,28 @@
+[package]
+license = "MIT"
+name = "v2-vmtest"
+version = "0.1.0"
+edition = "2021"
+
+# In-VM (ckb-testtool) tests for bound_asset_v2 (the leap v2 type script). Loads the riscv artifact built by
+# the burn-gated-unlock crate and runs it in a real CKB-VM. Host crate - lives OUTSIDE the riscv project so it
+# is not forced onto the riscv target by that project's .cargo/config.
+[dependencies]
+ckb-testtool = "0.13"
+serde_json = "1"
+# for in-test MMR certification of a leap-shaped tx_body (mirrors the verifier's hashing exactly)
+blake2 = "0.10"
+blake2b-ref = "0.3"
+ckb-merkle-mountain-range = "0.6"
+
+[[test]]
+name = "v2_guards"
+path = "tests/v2_guards.rs"
+
+[[test]]
+name = "v2_finalize"
+path = "tests/v2_finalize.rs"
+
+[[test]]
+name = "v2_leap"
+path = "tests/v2_leap.rs"

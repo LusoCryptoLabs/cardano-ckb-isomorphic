@@ -1,0 +1,11 @@
+{
+  "escrow_tx": "ca3fd55b889b39fb5f26f5f24d868aa2e84aa3d3909d37faa1b3fb6062ad3695",
+  "escrow_index": 0,
+  "escrow_script_hash": "714c54f238928d6986c634493de331626f84de07740025f2d603b212",
+  "escrow_address": "addr_test1wpc5c48j8zfg66vxcc6yj00rx93xlpx7qa6qqf0j6cpmyysqwg92k",
+  "escrow_addr_hex": "70714c54f238928d6986c634493de331626f84de07740025f2d603b212",
+  "ckb_recipient": "2df44c71a4312463ba31315c5aa7725b6ad44cd544a055a3dde915a600000000",
+  "amount": 4000000,
+  "nonce": 21487467,
+  "note": "forward-demo escrow; return-vk is a PLACEHOLDER (P5 redeploys). xada_mint args escrow_addr = escrow_addr_hex."
+}

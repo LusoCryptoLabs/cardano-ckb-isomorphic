@@ -1,0 +1,5 @@
+CKB Pudge : ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqfcfsm2sf0t0gfr774h6mgxwkxpedr4fdshwywks
+lock_arg  : 384c36a825eb7a123f7ab7d6d06758c1cb4754b6
+Cardano   : addr_test1vqk7v3nm48ac2ygxqm44mn2jpf3nmqc33eakn3j44pxjvfsv5rqhu
+key_hash  : 2de6467ba9fb85110606eb5dcd520a633d83118e7b69c655a84d2626
+(private keys are NOT in git; regenerate with genkeys.py)

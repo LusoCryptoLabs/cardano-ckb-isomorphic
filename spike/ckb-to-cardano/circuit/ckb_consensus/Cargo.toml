@@ -1,0 +1,11 @@
+[package]
+license = "MIT"
+name = "ckb-consensus-host"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+eaglesong = "0.1"
+blake2b-rs = "0.2"
+[profile.release]
+opt-level = 3

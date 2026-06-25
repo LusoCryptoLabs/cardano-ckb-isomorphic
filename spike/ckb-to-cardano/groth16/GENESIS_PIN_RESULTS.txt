@@ -1,0 +1,23 @@
+Forward (CKB->Cardano) checkpoint GENESIS-PIN suite - captured 2026-06-08T05:10:42Z
+aiken v1.1.21+42babe5
+---
+    ┍━ g16/ckbcert_test ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │ PASS [mem:  53.96 K, cpu:  14.64 M] t_has_thread_true
+    │ PASS [mem:  19.15 K, cpu:   4.95 M] t_has_thread_false_when_absent
+    │ PASS [mem:  29.67 K, cpu:   9.09 M] t_mints_one_thread_true
+    │ PASS [mem:  30.17 K, cpu:   9.25 M] t_mints_rejects_two
+    │ PASS [mem:  29.08 K, cpu:   8.71 M] t_mints_rejects_wrong_name
+    │ PASS [mem:  29.13 K, cpu:   7.95 M] t_burn_allowed
+    │ PASS [mem:  81.66 K, cpu:  25.04 M] t_pinned_output_ok
+    │ PASS [mem:  85.38 K, cpu:  26.09 M] t_pinned_output_rejects_wrong_datum
+    │ PASS [mem:  44.45 K, cpu:  11.74 M] t_pinned_output_rejects_wrong_address
+    │ PASS [mem:  32.81 K, cpu:   9.32 M] t_pinned_output_rejects_missing_token
+    │ PASS [mem: 147.98 K, cpu:  44.84 M] g_genesis_accepted
+    │ PASS [mem: 136.90 K, cpu:  42.08 M] g_rejects_fake_genesis_datum
+    │ PASS [mem:  25.47 K, cpu:   7.47 M] g_rejects_without_unique_outpoint
+    │ PASS [mem:  97.69 K, cpu:  28.46 M] g_rejects_token_to_wrong_address
+    │ PASS [mem:  53.78 K, cpu:  16.31 M] g_rejects_double_mint
+    │ PASS [mem:   2.16 K, cpu: 684.93 K] h_strictly_heavier_accepted
+    │ PASS [mem:   5.62 K, cpu:   1.64 M] h_equal_rejected
+    │ PASS [mem:   2.76 K, cpu: 856.97 K] h_lighter_rejected
+    ┕━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 18 tests | 18 passed | 0 failed

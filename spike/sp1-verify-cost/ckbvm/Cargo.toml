@@ -1,0 +1,25 @@
+[package]
+license = "MIT"
+name = "sp1-hash-cost"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "sp1_hash_cost"
+path = "src/main.rs"
+
+[dependencies]
+ckb-std = "0.16"
+blake2b-ref = { version = "0.3", default-features = false, optional = true }
+
+[profile.release]
+opt-level = 3
+lto = true
+panic = "abort"
+codegen-units = 1
+
+[features]
+# default does 0 ops (baseline overhead); subtract from a K-op build to isolate cost/op.
+# `perms` = K Poseidon2-KoalaBear permutations (SP1's hash); `blake` = K blake2b 2-to-1 compressions (ours).
+perms = []
+blake = ["dep:blake2b-ref"]

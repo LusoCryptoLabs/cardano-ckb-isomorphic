@@ -1,0 +1,14 @@
+{
+  "mint_tx": "0xb5ed89cb1dc463838797965bd75905f090ba4cbf184b0b184dfec2b78d3bb07a",
+  "xada_token_id": "0xc05c0e09ccf1c9fd687ce76ef792c3eb27b9d67c78e222955010b461e2f68f79",
+  "amount": "3000000",
+  "recipient": "7a971a3b730d3e5b69f73ac7add6dcd2396cab9523176132ed23e17500c820c7",
+  "escrow_tx": "331d8fe9bb4d2c2e9fff70f73a56e015ec1bc69352c6037159eb9f6712120c9f",
+  "token": {
+    "name": "Chiral ADA",
+    "symbol": "xADA",
+    "decimals": 6
+  },
+  "xada_cell": "0xb5ed89cb1dc463838797965bd75905f090ba4cbf184b0b184dfec2b78d3bb07a:0",
+  "unique_cell": "0xb5ed89cb1dc463838797965bd75905f090ba4cbf184b0b184dfec2b78d3bb07a:1"
+}

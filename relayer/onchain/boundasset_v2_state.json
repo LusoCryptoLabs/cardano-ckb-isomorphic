@@ -1,0 +1,15 @@
+{
+  "registry": {
+    "txHash": "0x6fd912fbd52a58977458bd7e81614a8db4c0f0fe48d9a1626b3dc7c6fa9a9bb7",
+    "index": 2,
+    "root": "0x8e0cd96e87fcfdeb628b729e458d48ca4d979294224acc87490f3946347ddfb8"
+  },
+  "bound": {
+    "txHash": "0x1e1b978c579c61df54ac6aadca074ea0652c9a687093977558d84c3c8bdce887",
+    "index": 0,
+    "seal_txid": "177a0871ba4c9be4d4ea7901568d82c2148887bd7f5ee925166b5e33dc575a04",
+    "seal_idx": 0,
+    "lock_slot": "0x7a971a3b730d3e5b69f73ac7add6dcd2396cab9523176132ed23e17500c820c7",
+    "state": "bound-asset:demo:v1"
+  }
+}

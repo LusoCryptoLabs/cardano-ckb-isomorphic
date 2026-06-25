@@ -1,0 +1,3 @@
+# the parent crate forces the riscv64 CKB target; these are HOST integration tests (ckb-testtool VM).
+[build]
+target = "x86_64-unknown-linux-gnu"

@@ -1,0 +1,59 @@
+[package]
+license = "MIT"
+name = "fri-ckbvm"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "fri_verify"
+path = "src/main.rs"
+
+[[bin]]
+name = "stark_verify"
+path = "src/stark_main.rs"
+
+[[bin]]
+name = "ext_verify"
+path = "src/ext_main.rs"
+
+[[bin]]
+name = "quartic_verify"
+path = "src/quartic_main.rs"
+
+[[bin]]
+name = "quartic_zc"
+path = "src/quartic_zc_main.rs"
+
+[[bin]]
+name = "quartic_witness"
+path = "src/quartic_witness_main.rs"
+
+[[bin]]
+name = "checkpoint"
+path = "src/checkpoint_main.rs"
+
+[[bin]]
+name = "consensus_verify"
+path = "src/consensus_main.rs"
+
+[[bin]]
+name = "checkpoint_consensus"
+path = "src/checkpoint_consensus_main.rs"
+
+[[bin]]
+name = "checkpoint_consensus_q"
+path = "src/checkpoint_consensus_q_main.rs"
+
+[dependencies]
+ckb-std = "0.16"
+fri-core = { path = "../core" }
+
+[profile.release]
+opt-level = 3
+lto = true
+panic = "abort"
+codegen-units = 1
+
+[features]
+# default verifies fixtures/proof.bin (valid); `bad` verifies the tampered proof_bad.bin (must reject).
+bad = []

@@ -1,0 +1,26 @@
+[Unit]
+Description=Chiral WARM forward prover (resident relay_bind; holds the ~740MB fixed-size key for ~seconds forward mints)
+After=network.target
+
+[Service]
+Type=simple
+# adjust paths if you cloned elsewhere (must match CHIRAL_REPO_SH in the env file)
+EnvironmentFile=/opt/chiral/deploy/.env
+# the FORWARD warm socket - must equal RELAY_WARM_SOCK in .env (proveLeap's warm-first probe). CHIRAL_SERVE is
+# kept ONLY here (never in .env) so the dapp's cold-fallback relay_bind can't inherit it and flip into serve-mode.
+Environment=CHIRAL_SERVE=/tmp/chiral_relay_warm.sock
+Environment=CEREMONY_PK=/opt/chiral/spike/ckb-to-cardano/circuit/ceremony_relay_bind/relay_bind_pk.bin
+# One-off speed-up: set CHIRAL_BAKE_UC=1 on the FIRST start to write the uncompressed .uc sidecar, so every
+# later restart loads the key in seconds instead of ~3 min. Remove it after the sidecar exists.
+# Environment=CHIRAL_BAKE_UC=1
+ExecStart=/opt/chiral/spike/ckb-to-cardano/circuit/prover/target/release/relay_bind
+Restart=on-failure
+RestartSec=10
+# The fixed-size (2^22) key is ~1.4GB uncompressed resident. NOTE: on the 8GB KVM2 you cannot run BOTH this and
+# the return warm prover (chiral-warmprover.service) at full size - provision swap (deploy/setup.sh), or enable
+# only this forward one (testers mint first; the χCKB return is keyless/Mithril-gated and less latency-sensitive).
+MemoryMax=4G
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

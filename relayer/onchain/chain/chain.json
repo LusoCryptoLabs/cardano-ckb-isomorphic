@@ -1,0 +1,149 @@
+{
+  "epochs": {
+    "1319": {
+      "checkpoint": "0x27050000000000000f3c0c7f86ecb28acdc2fe03675a0c43ea00f4552e83bc620d4329646f3fe9da3d8b9dda433a0000",
+      "witness": "wit_1319.bin"
+    },
+    "1320": {
+      "checkpoint": "0x280500000000000013a8810b129d377a1ce7e7a2c29d0d93a2b22ab867c2ec7cabdf415215118f9a50910f94493a0000",
+      "witness": "wit_1320.bin"
+    },
+    "1321": {
+      "checkpoint": "0x2905000000000000a15b4c16a30a94208aab625b9796a5b1ecc0f88d9c14302450d79a4c418cd11658d09161503a0000",
+      "witness": "wit_1321.bin"
+    },
+    "1322": {
+      "checkpoint": "0x2a05000000000000314a3c27b055a0825dd499720c84e0f1856a76dfef83268af8684c3391bf379f938c04ee563a0000",
+      "witness": "wit_1322.bin"
+    },
+    "1323": {
+      "checkpoint": "0x2b05000000000000ebc245fb2f391d76e631e02fe396fe0813d9e0422cd910bf648b24c7778965ac66193dd65c3a0000",
+      "witness": "wit_1323.bin"
+    },
+    "1324": {
+      "checkpoint": "0x2c0500000000000001ce65944748f2d5c19bd4097144d795fc2f8b3438d6bc753ba2704ab049c651fe9aaf78613a0000",
+      "witness": "wit_1324.bin"
+    },
+    "1325": {
+      "checkpoint": "0x2d05000000000000cbcbcee27edb35c2cddc0e073c827872bcffd840f35416a5039ac70736ddf38606f3b8ed663a0000",
+      "witness": "wit_1325.bin"
+    },
+    "1326": {
+      "checkpoint": "0x2e05000000000000f1c7f15a04099e7205ca8f0529e63a1ceceb3029e410fb69f8b4ed3851bba97cd67a70316c3a0000",
+      "witness": "wit_1326.bin"
+    },
+    "1327": {
+      "checkpoint": "0x2f050000000000006f89c37c379b4bad24e383e0ba8a750ad9ebeda5f0b920c98c9b336e7c655cdfdf81a307723a0000",
+      "witness": "wit_1327.bin"
+    },
+    "1328": {
+      "checkpoint": "0x300500000000000036e8205d3be635f0fe7cb4b04ee64d843f6fb9d2313587c2253474e8801e64e297c6394a773a0000",
+      "witness": "wit_1328.bin"
+    },
+    "1329": {
+      "checkpoint": "0x3105000000000000fa50dfe05d2515b5b9ac00fdab93c006d74f1ea8fcc73584de090091beb3a66f38b26b0f7d3a0000",
+      "witness": "wit_1329.bin"
+    },
+    "1330": {
+      "checkpoint": "0x3205000000000000d929bdb971391b90d7522a463b3f7cd1044847c27a18b7dcd5e8c4af8a84d8a4edb06821823a0000",
+      "witness": "wit_1330.bin"
+    },
+    "1331": {
+      "checkpoint": "0x3305000000000000de6e21c6cffeab115e0cac885d555fc7022b26f06d9004c06205fadfcc4a7ad585158c37883a0000",
+      "witness": "wit_1331.bin"
+    }
+  },
+  "advances": [
+    {
+      "from": 1319,
+      "to": 1320,
+      "in_ck": "0x27050000000000000f3c0c7f86ecb28acdc2fe03675a0c43ea00f4552e83bc620d4329646f3fe9da3d8b9dda433a0000",
+      "out_ck": "0x280500000000000013a8810b129d377a1ce7e7a2c29d0d93a2b22ab867c2ec7cabdf415215118f9a50910f94493a0000",
+      "witness": "wit_1319.bin"
+    },
+    {
+      "from": 1320,
+      "to": 1321,
+      "in_ck": "0x280500000000000013a8810b129d377a1ce7e7a2c29d0d93a2b22ab867c2ec7cabdf415215118f9a50910f94493a0000",
+      "out_ck": "0x2905000000000000a15b4c16a30a94208aab625b9796a5b1ecc0f88d9c14302450d79a4c418cd11658d09161503a0000",
+      "witness": "wit_1320.bin"
+    },
+    {
+      "from": 1321,
+      "to": 1322,
+      "in_ck": "0x2905000000000000a15b4c16a30a94208aab625b9796a5b1ecc0f88d9c14302450d79a4c418cd11658d09161503a0000",
+      "out_ck": "0x2a05000000000000314a3c27b055a0825dd499720c84e0f1856a76dfef83268af8684c3391bf379f938c04ee563a0000",
+      "witness": "wit_1321.bin"
+    },
+    {
+      "from": 1322,
+      "to": 1323,
+      "in_ck": "0x2a05000000000000314a3c27b055a0825dd499720c84e0f1856a76dfef83268af8684c3391bf379f938c04ee563a0000",
+      "out_ck": "0x2b05000000000000ebc245fb2f391d76e631e02fe396fe0813d9e0422cd910bf648b24c7778965ac66193dd65c3a0000",
+      "witness": "wit_1322.bin"
+    },
+    {
+      "from": 1323,
+      "to": 1324,
+      "in_ck": "0x2b05000000000000ebc245fb2f391d76e631e02fe396fe0813d9e0422cd910bf648b24c7778965ac66193dd65c3a0000",
+      "out_ck": "0x2c0500000000000001ce65944748f2d5c19bd4097144d795fc2f8b3438d6bc753ba2704ab049c651fe9aaf78613a0000",
+      "witness": "wit_1323.bin"
+    },
+    {
+      "from": 1324,
+      "to": 1325,
+      "in_ck": "0x2c0500000000000001ce65944748f2d5c19bd4097144d795fc2f8b3438d6bc753ba2704ab049c651fe9aaf78613a0000",
+      "out_ck": "0x2d05000000000000cbcbcee27edb35c2cddc0e073c827872bcffd840f35416a5039ac70736ddf38606f3b8ed663a0000",
+      "witness": "wit_1324.bin"
+    },
+    {
+      "from": 1325,
+      "to": 1326,
+      "in_ck": "0x2d05000000000000cbcbcee27edb35c2cddc0e073c827872bcffd840f35416a5039ac70736ddf38606f3b8ed663a0000",
+      "out_ck": "0x2e05000000000000f1c7f15a04099e7205ca8f0529e63a1ceceb3029e410fb69f8b4ed3851bba97cd67a70316c3a0000",
+      "witness": "wit_1325.bin"
+    },
+    {
+      "from": 1326,
+      "to": 1327,
+      "in_ck": "0x2e05000000000000f1c7f15a04099e7205ca8f0529e63a1ceceb3029e410fb69f8b4ed3851bba97cd67a70316c3a0000",
+      "out_ck": "0x2f050000000000006f89c37c379b4bad24e383e0ba8a750ad9ebeda5f0b920c98c9b336e7c655cdfdf81a307723a0000",
+      "witness": "wit_1326.bin"
+    },
+    {
+      "from": 1327,
+      "to": 1328,
+      "in_ck": "0x2f050000000000006f89c37c379b4bad24e383e0ba8a750ad9ebeda5f0b920c98c9b336e7c655cdfdf81a307723a0000",
+      "out_ck": "0x300500000000000036e8205d3be635f0fe7cb4b04ee64d843f6fb9d2313587c2253474e8801e64e297c6394a773a0000",
+      "witness": "wit_1327.bin"
+    },
+    {
+      "from": 1328,
+      "to": 1329,
+      "in_ck": "0x300500000000000036e8205d3be635f0fe7cb4b04ee64d843f6fb9d2313587c2253474e8801e64e297c6394a773a0000",
+      "out_ck": "0x3105000000000000fa50dfe05d2515b5b9ac00fdab93c006d74f1ea8fcc73584de090091beb3a66f38b26b0f7d3a0000",
+      "witness": "wit_1328.bin"
+    },
+    {
+      "from": 1329,
+      "to": 1330,
+      "in_ck": "0x3105000000000000fa50dfe05d2515b5b9ac00fdab93c006d74f1ea8fcc73584de090091beb3a66f38b26b0f7d3a0000",
+      "out_ck": "0x3205000000000000d929bdb971391b90d7522a463b3f7cd1044847c27a18b7dcd5e8c4af8a84d8a4edb06821823a0000",
+      "witness": "wit_1329.bin"
+    },
+    {
+      "from": 1330,
+      "to": 1331,
+      "in_ck": "0x3205000000000000d929bdb971391b90d7522a463b3f7cd1044847c27a18b7dcd5e8c4af8a84d8a4edb06821823a0000",
+      "out_ck": "0x3305000000000000de6e21c6cffeab115e0cac885d555fc7022b26f06d9004c06205fadfcc4a7ad585158c37883a0000",
+      "witness": "wit_1330.bin"
+    }
+  ],
+  "deploy": {
+    "avk_checkpoint": "0x3305000000000000de6e21c6cffeab115e0cac885d555fc7022b26f06d9004c06205fadfcc4a7ad585158c37883a0000",
+    "witness": "wit_1331.bin",
+    "tx_root": "0x89878a41a026524fd125c4f3037de2ae917b4c1bb2d667e39fea8c0ccf7aff2d",
+    "height": 4391054,
+    "out_data": "0x4c434b5089878a41a026524fd125c4f3037de2ae917b4c1bb2d667e39fea8c0ccf7aff2d8e00430000000000"
+  }
+}

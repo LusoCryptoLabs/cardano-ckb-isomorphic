@@ -1,0 +1,12 @@
+[package]
+license = "MIT"
+name = "fri-host"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "prove"
+path = "src/bin/prove.rs"
+
+[dependencies]
+fri-core = { path = "../core" }

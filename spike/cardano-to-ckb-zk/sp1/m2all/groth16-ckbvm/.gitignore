@@ -1,0 +1,7 @@
+/target
+Cargo.lock
+# the root .gitignore ignores *.bin; these three are real proof artifacts the
+# verifier embeds via include_bytes! and must be tracked for reproducibility.
+!proof.bin
+!pubvals.bin
+!groth16_vk.bin

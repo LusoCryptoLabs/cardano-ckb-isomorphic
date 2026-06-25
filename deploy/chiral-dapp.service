@@ -1,0 +1,20 @@
+[Unit]
+Description=Chiral dApp daemon (CKB <-> Cardano bridge, testnet, unaudited)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# adjust if you cloned elsewhere (must match CHIRAL_REPO_SH in the env file)
+WorkingDirectory=/opt/chiral/dapp
+EnvironmentFile=/opt/chiral/deploy/.env
+ExecStart=/usr/bin/node server.mjs
+Restart=on-failure
+RestartSec=5
+# the warm prover (if started) holds the 480MB key resident; KVM2 = 8GB. Cap so a runaway can't OOM the box.
+MemoryMax=6G
+# the keys live under .secrets; keep the unit from writing elsewhere
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

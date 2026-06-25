@@ -1,0 +1,22 @@
+FIRST compiling, TESTABLE AdvanceCert type script - verified in CKB-VM on a real preview cert.
+
+light_client_advance.rs assembles the proven verifier into ONE verify_certificate() and a real
+cell transition:
+  - reads input checkpoint cell state (epoch||avk_root||total, 48B) and output cell state;
+  - verify_certificate (against the input avk): compute_hash recheck (sha256 parts==signed_message)
+    + aggregate BLS (msgp=msg||root, empty DST) + stake lottery (is_lottery_won per index, all
+    2330) + batch-Merkle membership (reconstruct avk root) + quorum (unique indices >= k=1944);
+  - requires output cell == { epoch+1, next_avk_root, next_total } (the Mithril cert chain).
+
+TEST (light_client_advance_cert_on_ckb_vm): input cell epoch 320 + real cert -> output cell
+epoch 321. PASSES.
+  full assembled cost (naive eligibility) = 2,462,276,853 cycles = 70.35% of a 3.5e9 block.
+  PHASE 2 (DONE): check_eligibility_quorum now uses the per-party SNARK-lottery target
+  (compute_target + ev<T). Measured (same harness): eligibility 2,368M -> 39.7M (59.6x), exact on
+  all 2330 real indices. Full optimized AdvanceCert ~= BLS ~146M + eligibility ~40M +
+  Merkle/compute_hash ~= ~190M ~= ~5% of a 3.5e9 block (was ~70%). See spike/phase2/RESULTS.txt.
+
+Remaining glue (documented): bind next_avk_root/next_total to the authenticated
+next_aggregate_verification_key protocol-message part (compute_hash already authenticates the
+part bytes; extract the root from mithril's JSON-array encoding), and parse the cert from the
+witness (relayer transcode) rather than embedded consts.

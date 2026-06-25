@@ -1,0 +1,23 @@
+[package]
+license = "MIT"
+name = "bound-asset-verifier"
+version = "0.1.0"
+edition = "2021"
+
+# Builds the DEPLOYED verifier source verbatim (single source of truth: spike/phase1/bound_asset_unified.rs)
+# to riscv64, so #3 can run a relayer-encoded witness through the REAL verifier in ckb-debugger.
+[[bin]]
+name = "bound_asset_unified"
+path = "../../../../phase1/bound_asset_unified.rs"
+
+[dependencies]
+ckb-std = "0.16"
+blake2 = { version = "0.10", default-features = false }
+blake2b-ref = { version = "0.3", default-features = false }
+ckb-merkle-mountain-range = { version = "0.6", default-features = false }
+
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
+codegen-units = 1

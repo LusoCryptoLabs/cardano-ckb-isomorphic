@@ -1,0 +1,12 @@
+[package]
+license = "MIT"
+name = "relay-escrow-it"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+ckb-testtool = "0.13"
+
+[[test]]
+name = "escrow"
+path = "tests/escrow.rs"

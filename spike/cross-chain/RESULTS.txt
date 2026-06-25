@@ -1,0 +1,26 @@
+CROSS-CHAIN PRIMITIVE - a REAL Cardano transaction proven INSIDE the CKB VM.
+
+Verifies a real Mithril MKMapProof (fetched from the preview aggregator) that a real preview
+transaction is included in the certified Cardano tx-set Merkle root - in-script, using
+ckb-merkle-mountain-range (no_std, CKB-ecosystem) + Blake2s256.
+
+Ground truth (host, mithril-common CardanoTransactionsProofsMessage::verify): VERIFIED.
+  tx              = 64fbcc23ab6af01203159a4505ae9c1ec5c81225becb2a16e303e7e4cd06b386
+  certificate     = bbd0381f2b96e47c824f8dadc082c880bc958532f0845f5b12667e83772cd177
+  certified root  = 5fae3a1b547ad332030f6b42267d81241ea85912e2522fa574e44fa9a6c1d066
+
+In-script (CKB-VM): VERIFIED, 139,185 cycles. Structure:
+  - tx leaf = ASCII bytes of the tx-hash string;
+  - sub-proof: MMR (Blake2s256) proves the tx leaf under the block-range sub-root;
+  - master leaf = Blake2s256("{start}-{end}" || sub_root);
+  - master-proof: MMR proves the master leaf under CERT_ROOT (the certified tx-set root);
+  - CERT_ROOT == cardano_transactions_merkle_root, which the AdvanceCert verifier authenticates
+    from a CardanoTransactions Mithril certificate (same in-script cert machinery).
+
+=> The full cross-chain VERIFICATION oracle is proven in-script on real data:
+   Mithril cert verify (BLS+lottery+Merkle, AdvanceCert) authenticates the tx-set root, and this
+   MKMapProof proves a specific Cardano tx is in it. "Cardano transaction verified on CKB."
+
+Remaining for a value-flow transfer (engineering, not research): bind CERT_ROOT to a verified
+CardanoTransactions cert's protocol message (mechanical); the bound cell + Plutus binding lock
+(the leap-in/leap-out value flow); witness/relayer transcode; live devnet -> Pudge.

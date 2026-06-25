@@ -1,0 +1,13 @@
+[package]
+license = "MIT"
+name = "conway-mint"
+version = "0.0.0"
+edition = "2021"
+
+# The novel core of the burn-amount generalization: parse a Conway tx body's `mint` field (key 9) and
+# extract the (signed) quantity for a given (policy_id, asset_name) - a burn is negative. no_std-friendly
+# (alloc only) so it ports into the burn-gated-unlock lock script. Host-tested here against a synthetic
+# Conway mint field; ports next to the no_std lock (which reads the real tx body from the witness).
+[[bin]]
+name = "conway_mint"
+path = "src/main.rs"

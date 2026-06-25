@@ -1,0 +1,11 @@
+[package]
+license = "MIT"
+name = "m3-script"
+version = "0.1.0"
+edition = "2021"
+[dependencies]
+sp1-sdk = { version = "6.2.3", features = ["blocking", "native-gnark"] }
+hex = "0.4"
+[build-dependencies]
+sp1-build = "6.2.3"
+[workspace]

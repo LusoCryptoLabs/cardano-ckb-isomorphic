@@ -1,0 +1,25 @@
+CARDANO-SIDE BINDING (Aiken v1.1.21) - compiled + tested (aiken check: 91 checks, 0 errors).
+
+seal_nft.ak       - one-shot minting policy: exactly one SEAL NFT per bound asset, mintable only
+                    in the tx that spends `seed` (so the seal is unique forever). The seal UTxO
+                    (this NFT at binding_lock) IS the asset's ownership.
+binding_lock.ak   - the binding lock validator:
+  * Transfer: owner-signed; requires exactly ONE continuing output at the lock carrying the seal
+    NFT with a fresh SealDatum whose `commitment` is 32 bytes (= blake2b256(next CKB state||seal));
+    returns False (not trap) on missing continuity / wrong datum.
+  * Unbind: owner-signed; the seal NFT must not continue at the lock (burned/leaves) -> value released.
+binding_tests.ak  - 6 tests, all PASS: transfer_ok, transfer_unsigned_fails,
+                    transfer_no_seal_continuity_fails, transfer_bad_commitment_fails,
+                    unbind_ok, unbind_unsigned_fails.
+
+This is the OTHER HALF of the bind (the Cardano anchor). With the CKB side (cert verifier +
+tx-membership oracle + Conway parser + BoundAsset transition), BOTH halves of isomorphic binding
+now exist and are tested in their respective VMs:
+  Cardano: seal NFT + binding lock (owner controls the seal; commitment emitted on transfer).
+  CKB:     BoundAsset transition (seal consumed + commitment binds new state), gated by the oracle.
+
+Reconciliation note: the seal output's inline datum is a SealDatum{owner,commitment}; the CKB
+BoundAsset parser extracts the `commitment` field (vs §6.3's demo which used a raw-32B datum).
+
+Remaining for a live transfer: leap-in/leap-out flows + relayer; wire cardano_tx_is_certified into
+BoundAsset; deploy seal+lock on preview, mint a bound cell on Pudge, do a real seal-spend transfer.

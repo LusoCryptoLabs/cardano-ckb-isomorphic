@@ -1,0 +1,13 @@
+{
+  "name": "xrpl-htlc-spike",
+  "version": "0.0.1",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "description": "Cheap proof of bridge Mode B: XRPL native escrow (PreimageSha256 HTLC) linked to a CKB hashlock by one shared secret.",
+  "dependencies": {
+    "@ckb-ccc/core": "^1.12.5",
+    "five-bells-condition": "^5.0.1",
+    "xrpl": "^5.0.0"
+  }
+}

@@ -1,0 +1,24 @@
+PHASE 1 (in-script logic COMPLETE) - unified, witness-driven BoundAsset.
+
+bound_asset_unified.rs: ONE type script, deployed once + referenced by every bound cell.
+- per-transfer proof rides in the WITNESS (length-prefixed; cert_root NOT in the witness);
+- the certified Cardano tx-set root is read from a referenced LIGHT-CLIENT CHECKPOINT cell
+  (cell dep, data = "LCKP"||root32) - maintained by AdvanceCert, so the cert-verify authenticates
+  the root on-chain (BoundAsset just references it);
+- GENESIS (bind): output-only; verifies the certified seal-creation tx + commitment==blake2b256(S0);
+- TRANSITION: consume old bound cell -> create new; + the certified tx consumes the OLD seal.
+- bound cell data = seal_txid(32)||seal_idx(u32)||state; new seal = the certified tx's hash;
+  commitment(tx output[0] SealDatum) == blake2b256(new state).
+
+Verified in CKB-VM on REAL certified preview data:
+  GENESIS (seal-mint 83dd51d2, root 30a3465e from checkpoint): 225,655 cycles.
+  TRANSITION (transfer a98b6636, root 5acd33ab from checkpoint): 240,085 cycles.
+
+=> the production per-transfer model: one deployed script + proof-in-witness + a shared checkpoint
+   cell. Per-transfer user cost ~0.05 CKB (size-based). Both bind + transfer modes proven.
+
+LIVE ON PUDGE (Phase 1 DONE): one verifier deployed (code_hash 0x42f74fbc…, tx 0xf8644bd3…);
+genesis bound cell 0x0318d35f… (block 21,339,914); TRANSITION 0x94d0620f… (block 21,339,956)
+CONSUMED the genesis cell and created v2 - proof-in-witness, root from a checkpoint cellDep, all
+verified in-script on the live node against real Mithril data. See deployed/pudge/unified-instance.json
++ deploy/pudge/. Next: Phases 2-5 per BUILD_PLAN.

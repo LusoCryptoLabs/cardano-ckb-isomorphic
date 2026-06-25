@@ -1,0 +1,30 @@
+{
+  "name": "bridged-token-dex-ui",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "description": "DEX/JoyID UI for the isomorphic bridge's bridged token - JoyID (CKB xUDT) + Cardano CIP-68 FT, with live caps/pause and MAPPING_SPEC-correct amounts.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "deploy:ckb": "node scripts/deploy_ckb.mjs"
+  },
+  "dependencies": {
+    "@ckb-ccc/connector-react": "^1.0.0",
+    "@ckb-ccc/core": "^1.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  }
+}

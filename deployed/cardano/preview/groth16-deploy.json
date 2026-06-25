@@ -1,0 +1,18 @@
+{
+  "checkpoint_nft": "750093f5690b4fa6a3712c24e59f1a8d7c117bcce2eb6d9e4a0a4481",
+  "seal_nullifier_script": "4973978bf574be3b7f0529963d9e41b466d6886762b97749a032d531",
+  "governor_vkh": "2df44c71a4312463ba31315c5aa7725b6ad44cd544a055a3dde915a6",
+  "seal_registry_nft": "3a2984fe6c67aae930593f1d71af829129442d67397fa031e68c7ef5",
+  "seal_gref": "f1f79e7b6d73a54a513843f53a803778916d85c0fa52560fe7a192dce457f882#4",
+  "seal_genesis_tx": "a3f99c21a154d7cb684d60e9ba966e5ccb431360004d591fb604806e8d48500e",
+  "policy_nft": "916b2375b75712dc875bf23376ab149ca97e93a5f1e885d047dd3b86",
+  "policy_script": "dc2509e8258e9d8a0a5d21315c05d6607ae036c90f93d6e3c4c5844b",
+  "policy_gref": "a3f99c21a154d7cb684d60e9ba966e5ccb431360004d591fb604806e8d48500e#1",
+  "policy_genesis_tx": "b62791152f1317e0d6a467b048562d01a9d95aae14f3a41d65e7572d6bd8bf5f",
+  "ratelimit_thread": "a0bfe932c65e3a0caa7a055960ff7d927fb39e3f81dde2c3cb2b7698",
+  "leap_ratelimit_script": "99c075a95fd243065cc78743fb6b16ce79bf44744281908728ef1fdb",
+  "ratelimit_gref": "b62791152f1317e0d6a467b048562d01a9d95aae14f3a41d65e7572d6bd8bf5f#1",
+  "cardano_bound_script": "43cdae77f81c079a29b9fe07eb6b1f6ad46d316263a8fe18abd4dd07",
+  "leap_mint_guard_policy": "ed5b37a60f2f4c7b846d0ae4b7748650fcc2890bb8e761cd015035f8",
+  "ratelimit_genesis_tx": "9c292ae3dfdf91db4cca8f71ba27434091540e0b8764dff514e15e2bf17b1997"
+}

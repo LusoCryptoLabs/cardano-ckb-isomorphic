@@ -1,0 +1,19 @@
+[package]
+license = "MIT"
+name = "leap-mint-guard"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "leap_mint_guard"
+path = "src/main.rs"
+
+[dependencies]
+ckb-std = "0.16"
+leap-guard-core = { path = "../core" }
+
+[profile.release]
+opt-level = 'z'
+lto = true
+panic = "abort"
+codegen-units = 1

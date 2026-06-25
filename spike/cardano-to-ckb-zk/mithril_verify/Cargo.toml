@@ -1,0 +1,14 @@
+[package]
+license = "MIT"
+name = "mithril_verify"
+version = "0.0.0"
+edition = "2021"
+[dependencies]
+mithril-client = { git = "https://github.com/input-output-hk/mithril", tag = "2617.0", features = ["rustls"] }
+mithril-common = { git = "https://github.com/input-output-hk/mithril", tag = "2617.0" }
+serde_json = { version = "1", features = ["preserve_order"] }
+hex = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread","macros"] }
+[[bin]]
+name = "mithril_verify"
+path = "src/main.rs"

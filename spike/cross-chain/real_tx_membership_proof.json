@@ -1,0 +1,6 @@
+{
+  "certificate_hash": "bbd0381f2b96e47c824f8dadc082c880bc958532f0845f5b12667e83772cd177",
+  "tx": "64fbcc23ab6af01203159a4505ae9c1ec5c81225becb2a16e303e7e4cd06b386",
+  "proof_structure": "MKMapProof {master_proof: MMR, sub_proofs: [(range, MKProof)]}",
+  "latest_block_number": 4355114
+}

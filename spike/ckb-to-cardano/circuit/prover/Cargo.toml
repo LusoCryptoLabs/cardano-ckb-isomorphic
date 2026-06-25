@@ -1,0 +1,78 @@
+[package]
+license = "MIT"
+name = "ckb-consensus-circuit"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+name = "ckb_consensus_circuit"
+path = "src/lib.rs"
+
+[[bin]]
+name = "gadget_tests"
+path = "src/main.rs"
+
+[[bin]]
+name = "leap_prove"
+path = "src/bin/leap_prove.rs"
+
+[dependencies]
+ark-ff = { version = "0.4", features = ["parallel"] }
+ark-ec = { version = "0.4", features = ["parallel"] }
+ark-relations = "0.4"
+ark-r1cs-std = "0.4"
+ark-bls12-381 = "0.4"
+ark-groth16 = { version = "0.4", features = ["parallel"] }
+ark-snark = "0.4"
+ark-serialize = "0.4"
+ark-std = { version = "0.4", features = ["parallel"] }
+ark-poly = { version = "0.4", features = ["parallel"] }
+eaglesong = "0.1"
+blake2b-rs = "0.2"
+bls12_381 = "0.8"
+num-bigint = "0.4"
+serde_json = "1"
+rayon = "1"
+
+[profile.release]
+opt-level = 3
+
+[[bin]]
+name = "advance_prove"
+path = "src/bin/advance_prove.rs"
+
+[[bin]]
+name = "batch_advance"
+path = "src/bin/batch_advance.rs"
+
+[[bin]]
+name = "relay_prove"
+path = "src/bin/relay_prove.rs"
+
+[[bin]]
+name = "finalize_prove"
+path = "src/bin/finalize_prove.rs"
+
+[[bin]]
+name = "ceremony"
+path = "src/bin/ceremony.rs"
+
+[[bin]]
+name = "ceremony_selftest"
+path = "src/bin/ceremony_selftest.rs"
+
+[[bin]]
+name = "leap_windowed"
+path = "src/bin/leap_windowed.rs"
+
+[[bin]]
+name = "finalize_windowed"
+path = "src/bin/finalize_windowed.rs"
+
+[[bin]]
+name = "value_bind_test"
+path = "src/bin/value_bind_test.rs"
+
+[[bin]]
+name = "relay_bind"
+path = "src/bin/relay_bind.rs"

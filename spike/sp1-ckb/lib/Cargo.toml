@@ -1,0 +1,11 @@
+[package]
+license = "MIT"
+name = "ckb-chain-lib"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+blake2b-ref = { version = "0.3", default-features = false }
+eaglesong = "0.1"                                              # CKB's real Eaglesong PoW
+primitive-types = { version = "0.12", default-features = false }  # U256 targets + work

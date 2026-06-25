@@ -1,0 +1,28 @@
+# Normalize line endings: store LF in the repo for all text/source/tooling files.
+* text=auto eol=lf
+
+*.rs     text eol=lf
+*.toml   text eol=lf
+*.md     text eol=lf
+*.mjs    text eol=lf
+*.js     text eol=lf
+*.jsx    text eol=lf
+*.ts     text eol=lf
+*.json   text eol=lf
+*.py     text eol=lf
+*.ak     text eol=lf
+*.mol    text eol=lf
+*.sh     text eol=lf
+*.html   text eol=lf
+*.css    text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+Makefile text eol=lf
+
+# Binary artifacts - never normalize
+*.bin    binary
+*.uc     binary
+*.png    binary
+*.so     binary
+*.wasm   binary
+*.skey   binary

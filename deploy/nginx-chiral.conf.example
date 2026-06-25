@@ -1,0 +1,60 @@
+# nginx-chiral.conf.example - TLS front for the Chiral dApp (guided testnet pilot).
+#
+# The dApp's own access gate (CHIRAL_ACCESS_TOKEN) + per-IP rate limiter is the real authz; this nginx front
+# adds (a) HTTPS termination, (b) a coarse edge rate-limit as defence-in-depth, and (c) the X-Forwarded-For the
+# dApp reads to rate-limit by the real client IP. Do NOT expose the dApp port (8799) directly to the internet.
+#
+# Install (Debian/Ubuntu VPS):
+#   sudo cp deploy/nginx-chiral.conf.example /etc/nginx/sites-available/chiral
+#   # edit server_name + the certbot paths, then:
+#   sudo ln -s /etc/nginx/sites-available/chiral /etc/nginx/sites-enabled/chiral
+#   sudo certbot --nginx -d chiral.example.org      # provisions + wires the TLS cert
+#   sudo nginx -t && sudo systemctl reload nginx
+#
+# REMINDER: keep this to KNOWN testers. Hand each the link with the access token:  https://chiral.example.org/?t=<CHIRAL_ACCESS_TOKEN>
+
+# edge rate-limit zone: ~30 req/s/IP with a small burst - generous for page+poll, throttles a flood.
+limit_req_zone $binary_remote_addr zone=chiral_edge:10m rate=30r/s;
+
+server {
+    listen 80;
+    server_name chiral.example.org;
+    # redirect all plaintext to HTTPS (certbot usually adds this automatically)
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name chiral.example.org;
+
+    # certbot fills these in (paths shown for reference)
+    ssl_certificate     /etc/letsencrypt/live/chiral.example.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/chiral.example.org/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    # heavy proof/relayer endpoints can run for minutes - give them a long read timeout, but rate-limit hard.
+    location /api/leap/ {
+        limit_req zone=chiral_edge burst=10 nodelay;
+        proxy_pass http://127.0.0.1:8799;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;   # the dApp rate-limits by this
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+    }
+    location /api/xada/ {
+        limit_req zone=chiral_edge burst=10 nodelay;
+        proxy_pass http://127.0.0.1:8799;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+    }
+
+    # everything else (static SPA, /api/health, /api/bridge/config, /api/job): light edge limit, normal timeouts.
+    location / {
+        limit_req zone=chiral_edge burst=40 nodelay;
+        proxy_pass http://127.0.0.1:8799;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}

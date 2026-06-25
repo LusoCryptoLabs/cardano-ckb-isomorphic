@@ -1,0 +1,9 @@
+[workspace]
+members = ["lib", "program", "script"]
+resolver = "2"
+
+# Use a locally-vendored p3-poseidon2 instrumented with a permutation counter, so we can measure the EXACT
+# number of Poseidon2 permutations an SP1 proof verify performs (the cost keystone). Identical to upstream
+# 0.4.3-succinct except for the counter.
+[patch.crates-io]
+p3-poseidon2 = { path = "vendor/p3-poseidon2" }
