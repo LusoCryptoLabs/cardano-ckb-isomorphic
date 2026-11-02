@@ -1,0 +1,64 @@
+version: 2
+updates:
+  # Only security updates for packages: open-pull-requests-limit 0 turns off version updates.
+  - package-ecosystem: npm
+    directories:
+      - "/dapp"
+      - "/spike/dex-integration/relayer"
+      - "/spike/dex-integration/ui"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: chore(deps)
+  - package-ecosystem: cargo
+    directories:
+      - "/spike/burn-gated-unlock"
+      - "/spike/burn-gated-unlock/conway-mint"
+      - "/spike/burn-gated-unlock/integration"
+      - "/spike/cardano-to-ckb-zk/mithril_verify"
+      - "/spike/cardano-to-ckb-zk/sp1/m2/program"
+      - "/spike/cardano-to-ckb-zk/sp1/m2/script"
+      - "/spike/cardano-to-ckb-zk/sp1/m2all/program"
+      - "/spike/cardano-to-ckb-zk/sp1/m2all/script"
+      - "/spike/cardano-to-ckb-zk/sp1/m2bls/program"
+      - "/spike/cardano-to-ckb-zk/sp1/m2bls/script"
+      - "/spike/cardano-to-ckb-zk/sp1/m2full/program"
+      - "/spike/cardano-to-ckb-zk/sp1/m2full/script"
+      - "/spike/cardano-to-ckb-zk/sp1/m3/program"
+      - "/spike/cardano-to-ckb-zk/sp1/m3/script"
+      - "/spike/ckb-to-cardano/circuit/ckb_consensus"
+      - "/spike/ckb-to-cardano/circuit/prover"
+      - "/spike/ckb-to-cardano/prover"
+      - "/spike/dex-integration/guard/ckb_script"
+      - "/spike/dex-integration/guard/core"
+      - "/spike/dex-integration/guard/integration"
+      - "/spike/dex-integration/relayer/validation/gen"
+      - "/spike/dex-integration/relayer/validation/v2vmtest"
+      - "/spike/dex-integration/relayer/validation/verifier"
+      - "/spike/dex-integration/relayer/validation/vmtest"
+      - "/spike/light-client-cell/advance-cert"
+      - "/spike/light-client-cell/cert-verify"
+      - "/spike/light-client-cell/txset-cert"
+      - "/spike/phase1/a3_decoder"
+      - "/spike/phase4/difftest"
+      - "/spike/pq-fri-ckbvm"
+      - "/spike/pq-fri-verify/ckbvm"
+      - "/spike/pq-fri-verify/host"
+      - "/spike/pq-recursion/ckbvm"
+      - "/spike/relay-escrow"
+      - "/spike/relay-escrow/integration"
+      - "/spike/sp1-ckb"
+      - "/spike/sp1-ckb/vendor/p3-poseidon2"
+      - "/spike/sp1-verify-cost/ckbvm"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: chore(deps)
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
